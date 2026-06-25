@@ -1,0 +1,162 @@
+/**
+ * hooks/useFinancialCalculations.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Centraliza todos os cálculos financeiros derivados do estado global.
+ *
+ * ANTES: 5 useMemos espalhados no App.tsx, com lógica de saldo inicial
+ * duplicada entre App.tsx e Dashboard.tsx.
+ *
+ * AGORA: um único hook que expõe uma API limpa. Qualquer view pode importar
+ * e consumir sem precisar conhecer os detalhes de cálculo.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+import { useMemo } from 'react';
+import { Transaction, TransactionType, FinancialSummary, ManualValues } from '../types';
+import {
+  parseDate,
+  calcInitialBalance,
+  calcResgAplicTotal,
+  getStartDate,
+  BANKS_MAPPING,
+  normalizeCompanyId,
+  byDate,
+} from '../utils/finance';
+
+interface UseFinancialCalculationsParams {
+  transactions: Transaction[];
+  realizedTransactions: Transaction[];
+  selectedCompany: string;
+  manualValues: ManualValues;
+}
+
+interface UseFinancialCalculationsResult {
+  /** Transações previstas filtradas pela empresa selecionada. */
+  filteredTransactions: Transaction[];
+  /** Transações realizadas filtradas pela empresa selecionada. */
+  filteredRealized: Transaction[];
+  /** IDs únicos de empresas presentes em ambas as listas, ordenados numericamente. */
+  uniqueCompanies: string[];
+  /** Resumo financeiro consolidado (previsto). */
+  summary: FinancialSummary;
+  /**
+   * Saldo inicial consolidado para a Apresentação Executiva.
+   * Soma os saldos manuais de todas as empresas (ou só da selecionada)
+   * na data mais antiga das transações.
+   */
+  executiveInitialBalance: number;
+  /**
+   * Total de resgates manuais de todas as empresas.
+   * Usado no FC Diário e na Apresentação Executiva.
+   */
+  totalManualResgates: number;
+}
+
+export function useFinancialCalculations({
+  transactions,
+  realizedTransactions,
+  selectedCompany,
+  manualValues,
+}: UseFinancialCalculationsParams): UseFinancialCalculationsResult {
+
+  // ─── Filtros por empresa ─────────────────────────────────────────────────
+
+  const filteredTransactions = useMemo(() => {
+    if (selectedCompany === 'all') return transactions;
+    return transactions.filter(
+      t => normalizeCompanyId(t.companyCode) === selectedCompany
+    );
+  }, [transactions, selectedCompany]);
+
+  const filteredRealized = useMemo(() => {
+    if (selectedCompany === 'all') return realizedTransactions;
+    return realizedTransactions.filter(
+      t => normalizeCompanyId(t.companyCode) === selectedCompany
+    );
+  }, [realizedTransactions, selectedCompany]);
+
+  // ─── Lista de empresas únicas ────────────────────────────────────────────
+
+  const uniqueCompanies = useMemo(() => {
+    const companies = new Set<string>();
+    transactions.forEach(t => {
+      const id = normalizeCompanyId(t.companyCode);
+      if (id) companies.add(id);
+    });
+    realizedTransactions.forEach(t => {
+      const id = normalizeCompanyId(t.companyCode);
+      if (id) companies.add(id);
+    });
+    return Array.from(companies).sort((a, b) => {
+      const numA = parseInt(a, 10);
+      const numB = parseInt(b, 10);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.localeCompare(b);
+    });
+  }, [transactions, realizedTransactions]);
+
+  // ─── Resumo financeiro ───────────────────────────────────────────────────
+
+  const summary = useMemo<FinancialSummary>(() => {
+    const totalInflow = filteredTransactions
+      .filter(t => t.type === TransactionType.RECEIVABLE)
+      .reduce((acc, t) => acc + (Number(t.value) || 0), 0);
+
+    const totalInvested = filteredTransactions
+      .filter(t => t.type === TransactionType.APPLICATION)
+      .reduce((acc, t) => acc + (Number(t.value) || 0), 0);
+
+    // Previsto: apenas filteredTransactions com status PREVISTO
+    const totalOutflow = filteredTransactions
+      .filter(t => t.type === TransactionType.PAYABLE && t.status === 'PREVISTO')
+      .reduce((acc, t) => acc + (Number(t.value) || 0), 0);
+
+    // Realizado: apenas filteredRealized
+    const totalRealizedOutflow = filteredRealized
+      .filter(t => t.type === TransactionType.PAYABLE)
+      .reduce((acc, t) => acc + (Number(t.value) || 0), 0);
+
+    return {
+      totalInflow,
+      totalOutflow,
+      totalInvested,
+      totalRealizedOutflow,
+      balance: totalInflow - totalOutflow,
+    };
+  }, [filteredTransactions, filteredRealized]);
+
+  // ─── Saldo inicial executivo ─────────────────────────────────────────────
+
+  const executiveInitialBalance = useMemo(() => {
+    const startDate = getStartDate(filteredTransactions);
+    if (!startDate) return 0;
+
+    const companiesToSum = selectedCompany === 'all' ? uniqueCompanies : [selectedCompany];
+
+    return companiesToSum.reduce((acc, compId) => {
+      return acc + calcInitialBalance(compId, startDate, manualValues);
+    }, 0);
+  }, [filteredTransactions, selectedCompany, uniqueCompanies, manualValues]);
+
+  // ─── Total de resgates manuais ───────────────────────────────────────────
+
+  const totalManualResgates = useMemo(() => {
+    // Quando uma empresa está selecionada, soma apenas os resgates dela.
+    // Quando 'all', soma de todas as empresas.
+    if (selectedCompany === 'all') {
+      return Object.entries(manualValues)
+        .filter(([key]) => key.startsWith('sim_resg_'))
+        .reduce((acc, [, val]) => acc + (Number(val) || 0), 0);
+    }
+    return calcResgAplicTotal(selectedCompany, manualValues);
+  }, [manualValues, selectedCompany]);
+
+  return {
+    filteredTransactions,
+    filteredRealized,
+    uniqueCompanies,
+    summary,
+    executiveInitialBalance,
+    totalManualResgates,
+  };
+}

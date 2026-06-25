@@ -1,433 +1,619 @@
 /**
- * services/erpConnector.ts
+ * services/pptxNativeSlides.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * Conector de ERP para importação automática de transações.
+ * Gera os slides de Contas a Pagar e Contas a Receber de forma PROGRAMÁTICA
+ * usando pptxgenjs — sem html2canvas.
  *
- * PROBLEMA QUE RESOLVE:
- *   O maior ponto de fricção operacional é o upload manual de CSV toda segunda.
- *   Este módulo define a arquitetura para integração direta com ERPs,
- *   eliminando completamente a etapa manual.
- *
- * ABORDAGEM DE INTEGRAÇÃO:
- *
- *   OPÇÃO A — API REST (TOTVS Fluig / SAP Business One):
- *     Chamada direta à API do ERP via CORS proxy ou middleware.
- *     Necessita: URL base, credenciais OAuth2 ou Basic Auth.
- *     Vantagem: tempo real, sem lag.
- *
- *   OPÇÃO B — CSV via SFTP (TOTVS RM, sistemas legados):
- *     Job agendado no servidor baixa o CSV via SFTP e faz parse.
- *     Necessita: host SFTP, credenciais, path dos arquivos.
- *     Vantagem: compatível com qualquer ERP que exporte arquivo.
- *
- *   OPÇÃO C — Webhook Push (sistemas modernos):
- *     O ERP envia dados para um endpoint do backend ao confirmar pagamentos.
- *     Vantagem: atualização em tempo real sem polling.
- *
- * ARQUITETURA (sem backend próprio — only frontend):
- *   Como este projeto é um SPA sem backend, a integração direta
- *   com ERP requer um proxy CORS. As opções são:
- *
- *   1. Vercel Edge Function (serverless) — recomendado para MVP
- *   2. Cloudflare Worker
- *   3. Backend Express/Fastify em Node.js (para produção completa)
- *
- *   O conector aqui é o CLIENT SIDE. O proxy/backend receberá as chamadas
- *   e fará as requisições ao ERP em servidor (sem CORS issues).
- *
- * NOTAS PARA IMPLANTAÇÃO:
- *   Configurar as variáveis no .env.local:
- *     VITE_ERP_PROXY_URL=https://seu-proxy.vercel.app/api/erp
- *     VITE_ERP_TYPE=totvs_rm | totvs_fluig | sap_b1 | generic_csv
- *     VITE_ERP_COMPANY_CODES=1,2,3,4,5,6,14,17,18,22,23
+ * Cada elemento (KPI, barra horizontal, card, gráfico de empresa, VL Dia)
+ * é desenhado como objeto nativo do PowerPoint: texto real, formas vetoriais,
+ * gráficos editáveis. Resultado: nada corta, tudo fica nítido e editável.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-
+import PptxGenJS from 'pptxgenjs';
 import { Transaction, TransactionType } from '../types';
-import { parseRealizedCSV }             from '../engines/csvParser';
-import { auditLog }                     from '../engines/auditLog';
+import { classifyTax } from '../utils/finance';
 
-// ─── Tipos de configuração ────────────────────────────────────────────────────
+// ─── PALETA & CONSTANTES ──────────────────────────────────────────────────────
+const BG           = '0f172a';
+const CARD_BG      = '1e293b';
+const BORDER       = '334155';
+const BORDER_INNER = '475569';
+const TXT_MUTED    = '94a3b8';
+const TXT_LIGHT    = 'cbd5e1';
+const TXT_WHITE    = 'e2e8f0';
+const FONT         = 'Arial';
+const PAD          = 0.3;   // margem lateral do slide
 
-export type ERPType =
-  | 'totvs_rm'      // TOTVS RM — exporta CSV via relatório agendado
-  | 'totvs_fluig'   // TOTVS Fluig — API REST
-  | 'sap_b1'        // SAP Business One — Service Layer REST
-  | 'generic_csv'   // Qualquer ERP que exporte CSV via HTTP
-  | 'mock';         // Dados mockados para desenvolvimento/demo
+// ─── CORES POR CONTEXTO ──────────────────────────────────────────────────────
+const PAGAR = {
+  kpiBg: '450a0a', kpiBorder: 'ef4444',
+  bar1: '0284c7', val1: '7dd3fc',           // sky — Acima 35k
+  bar2: '4f46e5', val2: 'a5b4fc',           // indigo — Abaixo 35k
+  company: 'f97316', companyLabel: 'fb923c', // orange
+  cat: ['f97316', 'ef4444', 'f59e0b'],       // invest, imposto, comissão border
+};
+const RECEBER = {
+  kpiBg: '0f4c75', kpiBorder: '3282b8',
+  bar1: '0d9488', val1: '5eead4',           // teal
+  bar2: '0891b2', val2: '67e8f9',           // cyan
+  company: '38bdf8', companyLabel: 'e2e8f0',
+  cat: ['3b82f6', '10b981', '6366f1'],      // federal, estadual, municipal border
+};
 
-export interface ERPConfig {
-  type:         ERPType;
-  /** URL do proxy/backend que intermediará as chamadas. */
-  proxyUrl:     string;
-  /** IDs das empresas a sincronizar. */
-  companyCodes: string[];
-  /** Período a buscar (dias atrás). Padrão: 14. */
-  lookbackDays?: number;
-  /** Headers extras para autenticação no proxy. */
-  authHeaders?:  Record<string, string>;
+const COMPANIES_MAP: Record<string, string> = {
+  '1': 'S.A. A GAZETA', '2': 'TV GAZETA', '3': 'TV CACHOEIRO',
+  '4': 'TV NORTE', '5': 'RD MIX', '6': 'FM 102',
+  '14': 'VÍDEO', '17': 'DIFUSORA', '18': 'CIDADÃ',
+  '22': 'FM LINHARES', '23': 'RD N. GERAÇÃO',
+};
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+const fmtVal = (v: number) => Math.round(v).toLocaleString('pt-BR');
+const fmtFull = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const trunc  = (s: string, max: number) => s.length > max ? s.substring(0, max - 1) + '…' : s;
+
+const normalizeCategory = (cat?: string) => {
+  if (!cat) return '';
+  return cat.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+};
+
+interface AggItem { id: string; name: string; value: number }
+
+function aggregate(txs: Transaction[], keyFn: (t: Transaction) => string, nameFn: (t: Transaction) => string): AggItem[] {
+  const map: Record<string, AggItem> = {};
+  txs.forEach(t => {
+    const k = keyFn(t);
+    if (!map[k]) map[k] = { id: k, name: nameFn(t), value: 0 };
+    map[k].value += Number(t.value) || 0;
+  });
+  return Object.values(map);
 }
 
-export interface SyncResult {
-  success:     boolean;
-  imported:    Transaction[];
-  skipped:     number;
-  errors:      string[];
-  syncedAt:    Date;
-  source:      ERPType;
+// ─── BUILDING BLOCKS ──────────────────────────────────────────────────────────
+
+function drawHeader(slide: PptxGenJS.Slide, pres: PptxGenJS, title: string, dateRange: string) {
+  slide.background = { color: BG };
+
+  slide.addText('REDE GAZETA', {
+    x: PAD, y: 0.15, w: 4, h: 0.18,
+    fontSize: 7, color: TXT_MUTED, fontFace: FONT, bold: false,
+  });
+  slide.addText(title, {
+    x: PAD, y: 0.30, w: 6, h: 0.30,
+    fontSize: 20, color: TXT_WHITE, fontFace: FONT, bold: true,
+  });
+  slide.addText(dateRange, {
+    x: 6.5, y: 0.33, w: 3.2, h: 0.22,
+    fontSize: 9, color: TXT_LIGHT, fontFace: FONT, align: 'right',
+  });
+  // separador
+  slide.addShape(pres.ShapeType.rect, {
+    x: PAD, y: 0.64, w: 10 - 2 * PAD, h: 0.008,
+    fill: { color: BORDER },
+  });
 }
 
-// ─── Payloads por tipo de ERP ─────────────────────────────────────────────────
+function drawKpis(
+  slide: PptxGenJS.Slide, pres: PptxGenJS,
+  kpis: { label: string; value: number }[],
+  bgColor: string, borderColor: string,
+) {
+  const y = 0.72;
+  const h = 0.36;
+  const totalW = 10 - 2 * PAD;
+  const gap = 0.1;
+  const n = kpis.length;
+  const bw = (totalW - (n - 1) * gap) / n;
 
-/** Payload padrão enviado ao proxy para TOTVS RM. */
-interface TOTVSRMRequest {
-  endpoint:     'contas_pagar' | 'contas_receber';
-  companyCodes: string[];
-  dateFrom:     string;   // dd/mm/yyyy
-  dateTo:       string;
-  status:       'LIQUIDADO' | 'ABERTO' | 'TODOS';
+  kpis.forEach((kpi, i) => {
+    const x = PAD + i * (bw + gap);
+
+    slide.addShape(pres.ShapeType.roundRect, {
+      x, y, w: bw, h, fill: { color: bgColor }, rectRadius: 0.04,
+    });
+    // borda inferior colorida
+    slide.addShape(pres.ShapeType.rect, {
+      x: x + 0.02, y: y + h - 0.025, w: bw - 0.04, h: 0.025,
+      fill: { color: borderColor }, rectRadius: 0.01,
+    });
+    slide.addText(kpi.label, {
+      x, y: y + 0.03, w: bw, h: 0.13,
+      fontSize: 5.5, color: TXT_LIGHT, fontFace: FONT, bold: true, align: 'center',
+    });
+    slide.addText(`R$ ${fmtVal(kpi.value)}`, {
+      x, y: y + 0.14, w: bw, h: 0.16,
+      fontSize: 9, color: 'FFFFFF', fontFace: FONT, bold: true, align: 'center',
+    });
+  });
 }
-
-/** Payload padrão enviado ao proxy para TOTVS Fluig API. */
-interface TOTVSFluigRequest {
-  resource:     '/financeiro/pagamentos' | '/financeiro/recebimentos';
-  filters: {
-    dataInicio:   string; // YYYY-MM-DD
-    dataFim:      string;
-    empresas:     string[];
-    status:       string;
-  };
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function dateNDaysAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d;
-}
-
-function formatDateBR(d: Date): string {
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-function formatDateISO(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-// ─── Normalização de resposta por ERP ────────────────────────────────────────
 
 /**
- * Normaliza a resposta TOTVS RM (array de objetos JSON) para Transaction[].
- * O proxy deve retornar os dados já como JSON (não como CSV).
+ * Desenha uma coluna com lista de barras horizontais (Acima/Abaixo de R$ 35 mil).
+ * Layout idêntico ao "TOTAL POR EMPRESA": nome à esquerda, barra, valor à direita.
  */
-function normalizeTOTVSRM(data: Record<string, unknown>[]): Transaction[] {
-  return data
-    .map((row, i): Transaction | null => {
-      const value = Math.abs(parseFloat(String(row['VLR_LIQUIDO'] ?? row['VLR_CONSIDERADO'] ?? 0)));
-      if (!value) return null;
+function drawBarList(
+  slide: PptxGenJS.Slide, pres: PptxGenJS,
+  title: string, items: AggItem[],
+  x: number, y: number, w: number, h: number,
+  barColor: string, valueColor: string,
+) {
+  // Card background
+  slide.addShape(pres.ShapeType.roundRect, {
+    x, y, w, h,
+    fill: { color: CARD_BG },
+    line: { color: BORDER, width: 0.5 },
+    rectRadius: 0.06,
+  });
 
-      return {
-        id:             `erp-rm-${Date.now()}-${i}`,
-        date:           String(row['DT_PAGAMENTO'] ?? row['DT_LIQUIDACAO'] ?? ''),
-        description:    String(row['NOME_ABREVIADO'] ?? row['HISTORICO'] ?? 'ERP Import'),
-        value,
-        type:           TransactionType.PAYABLE,
-        status:         'REALIZADO',
-        category:       String(row['CENTRO_CUSTO'] ?? 'Realizado'),
-        businessUnit:   String(row['UNIDADE'] ?? ''),
-        supplierCode:   String(row['COD_FORNECEDOR'] ?? ''),
-        supplier:       String(row['NOME_FORNECEDOR'] ?? ''),
-        companyCode:    String(row['EMPRESA'] ?? ''),
-        documentNumber: String(row['TITULO'] ?? ''),
-        species:        String(row['ESPECIE'] ?? ''),
-        establishment:  String(row['ESTABELECIMENTO'] ?? ''),
-      };
-    })
-    .filter((t): t is Transaction => t !== null);
-}
+  // Título
+  slide.addText(title, {
+    x, y: y + 0.06, w, h: 0.18,
+    fontSize: 7, color: TXT_LIGHT, fontFace: FONT, bold: true, align: 'center',
+  });
 
-/**
- * Normaliza a resposta SAP Business One para Transaction[].
- */
-function normalizeSAPB1(data: Record<string, unknown>[]): Transaction[] {
-  return data
-    .map((row, i): Transaction | null => {
-      const value = Math.abs(parseFloat(String(row['DocTotal'] ?? row['PaidToDate'] ?? 0)));
-      if (!value) return null;
-
-      return {
-        id:             `erp-sap-${Date.now()}-${i}`,
-        date:           String(row['DocDate'] ?? ''),
-        description:    String(row['CardName'] ?? 'SAP Import'),
-        value,
-        type:           TransactionType.PAYABLE,
-        status:         'REALIZADO',
-        category:       'Realizado',
-        businessUnit:   '',
-        supplierCode:   String(row['CardCode'] ?? ''),
-        supplier:       String(row['CardName'] ?? ''),
-        companyCode:    String(row['BPL_IDAssignedToInvoice'] ?? ''),
-        documentNumber: String(row['DocNum'] ?? ''),
-      };
-    })
-    .filter((t): t is Transaction => t !== null);
-}
-
-// ─── Dados mock para desenvolvimento ─────────────────────────────────────────
-
-function generateMockTransactions(config: ERPConfig): Transaction[] {
-  const result: Transaction[] = [];
-  const today = new Date();
-
-  for (const companyCode of config.companyCodes.slice(0, 3)) {
-    for (let d = 0; d < (config.lookbackDays ?? 14); d++) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - d);
-      const dateStr = formatDateBR(date);
-
-      // Simular 1–3 pagamentos por dia por empresa
-      const count = Math.floor(Math.random() * 3) + 1;
-      for (let i = 0; i < count; i++) {
-        const value = Math.round((Math.random() * 50000 + 1000) * 100) / 100;
-        result.push({
-          id:             `mock-${companyCode}-${d}-${i}`,
-          date:           dateStr,
-          description:    `Pagamento Mock ${i + 1}`,
-          value,
-          type:           TransactionType.PAYABLE,
-          status:         'REALIZADO',
-          category:       ['Fornecedores', 'Pessoal', 'Impostos', 'Despesas Operativas'][i % 4],
-          businessUnit:   '100',
-          supplierCode:   `FORN${String(i).padStart(4, '0')}`,
-          supplier:       `Fornecedor Mock ${i + 1}`,
-          companyCode,
-          documentNumber: `DOC${Date.now()}${i}`,
-        });
-      }
-    }
+  const display = items.slice(0, 15);
+  if (display.length === 0) {
+    slide.addText('Nenhum registro.', {
+      x, y: y + h * 0.4, w, h: 0.2,
+      fontSize: 6, color: '64748b', fontFace: FONT, align: 'center',
+    });
+    return;
   }
 
-  return result;
+  const maxVal = Math.max(...display.map(t => t.value));
+  const startY = y + 0.32;
+  const availH = h - 0.40;
+  const rowH = Math.min(availH / display.length, 0.26);
+
+  // Mesmo padrão do TOTAL POR EMPRESA: nome | barra | valor
+  const nameColW = 0.85;
+  const valColW  = 0.48;
+  const gapInner = 0.06;
+  const padLeft  = 0.06;
+  const padRight = 0.06;
+  const barAreaW = w - padLeft - nameColW - gapInner - valColW - padRight;
+
+  display.forEach((item, i) => {
+    const iy = startY + i * rowH;
+
+    // Nome (esquerda, truncado)
+    slide.addText(trunc(item.name, 18), {
+      x: x + padLeft, y: iy, w: nameColW, h: rowH,
+      fontSize: 5, color: TXT_MUTED, fontFace: FONT, bold: true, valign: 'middle',
+    });
+
+    // Barra (só preenchimento, sem fundo — igual TOTAL POR EMPRESA)
+    const barH = Math.min(rowH * 0.55, 0.14);
+    const barY = iy + (rowH - barH) / 2;
+    const barX = x + padLeft + nameColW + gapInner;
+    const pct = Math.max(item.value / maxVal, 0.03);
+
+    slide.addShape(pres.ShapeType.rect, {
+      x: barX, y: barY, w: barAreaW * pct, h: barH,
+      fill: { color: barColor }, rectRadius: 0.03,
+    });
+
+    // Valor (direita)
+    slide.addText(fmtVal(item.value), {
+      x: x + w - valColW - padRight, y: iy, w: valColW, h: rowH,
+      fontSize: 5.5, color: valueColor, fontFace: FONT, bold: true,
+      align: 'right', valign: 'middle',
+    });
+  });
 }
 
-// ─── Sincronizador principal ──────────────────────────────────────────────────
-
 /**
- * Sincroniza transações realizadas diretamente do ERP.
- *
- * Para ambiente sem backend:
- *   - Use `type: 'mock'` para testes
- *   - Implante o proxy Vercel em /api/erp e configure VITE_ERP_PROXY_URL
- *
- * @param config           Configuração do conector
- * @param existingTx       Transações já no estado (para deduplicação)
- * @returns                SyncResult com imported[], skipped e errors[]
+ * Desenha a coluna 3 com mini-cards empilhados (categorias específicas).
  */
-export async function syncFromERP(
-  config:     ERPConfig,
-  existingTx: Transaction[],
-): Promise<SyncResult> {
-  const errors:  string[]    = [];
-  const imported: Transaction[] = [];
-  let skipped = 0;
+function drawStackedCards(
+  slide: PptxGenJS.Slide, pres: PptxGenJS,
+  cards: { title: string; items: AggItem[]; borderColor: string }[],
+  x: number, y: number, w: number, h: number,
+) {
+  const gap = 0.08;
+  const cardH = (h - (cards.length - 1) * gap) / cards.length;
 
-  try {
-    // ── Mock mode ───────────────────────────────────────────────────────────
-    if (config.type === 'mock') {
-      const mock = generateMockTransactions(config);
-      imported.push(...mock);
+  cards.forEach((card, ci) => {
+    const cy = y + ci * (cardH + gap);
 
-      await auditLog.record({
-        action:  'ERP_SYNC',
-        subject: 'mock',
-        after:   { count: mock.length, source: 'mock' },
-        reason:  'Sincronização com dados de demonstração',
+    // Fundo do card
+    slide.addShape(pres.ShapeType.roundRect, {
+      x, y: cy, w, h: cardH,
+      fill: { color: CARD_BG },
+      line: { color: BORDER, width: 0.5 },
+      rectRadius: 0.05,
+    });
+
+    // Título do card
+    slide.addText(card.title, {
+      x, y: cy + 0.04, w, h: 0.16,
+      fontSize: 6, color: TXT_LIGHT, fontFace: FONT, bold: true, align: 'center',
+    });
+    slide.addShape(pres.ShapeType.rect, {
+      x: x + 0.05, y: cy + 0.22, w: w - 0.1, h: 0.004,
+      fill: { color: BORDER },
+    });
+
+    const display = card.items.slice(0, 6);
+    if (display.length === 0) {
+      slide.addText('Sem registros.', {
+        x, y: cy + cardH * 0.4, w, h: 0.15,
+        fontSize: 5, color: '64748b', fontFace: FONT, align: 'center',
+      });
+      return;
+    }
+
+    const itemStartY = cy + 0.27;
+    const itemAvailH = cardH - 0.33;
+    const itemH = Math.min(itemAvailH / display.length, 0.22);
+
+    display.forEach((item, ii) => {
+      const iy = itemStartY + ii * itemH;
+
+      // Borda esquerda colorida
+      slide.addShape(pres.ShapeType.rect, {
+        x: x + 0.06, y: iy + 0.01, w: 0.025, h: itemH - 0.02,
+        fill: { color: card.borderColor }, rectRadius: 0.01,
       });
 
-      return { success: true, imported, skipped: 0, errors: [], syncedAt: new Date(), source: 'mock' };
-    }
+      // Fundo do item
+      slide.addShape(pres.ShapeType.roundRect, {
+        x: x + 0.06, y: iy + 0.01, w: w - 0.12, h: itemH - 0.02,
+        fill: { color: '334155' }, rectRadius: 0.03,
+      });
 
-    // ── Validar proxy URL ────────────────────────────────────────────────────
-    if (!config.proxyUrl) {
-      throw new Error('VITE_ERP_PROXY_URL não configurada. Veja a documentação em services/erpConnector.ts.');
-    }
+      // Nome
+      slide.addText(trunc(item.name, 18), {
+        x: x + 0.12, y: iy + 0.01, w: (w - 0.12) * 0.60, h: itemH - 0.02,
+        fontSize: 5, color: TXT_LIGHT, fontFace: FONT, bold: true, valign: 'middle',
+      });
 
-    const lookback    = config.lookbackDays ?? 14;
-    const dateFrom    = dateNDaysAgo(lookback);
-    const dateTo      = new Date();
-
-    // ── Montar payload por tipo de ERP ────────────────────────────────────
-    let payload: unknown;
-
-    if (config.type === 'totvs_rm') {
-      payload = {
-        endpoint:     'contas_pagar',
-        companyCodes: config.companyCodes,
-        dateFrom:     formatDateBR(dateFrom),
-        dateTo:       formatDateBR(dateTo),
-        status:       'LIQUIDADO',
-      } satisfies TOTVSRMRequest;
-    } else if (config.type === 'totvs_fluig') {
-      payload = {
-        resource: '/financeiro/pagamentos',
-        filters: {
-          dataInicio: formatDateISO(dateFrom),
-          dataFim:    formatDateISO(dateTo),
-          empresas:   config.companyCodes,
-          status:     'LIQUIDADO',
-        },
-      } satisfies TOTVSFluigRequest;
-    } else if (config.type === 'sap_b1') {
-      payload = {
-        resource:    '/OutgoingPayments',
-        dateFrom:    formatDateISO(dateFrom),
-        dateTo:      formatDateISO(dateTo),
-        companyCodes: config.companyCodes,
-      };
-    } else {
-      // generic_csv — espera que o proxy retorne CSV bruto
-      payload = {
-        type:         'csv',
-        companyCodes: config.companyCodes,
-        dateFrom:     formatDateISO(dateFrom),
-        dateTo:       formatDateISO(dateTo),
-      };
-    }
-
-    // ── Chamada ao proxy ──────────────────────────────────────────────────
-    const response = await fetch(config.proxyUrl, {
-      method:  'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...config.authHeaders,
-      },
-      body: JSON.stringify(payload),
+      // Valor
+      slide.addText(fmtVal(item.value), {
+        x: x + 0.12 + (w - 0.12) * 0.55, y: iy + 0.01,
+        w: (w - 0.12) * 0.40, h: itemH - 0.02,
+        fontSize: 5, color: TXT_WHITE, fontFace: FONT, bold: true,
+        align: 'right', valign: 'middle',
+      });
     });
-
-    if (!response.ok) {
-      throw new Error(`Proxy respondeu ${response.status}: ${await response.text()}`);
-    }
-
-    // ── Normalizar resposta ────────────────────────────────────────────────
-    let rawTransactions: Transaction[] = [];
-
-    if (config.type === 'generic_csv') {
-      const csvText = await response.text();
-      const parsed  = parseRealizedCSV(csvText, existingTx, '', 'all');
-      rawTransactions = parsed.valid.map(r => r.transaction);
-      skipped += parsed.duplicates.length + parsed.rejected.length;
-    } else {
-      const data = await response.json() as Record<string, unknown>[];
-      if (config.type === 'totvs_rm' || config.type === 'totvs_fluig') {
-        rawTransactions = normalizeTOTVSRM(data);
-      } else if (config.type === 'sap_b1') {
-        rawTransactions = normalizeSAPB1(data);
-      }
-    }
-
-    // ── Deduplicação ──────────────────────────────────────────────────────
-    const existing = new Set(
-      existingTx.map(t => `${t.supplierCode ?? ''}-${t.documentNumber ?? ''}-${t.value}`)
-    );
-
-    for (const t of rawTransactions) {
-      const key = `${t.supplierCode ?? ''}-${t.documentNumber ?? ''}-${t.value}`;
-      if (existing.has(key)) {
-        skipped++;
-      } else {
-        imported.push(t);
-        existing.add(key);
-      }
-    }
-
-    await auditLog.record({
-      action:  'ERP_SYNC',
-      subject: config.type,
-      after:   { imported: imported.length, skipped, source: config.type },
-      reason:  `Sincronização automática — ${imported.length} transações importadas`,
-    });
-
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    errors.push(msg);
-    console.error('[erpConnector]', err);
-
-    await auditLog.record({
-      action:  'ERP_SYNC',
-      subject: config.type,
-      reason:  `ERRO na sincronização: ${msg}`,
-      meta:    { error: msg },
-    });
-  }
-
-  return {
-    success:  errors.length === 0,
-    imported,
-    skipped,
-    errors,
-    syncedAt: new Date(),
-    source:   config.type,
-  };
+  });
 }
 
-// ─── Configuração padrão a partir de variáveis de ambiente ───────────────────
-
 /**
- * Monta ERPConfig a partir das variáveis de ambiente VITE_*.
- * Útil para chamar diretamente no App.tsx sem repetir configuração.
+ * Desenha a coluna "Total por Empresa" como barras horizontais manuais.
  */
-export function getERPConfigFromEnv(): ERPConfig | null {
-  const proxyUrl     = import.meta.env.VITE_ERP_PROXY_URL;
-  const erpType      = import.meta.env.VITE_ERP_TYPE as ERPType ?? 'mock';
-  const companyCodes = (import.meta.env.VITE_ERP_COMPANY_CODES ?? '1,2,3,4,5,6,14,17,18,22,23')
-    .split(',').map((s: string) => s.trim());
+function drawCompanyBars(
+  slide: PptxGenJS.Slide, pres: PptxGenJS,
+  data: { name: string; value: number }[],
+  x: number, y: number, w: number, h: number,
+  barColor: string, labelColor: string,
+) {
+  // Card
+  slide.addShape(pres.ShapeType.roundRect, {
+    x, y, w, h,
+    fill: { color: CARD_BG },
+    line: { color: BORDER, width: 0.5 },
+    rectRadius: 0.06,
+  });
 
-  if (!proxyUrl && erpType !== 'mock') return null;
+  slide.addText('TOTAL POR EMPRESA', {
+    x, y: y + 0.06, w, h: 0.18,
+    fontSize: 7, color: TXT_LIGHT, fontFace: FONT, bold: true, align: 'center',
+  });
 
-  return {
-    type:         erpType,
-    proxyUrl:     proxyUrl ?? '',
-    companyCodes,
-    lookbackDays: 14,
-  };
+  const display = data.slice(0, 10);
+  if (display.length === 0) return;
+
+  const maxVal = Math.max(...display.map(d => d.value));
+  const startY = y + 0.35;
+  const availH = h - 0.45;
+  const rowH = Math.min(availH / display.length, 0.38);
+
+  const nameColW = 0.6;
+  const valColW = 0.55;
+  const barAreaW = w - nameColW - valColW - 0.24;
+
+  display.forEach((d, i) => {
+    const iy = startY + i * rowH;
+
+    // Nome empresa
+    slide.addText(trunc(d.name, 12), {
+      x: x + 0.06, y: iy, w: nameColW, h: rowH,
+      fontSize: 5.5, color: TXT_MUTED, fontFace: FONT, bold: true, valign: 'middle',
+    });
+
+    // Barra
+    const barH = Math.min(rowH * 0.55, 0.16);
+    const barY = iy + (rowH - barH) / 2;
+    const barX = x + 0.06 + nameColW + 0.04;
+    const pct = Math.max(d.value / maxVal, 0.03);
+
+    slide.addShape(pres.ShapeType.rect, {
+      x: barX, y: barY, w: barAreaW * pct, h: barH,
+      fill: { color: barColor }, rectRadius: 0.03,
+    });
+
+    // Valor
+    slide.addText(`R$ ${fmtVal(d.value)}`, {
+      x: x + w - valColW - 0.06, y: iy, w: valColW, h: rowH,
+      fontSize: 5.5, color: labelColor, fontFace: FONT, bold: true,
+      align: 'right', valign: 'middle',
+    });
+  });
 }
 
-// ─── Documentação do proxy Vercel ─────────────────────────────────────────────
 /**
- * EXEMPLO DE PROXY VERCEL (api/erp.ts):
- *
- * ```typescript
- * import type { VercelRequest, VercelResponse } from '@vercel/node';
- *
- * export default async function handler(req: VercelRequest, res: VercelResponse) {
- *   if (req.method !== 'POST') return res.status(405).end();
- *
- *   const { endpoint, companyCodes, dateFrom, dateTo, status } = req.body;
- *
- *   // Credenciais do ERP ficam aqui, no servidor — não expostas ao client
- *   const ERP_URL  = process.env.ERP_URL;       // ex: https://rm.rede-gazeta.local
- *   const ERP_USER = process.env.ERP_USER;
- *   const ERP_PASS = process.env.ERP_PASS;
- *
- *   const response = await fetch(`${ERP_URL}/api/financeiro/${endpoint}`, {
- *     method: 'POST',
- *     headers: {
- *       'Authorization': 'Basic ' + Buffer.from(`${ERP_USER}:${ERP_PASS}`).toString('base64'),
- *       'Content-Type': 'application/json',
- *     },
- *     body: JSON.stringify({ companyCodes, dateFrom, dateTo, status }),
- *   });
- *
- *   const data = await response.json();
- *   res.setHeader('Access-Control-Allow-Origin', process.env.APP_URL ?? '*');
- *   res.json(data);
- * }
- * ```
- *
- * Variáveis no Vercel Dashboard (não no .env do frontend):
- *   ERP_URL   = URL interna do servidor TOTVS
- *   ERP_USER  = usuário com permissão de leitura
- *   ERP_PASS  = senha
- *   APP_URL   = URL do frontend (ex: https://dfc.rede-gazeta.com.br)
+ * Desenha a coluna "VL DIA" (valores diários).
  */
+function drawVlDia(
+  slide: PptxGenJS.Slide, pres: PptxGenJS,
+  data: { date: string; value: number }[],
+  x: number, y: number, w: number, h: number,
+) {
+  // Card
+  slide.addShape(pres.ShapeType.roundRect, {
+    x, y, w, h,
+    fill: { color: CARD_BG },
+    line: { color: BORDER, width: 0.5 },
+    rectRadius: 0.06,
+  });
+
+  // Título
+  slide.addShape(pres.ShapeType.rect, {
+    x: x + 0.01, y, w: w - 0.02, h: 0.22,
+    fill: { color: '0f172a' }, rectRadius: 0.05,
+  });
+  slide.addText('VL DIA', {
+    x, y: y + 0.02, w, h: 0.18,
+    fontSize: 7, color: TXT_LIGHT, fontFace: FONT, bold: true, align: 'center',
+  });
+
+  const display = data.slice(0, 10);
+  const startY = y + 0.28;
+  const availH = h - 0.35;
+  const cardH = Math.min(availH / display.length, 0.38);
+
+  display.forEach((d, i) => {
+    const iy = startY + i * cardH;
+
+    slide.addShape(pres.ShapeType.roundRect, {
+      x: x + 0.04, y: iy, w: w - 0.08, h: cardH - 0.03,
+      fill: { color: '334155' },
+      line: { color: BORDER_INNER, width: 0.3 },
+      rectRadius: 0.03,
+    });
+
+    slide.addText(`DIA ${d.date}`, {
+      x: x + 0.04, y: iy + 0.02, w: w - 0.08, h: 0.10,
+      fontSize: 4.5, color: TXT_MUTED, fontFace: FONT, bold: true, align: 'right',
+    });
+    slide.addText(fmtFull(d.value), {
+      x: x + 0.04, y: iy + 0.12, w: w - 0.08, h: cardH - 0.18,
+      fontSize: 6, color: TXT_WHITE, fontFace: FONT, bold: true, align: 'right', valign: 'top',
+    });
+  });
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SLIDE: CONTAS A PAGAR
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function generatePayablesSlide(
+  pres: PptxGenJS,
+  transactions: Transaction[],
+  realizedTransactions: Transaction[],
+  dateRange: string,
+) {
+  const slide = pres.addSlide();
+
+  // ── Dados ───────────────────────────────────────────────────────────────
+  const allPayables = transactions.filter(t => t.type === TransactionType.PAYABLE && t.status === 'PREVISTO');
+  const chartPayables = [
+    ...transactions.filter(t => t.type === TransactionType.PAYABLE),
+    ...realizedTransactions.filter(t => t.type === TransactionType.PAYABLE),
+  ];
+  const totalPayables = allPayables.reduce((s, t) => s + (Number(t.value) || 0), 0);
+
+  // Categorias
+  const getSumByCat = (filter: string) => {
+    const nf = normalizeCategory(filter);
+    return allPayables.filter(t => normalizeCategory(t.category).includes(nf))
+      .reduce((s, t) => s + (Number(t.value) || 0), 0);
+  };
+  const valPessoal = getSumByCat('Pessoal') + getSumByCat('Folha');
+  const valInvest  = getSumByCat('Investimento') + getSumByCat('Obra');
+  const valImpost  = allPayables.filter(t => classifyTax(t) !== null).reduce((s, t) => s + (Number(t.value) || 0), 0);
+  const valComiss  = allPayables.filter(t => normalizeCategory(t.category).includes('COMISS') && classifyTax(t) === null)
+                      .reduce((s, t) => s + (Number(t.value) || 0), 0);
+  const valFornec  = totalPayables - valPessoal - valInvest - valComiss - valImpost;
+
+  // Agregação de fornecedores
+  const agg = aggregate(
+    allPayables,
+    t => t.supplierCode || t.supplier || t.description || 'Desconhecido',
+    t => t.supplier || t.description || 'Desconhecido',
+  );
+  const highValue = agg.filter(t => t.value > 35000).sort((a, b) => b.value - a.value);
+  const lowValue  = agg.filter(t => t.value <= 35000).sort((a, b) => b.value - a.value);
+
+  // Empresas
+  const companyMap: Record<string, number> = {};
+  chartPayables.forEach(t => {
+    const code = String(t.companyCode || '').trim();
+    const k = COMPANIES_MAP[code] || (code ? `Emp ${code}` : 'N/D');
+    companyMap[k] = (companyMap[k] || 0) + (Number(t.value) || 0);
+  });
+  const companyData = Object.entries(companyMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+
+  // VL Dia
+  const dailyMap: Record<string, number> = {};
+  allPayables.forEach(t => { dailyMap[t.date] = (dailyMap[t.date] || 0) + (Number(t.value) || 0); });
+  const vlDia = Object.entries(dailyMap).map(([date, value]) => ({ date, value })).sort((a, b) => b.value - a.value);
+
+  // Mini-cards de categoria
+  const catInvest = agg.filter(it => {
+    const p = allPayables.find(pp => (pp.supplierCode || pp.supplier || pp.description || 'Desconhecido') === it.id);
+    return p ? (normalizeCategory(p.category).includes('INVESTIMENTO') || normalizeCategory(p.category).includes('OBRA')) : false;
+  }).sort((a, b) => b.value - a.value);
+
+  const catImpost = agg.filter(it => {
+    const p = allPayables.find(pp => (pp.supplierCode || pp.supplier || pp.description || 'Desconhecido') === it.id);
+    return p ? classifyTax(p) !== null : false;
+  }).sort((a, b) => b.value - a.value);
+
+  const catComiss = agg.filter(it => {
+    const p = allPayables.find(pp => (pp.supplierCode || pp.supplier || pp.description || 'Desconhecido') === it.id);
+    return p ? (normalizeCategory(p.category).includes('COMISS') && classifyTax(p) === null) : false;
+  }).sort((a, b) => b.value - a.value);
+
+  // ── Desenho ─────────────────────────────────────────────────────────────
+  drawHeader(slide, pres, 'CONTAS A PAGAR', dateRange);
+
+  drawKpis(slide, pres, [
+    { label: 'FORNECEDORES', value: valFornec },
+    { label: 'PESSOAL',      value: valPessoal },
+    { label: 'INVESTIMENTO', value: valInvest },
+    { label: 'COMISSÕES',    value: valComiss },
+    { label: 'IMPOSTOS',     value: valImpost },
+    { label: 'TOTAL',        value: totalPayables },
+  ], PAGAR.kpiBg, PAGAR.kpiBorder);
+
+  // Layout das colunas
+  const mainY = 1.2;
+  const mainH = 4.2;
+  const c1x = 0.30, c1w = 2.35;
+  const c2x = 2.75, c2w = 2.35;
+  const c3x = 5.20, c3w = 1.35;
+  const c4x = 6.65, c4w = 2.15;
+  const c5x = 8.90, c5w = 0.80;
+
+  drawBarList(slide, pres, 'ACIMA DE R$ 35 MIL', highValue, c1x, mainY, c1w, mainH, PAGAR.bar1, PAGAR.val1);
+  drawBarList(slide, pres, 'ABAIXO DE R$ 35 MIL', lowValue, c2x, mainY, c2w, mainH, PAGAR.bar2, PAGAR.val2);
+
+  drawStackedCards(slide, pres, [
+    { title: 'INVESTIMENTO', items: catInvest, borderColor: PAGAR.cat[0] },
+    { title: 'IMPOSTOS',     items: catImpost, borderColor: PAGAR.cat[1] },
+    { title: 'COMISSÕES',    items: catComiss, borderColor: PAGAR.cat[2] },
+  ], c3x, mainY, c3w, mainH);
+
+  drawCompanyBars(slide, pres, companyData, c4x, mainY, c4w, mainH, PAGAR.company, PAGAR.companyLabel);
+  drawVlDia(slide, pres, vlDia, c5x, mainY, c5w, mainH);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SLIDE: CONTAS A RECEBER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function generateReceivablesSlide(
+  pres: PptxGenJS,
+  transactions: Transaction[],
+  dateRange: string,
+) {
+  const slide = pres.addSlide();
+
+  // ── Dados ───────────────────────────────────────────────────────────────
+  const allRec = transactions.filter(t => t.type === TransactionType.RECEIVABLE);
+  const totalInflow = allRec.reduce((s, t) => s + (Number(t.value) || 0), 0);
+
+  // Aggregate por cliente
+  const agg = aggregate(
+    allRec,
+    t => t.customerCode || t.customer || t.description || 'Desconhecido',
+    t => t.customer || t.description || 'Desconhecido',
+  );
+
+  // Governo
+  const filterGov = (codes: string[], terms: string[]) => {
+    const filtered = allRec.filter(t => {
+      const port = (t.portfolio || '').toUpperCase();
+      if (codes.some(c => port.includes(c))) return true;
+      const text = ((t.customer || '') + (t.description || '') + (t.category || '')).toUpperCase();
+      return terms.some(term => text.includes(term));
+    });
+    return aggregate(
+      filtered,
+      t => t.customerCode || t.customer || t.description || 'Desconhecido',
+      t => t.customer || t.description || 'Desconhecido',
+    ).sort((a, b) => b.value - a.value);
+  };
+
+  const govFed = filterGov(['GFE'], ['FEDERAL', 'UNIAO', 'MINISTERIO']);
+  const govEst = filterGov(['GES'], ['ESTADO', 'ESTADUAL', 'GOVERNO DO', 'SECOM']);
+  const govMun = filterGov(['GMU'], ['PREFEITURA', 'MUNICIPAL', 'MUNICIPIO']);
+  const valGovFed = govFed.reduce((s, t) => s + t.value, 0);
+  const valGovEst = govEst.reduce((s, t) => s + t.value, 0);
+  const valGovMun = govMun.reduce((s, t) => s + t.value, 0);
+  const valGov = valGovFed + valGovEst + valGovMun;
+
+  // Assinatura
+  const isAssinatura = (t: Transaction) => {
+    const sp = (t.species || '').toUpperCase().trim();
+    const n2 = (t.flowTypeLevel2 || '').trim();
+    const fc = (t.flowTypeCode || '').trim();
+    return sp === 'ASS' || n2 === '107' || fc.startsWith('107');
+  };
+  const valAssinatura = allRec.filter(isAssinatura).reduce((s, t) => s + (Number(t.value) || 0), 0);
+
+  // Particular
+  const idsGov = new Set([...govFed, ...govEst, ...govMun].map(t => t.id));
+  const valParticular = allRec.filter(t => {
+    const key = t.customerCode || t.customer || t.description || 'Desconhecido';
+    return !idsGov.has(key) && !isAssinatura(t);
+  }).reduce((s, t) => s + (Number(t.value) || 0), 0);
+
+  // Top 10
+  const top10 = [...agg].sort((a, b) => b.value - a.value).slice(0, 10);
+  const valTop10 = top10.reduce((s, t) => s + t.value, 0);
+
+  // Listas Acima/Abaixo 35k
+  const highValue = agg.filter(t => t.value > 35000).sort((a, b) => b.value - a.value);
+  const lowValue  = agg.filter(t => t.value <= 35000).sort((a, b) => b.value - a.value);
+
+  // Empresas
+  const companyMap: Record<string, number> = {};
+  allRec.forEach(t => {
+    const code = String(t.companyCode || '').trim();
+    const k = COMPANIES_MAP[code] || (code ? `Emp ${code}` : 'N/D');
+    companyMap[k] = (companyMap[k] || 0) + (Number(t.value) || 0);
+  });
+  const companyData = Object.entries(companyMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+
+  // VL Dia
+  const dailyMap: Record<string, number> = {};
+  allRec.forEach(t => { dailyMap[t.date] = (dailyMap[t.date] || 0) + (Number(t.value) || 0); });
+  const vlDia = Object.entries(dailyMap).map(([date, value]) => ({ date, value })).sort((a, b) => b.value - a.value);
+
+  // ── Desenho ─────────────────────────────────────────────────────────────
+  drawHeader(slide, pres, 'CONTAS A RECEBER', dateRange);
+
+  drawKpis(slide, pres, [
+    { label: 'TOP 10',         value: valTop10 },
+    { label: 'PARTICULAR',     value: valParticular },
+    { label: 'ASSINATURA',     value: valAssinatura },
+    { label: 'GOVERNO',        value: valGov },
+    { label: 'TOTAL PREVISTO', value: totalInflow },
+  ], RECEBER.kpiBg, RECEBER.kpiBorder);
+
+  // Colunas
+  const mainY = 1.2;
+  const mainH = 4.2;
+  const c1x = 0.30, c1w = 2.35;
+  const c2x = 2.75, c2w = 2.35;
+  const c3x = 5.20, c3w = 1.35;
+  const c4x = 6.65, c4w = 2.15;
+  const c5x = 8.90, c5w = 0.80;
+
+  drawBarList(slide, pres, 'ACIMA DE R$ 35 MIL', highValue, c1x, mainY, c1w, mainH, RECEBER.bar1, RECEBER.val1);
+  drawBarList(slide, pres, 'ABAIXO DE R$ 35 MIL', lowValue, c2x, mainY, c2w, mainH, RECEBER.bar2, RECEBER.val2);
+
+  drawStackedCards(slide, pres, [
+    { title: 'GOV. FEDERAL',   items: govFed, borderColor: RECEBER.cat[0] },
+    { title: 'GOV. ESTADUAL',  items: govEst, borderColor: RECEBER.cat[1] },
+    { title: 'GOV. MUNICIPAL', items: govMun, borderColor: RECEBER.cat[2] },
+  ], c3x, mainY, c3w, mainH);
+
+  drawCompanyBars(slide, pres, companyData, c4x, mainY, c4w, mainH, RECEBER.company, RECEBER.companyLabel);
+  drawVlDia(slide, pres, vlDia, c5x, mainY, c5w, mainH);
+}

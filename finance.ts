@@ -1,355 +1,431 @@
 /**
- * services/notifications.ts
+ * utils/finance.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * Orquestrador de notificações proativas.
+ * FONTE ÚNICA DA VERDADE para toda lógica financeira compartilhada.
  *
- * CANAIS SUPORTADOS:
- *   1. Browser Notifications (Web Push API)
- *      Funciona em desktop e mobile sem app instalado.
- *      Requer permissão do usuário.
- *      Exibe mesmo com o tab em segundo plano.
+ * Antes deste arquivo, as seguintes utilidades estavam DUPLICADAS em:
+ *   • App.tsx
+ *   • components/Dashboard.tsx
+ *   • components/FluxoCaixaDiario.tsx  (recebia como prop)
+ *   • components/VisaoEstrategicaRealizado.tsx
+ *   • components/ApresentacaoExecutiva.tsx
+ *   • components/ResumoFinanceiro.tsx
+ *   • hooks/useTransactionFilters.ts
  *
- *   2. E-mail via API (Resend / SendGrid)
- *      Briefing diário às 8h com resumo do DFC.
- *      Alerta imediato para críticos.
- *      Requer backend/serverless para não expor API key.
- *
- *   3. In-app Toast
- *      Notificação dentro da própria interface.
- *      Funciona sem permissão e sem backend.
- *      Implementado diretamente aqui via callback.
- *
- * REGRAS DE DISPARO:
- *   • Vencimento crítico (≤3 dias):  notificação imediata, todos os canais
- *   • Saldo negativo projetado:      notificação imediata, todos os canais
- *   • Desvio >30%:                   notificação imediata
- *   • Briefing diário:               enviado às 8h se app estiver aberto
- *   • Concentração >50%:             aviso semanal
- *
- * USO:
- *   import { notificationService } from './notifications';
- *
- *   // Configurar na inicialização do App
- *   notificationService.init({ onToast: (msg) => addToast(msg) });
- *
- *   // Processar alertas — dispara notificações conforme as regras
- *   await notificationService.processAlerts(alerts);
- *
- *   // Enviar briefing matinal
- *   await notificationService.sendDailyBriefing(summary, aiAnalysis);
+ * Agora cada um desses arquivos deve importar daqui.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import type { Alert, AlertSeverity }    from '../engines/alerts';
-import type { ExecutiveAnalysis }       from './claudeService';
-import type { FinancialSummary }        from '../types';
-import { auditLog }                     from '../engines/auditLog';
-import { formatCurrency }               from '../utils/finance';
+import { Transaction, TransactionType } from '../types';
 
-// ─── Tipos ────────────────────────────────────────────────────────────────────
+// ─── 1. MAPEAMENTO DE EMPRESAS ────────────────────────────────────────────────
 
-export interface ToastMessage {
-  id:        string;
-  severity:  AlertSeverity;
-  title:     string;
-  body:      string;
-  action?:   { label: string; onClick: () => void };
-  duration?: number; // ms, default 5000
+export interface Company {
+  id: string;
+  name: string;
 }
 
-export interface NotificationConfig {
-  /** Callback para exibir toast in-app. */
-  onToast?: (msg: ToastMessage) => void;
-  /** URL do endpoint de email (Vercel Function, etc). */
-  emailEndpoint?: string;
-  /** Endereço de e-mail do destinatário. */
-  emailTo?: string;
-  /** Habilitar Browser Notifications. Default: true. */
-  enableBrowser?: boolean;
+/**
+ * Lista canônica de empresas do grupo Gazeta.
+ * Usar esta lista para qualquer renderização de "todas as empresas" —
+ * nunca derivar a lista dinamicamente de companyCode das transações,
+ * pois dados ausentes causariam omissões silenciosas.
+ */
+export const COMPANIES: readonly Company[] = [
+  { id: '1',  name: 'S.A. A GAZETA'  },
+  { id: '2',  name: 'TV GAZETA'      },
+  { id: '3',  name: 'TV CACHOEIRO'   },
+  { id: '4',  name: 'TV NORTE'       },
+  { id: '5',  name: 'RD MIX'         },
+  { id: '6',  name: 'FM 102'         },
+  { id: '14', name: 'VÍDEO'          },
+  { id: '17', name: 'DIFUSORA'       },
+  { id: '18', name: 'CIDADÃ'         },
+  { id: '22', name: 'FM LINHARES'    },
+  { id: '23', name: 'RD N. GERAÇÃO'  },
+] as const;
+
+// ─── 2. MAPEAMENTO EMPRESA → BANCOS ──────────────────────────────────────────
+
+export interface BankEntry {
+  id: string;
 }
 
-// ─── Deduplicação de notificações ─────────────────────────────────────────────
+/**
+ * Mapeia cada empresa para os bancos com os quais opera.
+ * O BANESTES é sempre o banco padrão (primeiro da lista e fallback
+ * quando nenhum outro banco é identificado na descrição da transação).
+ *
+ * IMPORTANTE: quando o BANESTES não é mencionado explicitamente mas nenhum
+ * outro banco reconhecido aparece na descrição, a transação é atribuída ao
+ * BANESTES (regra de negócio — ver FluxoCaixaDiario.tsx, getBankTotal).
+ */
+export const BANKS_MAPPING: Readonly<Record<string, BankEntry[]>> = {
+  '1':  [{ id: 'BANESTES' }, { id: 'BB' }, { id: 'CEF'    }, { id: 'ITAU' }           ],
+  '2':  [{ id: 'BANESTES' }, { id: 'BB' }, { id: 'ITAU'   }, { id: 'CEF' }, { id: 'BTG' }],
+  '3':  [{ id: 'BANESTES' }, { id: 'BB' }, { id: 'BTG'    }                            ],
+  '4':  [{ id: 'BANESTES' }, { id: 'BB' }, { id: 'SICOOB' }, { id: 'BTG' }            ],
+  '5':  [{ id: 'BANESTES' }, { id: 'BB' }                                              ],
+  '6':  [{ id: 'BANESTES' }, { id: 'BB' }                                              ],
+  '14': [{ id: 'BANESTES' }                                                            ],
+  '17': [{ id: 'BANESTES' }                                                            ],
+  '18': [{ id: 'BANESTES' }                                                            ],
+  '22': [{ id: 'BANESTES' }                                                            ],
+  '23': [{ id: 'BANESTES' }                                                            ],
+};
 
-/** Evita repetir a mesma notificação na mesma sessão. */
-const notifiedIds = new Set<string>();
+// ─── 3. PARSE DE DATAS ───────────────────────────────────────────────────────
 
-function wasNotified(alertId: string): boolean {
-  return notifiedIds.has(alertId);
+/**
+ * Converte qualquer string de data usada no sistema para timestamp Unix (ms).
+ * Retorna 0 para entradas inválidas (nunca lança exceção).
+ *
+ * Formatos suportados:
+ *   • "dd/mm/yyyy"  — formato padrão do ERP/TOTVS
+ *   • "dd/mm"       — data sem ano (assume ano corrente do sistema)
+ *   • "yyyy-mm-dd"  — formato ISO (importações externas)
+ *
+ * Por que não usar `new Date(str)` diretamente?
+ *   O comportamento do construtor Date com strings ambíguas varia entre
+ *   navegadores e versões. Esta função garante parsing determinístico.
+ */
+export function parseDate(d: unknown): number {
+  if (!d || typeof d !== 'string') return 0;
+  const str = d.trim();
+
+  // dd/mm/yyyy
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(str)) {
+    const [day, m, y] = str.split('/').map(Number);
+    return new Date(y, m - 1, day).getTime();
+  }
+
+  // dd/mm  (sem ano — assume ano atual)
+  if (/^\d{1,2}\/\d{1,2}$/.test(str)) {
+    const [day, m] = str.split('/').map(Number);
+    return new Date(new Date().getFullYear(), m - 1, day).getTime();
+  }
+
+  // yyyy-mm-dd  (ISO)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    const [y, m, day] = str.split('-').map(Number);
+    return new Date(y, m - 1, day).getTime();
+  }
+
+  return 0;
 }
-function markNotified(alertId: string): void {
-  notifiedIds.add(alertId);
+
+// ─── 4. FORMATAÇÃO DE VALORES ─────────────────────────────────────────────────
+
+const PT_BR = 'pt-BR';
+
+/**
+ * Formato monetário completo: "R$ 1.234.567,89"
+ * Usar em células de tabela, cards de resumo, tooltips de gráficos.
+ */
+export function formatCurrency(val: number): string {
+  return new Intl.NumberFormat(PT_BR, {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(val);
 }
 
-// ─── Browser Notifications ────────────────────────────────────────────────────
-
-async function requestBrowserPermission(): Promise<boolean> {
-  if (!('Notification' in window)) return false;
-  if (Notification.permission === 'granted')  return true;
-  if (Notification.permission === 'denied')   return false;
-
-  const perm = await Notification.requestPermission();
-  return perm === 'granted';
+/**
+ * Formato compacto: "R$ 1,2M" / "R$ 450K"
+ * Usar em KPI cards e eixos de gráficos onde o espaço é reduzido.
+ */
+export function formatCompact(val: number): string {
+  return 'R$ ' + new Intl.NumberFormat(PT_BR, {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(val);
 }
 
-function sendBrowserNotification(
-  title:   string,
-  body:    string,
-  options?: { icon?: string; tag?: string; requireInteraction?: boolean },
-): void {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
-
-  new Notification(title, {
-    body,
-    icon:                '/favicon.ico',
-    badge:               '/favicon.ico',
-    tag:                 options?.tag,
-    requireInteraction:  options?.requireInteraction ?? false,
-  });
+/**
+ * Formato inteiro sem decimais: "1.234.567"
+ * Usar em tabelas de DFC onde a precisão de centavos é ruído visual.
+ */
+export function formatInteger(val: number): string {
+  return new Intl.NumberFormat(PT_BR, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(val);
 }
 
-// ─── E-mail via backend ───────────────────────────────────────────────────────
-
-interface EmailPayload {
-  to:      string;
-  subject: string;
-  html:    string;
+/**
+ * Formata um valor de tabela DFC, exibindo "-" para zero.
+ * Padrão de apresentação em todas as views de DFC.
+ */
+export function formatDFCCell(val: number): string {
+  return val !== 0 ? formatInteger(val) : '-';
 }
 
-async function sendEmail(endpoint: string, payload: EmailPayload): Promise<boolean> {
-  try {
-    const res = await fetch(endpoint, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payload),
-    });
-    return res.ok;
-  } catch (err) {
-    console.warn('[notifications] Falha ao enviar e-mail:', err);
-    return false;
+// ─── 5. SEMÂNTICA DE SINAL (MÉTODO DIRETO) ───────────────────────────────────
+
+/**
+ * Retorna o valor de uma transação com o sinal correto para cálculo de saldo.
+ *
+ *   RECEIVABLE  → positivo  (entrada de caixa)
+ *   PAYABLE     → negativo  (saída de caixa)
+ *   APPLICATION → negativo  (saída para investimento)
+ *   outros      → 0         (CALENDAR e FLOW_TYPE são metadados, não afetam caixa)
+ *
+ * POR QUE ISSO IMPORTA:
+ *   Alguns ERPs exportam saídas já com sinal negativo. Se o valor vier negativo
+ *   e você subtrair diretamente, o sinal é invertido e o saldo fica errado.
+ *   Usar Math.abs() aqui garante que a semântica de sinal é SEMPRE controlada
+ *   pelo tipo da transação, não pelo valor numérico bruto.
+ */
+export function toSignedValue(t: Transaction): number {
+  const abs = Math.abs(Number(t.value) || 0);
+  switch (t.type) {
+    case TransactionType.RECEIVABLE:  return +abs;
+    case TransactionType.PAYABLE:     return -abs;
+    case TransactionType.APPLICATION: return -abs;
+    default:                          return 0;
   }
 }
 
-function buildAlertEmailHTML(alerts: Alert[]): string {
-  const critical = alerts.filter(a => a.severity === 'critical');
-  const warnings = alerts.filter(a => a.severity === 'warning');
+// ─── 6. CHAVES DE ESTADO MANUAL (dfcManualValues) ────────────────────────────
 
-  const rows = (items: Alert[], color: string) =>
-    items.map(a => `
-      <tr>
-        <td style="padding:8px;border-bottom:1px solid #e2e8f0;color:${color};font-weight:500">${a.title}</td>
-        <td style="padding:8px;border-bottom:1px solid #e2e8f0;color:#64748b">${a.description}</td>
-        <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:right;color:#334155">
-          ${formatCurrency(a.impactValue)}
-        </td>
-      </tr>`).join('');
+/**
+ * Funções geradoras de chave para o mapa dfcManualValues.
+ *
+ * POR QUE ISSO IMPORTA:
+ *   A chave era construída manualmente em 4+ lugares com template strings.
+ *   Um typo em qualquer um deles resulta em saldo zero silencioso —
+ *   sem erro, sem aviso, apenas dado errado.
+ *   Centralizar a geração aqui garante que toda chave produzida
+ *   é idêntica em todos os pontos de leitura e escrita.
+ */
 
-  return `
-    <div style="font-family:Inter,sans-serif;max-width:600px;margin:0 auto">
-      <div style="background:#1e293b;padding:24px;border-radius:8px 8px 0 0">
-        <h1 style="color:#f8fafc;margin:0;font-size:20px">⚠ Alertas DFC — Rede Gazeta</h1>
-        <p style="color:#94a3b8;margin:8px 0 0">${new Date().toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' })}</p>
-      </div>
-      <div style="background:#f8fafc;padding:24px;border-radius:0 0 8px 8px">
-        ${critical.length > 0 ? `
-          <h2 style="color:#be123c;font-size:14px;text-transform:uppercase;letter-spacing:.05em">
-            🚨 Críticos (${critical.length})
-          </h2>
-          <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
-            <thead>
-              <tr style="background:#fef2f2">
-                <th style="padding:8px;text-align:left;color:#7f1d1d;font-size:12px">Alerta</th>
-                <th style="padding:8px;text-align:left;color:#7f1d1d;font-size:12px">Descrição</th>
-                <th style="padding:8px;text-align:right;color:#7f1d1d;font-size:12px">Impacto</th>
-              </tr>
-            </thead>
-            <tbody>${rows(critical, '#be123c')}</tbody>
-          </table>` : ''}
-        ${warnings.length > 0 ? `
-          <h2 style="color:#b45309;font-size:14px;text-transform:uppercase;letter-spacing:.05em">
-            ⚠ Atenção (${warnings.length})
-          </h2>
-          <table style="width:100%;border-collapse:collapse">
-            <thead>
-              <tr style="background:#fffbeb">
-                <th style="padding:8px;text-align:left;color:#78350f;font-size:12px">Alerta</th>
-                <th style="padding:8px;text-align:left;color:#78350f;font-size:12px">Descrição</th>
-                <th style="padding:8px;text-align:right;color:#78350f;font-size:12px">Impacto</th>
-              </tr>
-            </thead>
-            <tbody>${rows(warnings, '#b45309')}</tbody>
-          </table>` : ''}
-        <p style="color:#94a3b8;font-size:12px;margin-top:24px;text-align:center">
-          DFC Gazeta · Controladoria · ${new Date().toLocaleString('pt-BR')}
-        </p>
-      </div>
-    </div>`;
+/** Saldo inicial de uma empresa em uma data específica. */
+export function keyInitialBalance(companyId: string, date: string): string {
+  return `sim_sd_ini_${companyId}_${date}`;
 }
 
-function buildDailyBriefingHTML(
-  summary:  FinancialSummary,
-  analysis: ExecutiveAnalysis | null,
-): string {
-  const net = summary.totalInflow - summary.totalOutflow;
-  const netColor = net >= 0 ? '#15803d' : '#be123c';
-
-  return `
-    <div style="font-family:Inter,sans-serif;max-width:600px;margin:0 auto">
-      <div style="background:#1e293b;padding:24px;border-radius:8px 8px 0 0">
-        <h1 style="color:#f8fafc;margin:0;font-size:20px">📊 Briefing DFC — Rede Gazeta</h1>
-        <p style="color:#94a3b8;margin:8px 0 0">${new Date().toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' })}</p>
-      </div>
-      <div style="background:#f8fafc;padding:24px;border-radius:0 0 8px 8px">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px">
-          <div style="background:#fff;padding:16px;border-radius:8px;text-align:center;border:1px solid #e2e8f0">
-            <div style="color:#15803d;font-size:18px;font-weight:600">${formatCurrency(summary.totalInflow)}</div>
-            <div style="color:#64748b;font-size:12px;margin-top:4px">Entradas</div>
-          </div>
-          <div style="background:#fff;padding:16px;border-radius:8px;text-align:center;border:1px solid #e2e8f0">
-            <div style="color:#be123c;font-size:18px;font-weight:600">${formatCurrency(summary.totalOutflow)}</div>
-            <div style="color:#64748b;font-size:12px;margin-top:4px">Saídas</div>
-          </div>
-          <div style="background:#fff;padding:16px;border-radius:8px;text-align:center;border:1px solid #e2e8f0">
-            <div style="color:${netColor};font-size:18px;font-weight:600">${formatCurrency(net)}</div>
-            <div style="color:#64748b;font-size:12px;margin-top:4px">Resultado</div>
-          </div>
-        </div>
-        ${analysis ? `
-          <div style="background:#fff;padding:16px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:16px">
-            <h3 style="color:#1e293b;font-size:14px;margin:0 0 8px">Análise Executiva</h3>
-            <p style="color:#475569;font-size:13px;line-height:1.6;margin:0">${analysis.summary}</p>
-          </div>
-          ${analysis.actionItems?.length > 0 ? `
-            <div style="background:#fff;padding:16px;border-radius:8px;border:1px solid #e2e8f0">
-              <h3 style="color:#1e293b;font-size:14px;margin:0 0 8px">Ações Recomendadas</h3>
-              ${analysis.actionItems.slice(0, 3).map(a =>
-                `<div style="padding:8px 0;border-bottom:1px solid #f1f5f9">
-                  <span style="font-size:11px;color:${a.priority === 'alta' ? '#be123c' : a.priority === 'média' ? '#b45309' : '#64748b'};
-                    font-weight:600;text-transform:uppercase">${a.priority}</span>
-                  <span style="color:#334155;font-size:13px;margin-left:8px">${a.description}</span>
-                  <span style="color:#94a3b8;font-size:11px;display:block;margin-top:2px">${a.area} · ${a.deadline}</span>
-                </div>`
-              ).join('')}
-            </div>` : ''}` : ''}
-        <p style="color:#94a3b8;font-size:12px;margin-top:24px;text-align:center">
-          DFC Gazeta · Controladoria · ${new Date().toLocaleString('pt-BR')}
-        </p>
-      </div>
-    </div>`;
+/** Saldo inicial de um banco vinculado a uma empresa em uma data específica. */
+export function keyBankInitialBalance(companyId: string, bankId: string, date: string): string {
+  return `sim_sd_ini_${companyId}_${bankId}_${date}`;
 }
 
-// ─── Serviço principal ────────────────────────────────────────────────────────
-
-class NotificationService {
-  private config: NotificationConfig = {};
-  private dailyBriefingSent = false;
-  private dailyBriefingDate = '';
-
-  /** Inicializa o serviço com configuração. Solicita permissão browser. */
-  async init(config: NotificationConfig): Promise<void> {
-    this.config = config;
-    if (config.enableBrowser !== false) {
-      await requestBrowserPermission();
-    }
-  }
-
-  /** Exibe um toast in-app. */
-  toast(msg: Omit<ToastMessage, 'id'>): void {
-    if (!this.config.onToast) return;
-    this.config.onToast({ ...msg, id: `toast-${Date.now()}` });
-  }
-
-  /**
-   * Processa uma lista de alertas e dispara notificações conforme as regras.
-   * Chame sempre que os alertas forem recalculados.
-   */
-  async processAlerts(alerts: Alert[]): Promise<void> {
-    const criticals = alerts.filter(a => a.severity === 'critical' && !wasNotified(a.id));
-    const warnings  = alerts.filter(a => a.severity === 'warning'  && !wasNotified(a.id));
-
-    // In-app toast para cada crítico
-    for (const alert of criticals) {
-      this.toast({
-        severity: 'critical',
-        title:    alert.title,
-        body:     alert.description,
-        duration: 8000,
-      });
-      sendBrowserNotification(
-        `⚠ ${alert.title}`,
-        alert.description,
-        { requireInteraction: true, tag: alert.id },
-      );
-      markNotified(alert.id);
-    }
-
-    // Toast agrupado para avisos
-    if (warnings.length > 0) {
-      this.toast({
-        severity: 'warning',
-        title:    `${warnings.length} aviso(s) financeiro(s)`,
-        body:     warnings[0].title + (warnings.length > 1 ? ` e mais ${warnings.length - 1}...` : ''),
-        duration: 5000,
-      });
-      warnings.forEach(a => markNotified(a.id));
-    }
-
-    // E-mail de alertas críticos (quando configurado)
-    if (criticals.length > 0 && this.config.emailEndpoint && this.config.emailTo) {
-      await sendEmail(this.config.emailEndpoint, {
-        to:      this.config.emailTo,
-        subject: `🚨 DFC Gazeta — ${criticals.length} alerta(s) crítico(s)`,
-        html:    buildAlertEmailHTML(criticals),
-      });
-    }
-  }
-
-  /**
-   * Envia o briefing diário às 8h.
-   * Deve ser chamado periodicamente (ex: a cada minuto).
-   * Só envia uma vez por dia.
-   */
-  async sendDailyBriefing(
-    summary:  FinancialSummary,
-    analysis: ExecutiveAnalysis | null,
-  ): Promise<boolean> {
-    const now   = new Date();
-    const today = now.toISOString().slice(0, 10);
-    const hour  = now.getHours();
-
-    // Só envia entre 8h e 9h, uma vez por dia
-    if (hour < 8 || hour >= 9) return false;
-    if (this.dailyBriefingSent && this.dailyBriefingDate === today) return false;
-
-    // Browser notification
-    sendBrowserNotification(
-      '📊 Briefing DFC — Bom dia!',
-      `Resultado do período: ${formatCurrency(summary.totalInflow - summary.totalOutflow)}`,
-      { tag: 'daily-briefing' },
-    );
-
-    // E-mail
-    let emailSent = false;
-    if (this.config.emailEndpoint && this.config.emailTo) {
-      emailSent = await sendEmail(this.config.emailEndpoint, {
-        to:      this.config.emailTo,
-        subject: `📊 DFC Gazeta — Briefing ${now.toLocaleDateString('pt-BR')}`,
-        html:    buildDailyBriefingHTML(summary, analysis),
-      });
-    }
-
-    this.dailyBriefingSent = true;
-    this.dailyBriefingDate = today;
-
-    await auditLog.record({
-      action:  'SESSION_START',
-      subject: 'daily-briefing',
-      reason:  `Briefing diário ${emailSent ? 'enviado por e-mail' : 'exibido localmente'}`,
-    });
-
-    return true;
-  }
+/** Resgate/Aplicação de uma empresa em uma data específica. */
+export function keyResgate(companyId: string, date: string): string {
+  return `sim_resg_${companyId}_${date}`;
 }
 
-// ─── Singleton ────────────────────────────────────────────────────────────────
+/** Resgate/Aplicação de um banco vinculado a uma empresa em uma data. */
+export function keyBankResgate(companyId: string, bankId: string, date: string): string {
+  return `sim_resg_${companyId}_${bankId}_${date}`;
+}
 
-export const notificationService = new NotificationService();
+// ─── 7. HELPERS DE SALDO INICIAL ─────────────────────────────────────────────
+
+/**
+ * Calcula o saldo inicial de uma empresa somando:
+ *   1. O input manual da empresa principal  (keyInitialBalance)
+ *   2. Os inputs manuais de cada banco vinculado (keyBankInitialBalance)
+ *
+ * Esta função replica a lógica que antes existia duplicada em:
+ *   • App.tsx  (executiveInitialBalance useMemo)
+ *   • Dashboard.tsx  (getSimulationInitialBalance)
+ *
+ * @param companyId     ID da empresa (ex: '1', '14')
+ * @param startDate     Data mais antiga nas transações (string no formato original)
+ * @param manualValues  O objeto dfcManualValues do estado global
+ */
+export function calcInitialBalance(
+  companyId: string,
+  startDate: string,
+  manualValues: Record<string, number>,
+): number {
+  const safe = manualValues ?? {};
+  let total = 0;
+
+  // Input da empresa principal
+  total += Number(safe[keyInitialBalance(companyId, startDate)]) || 0;
+
+  // Inputs dos bancos vinculados
+  const banks = BANKS_MAPPING[companyId] ?? [];
+  for (const bank of banks) {
+    total += Number(safe[keyBankInitialBalance(companyId, bank.id, startDate)]) || 0;
+  }
+
+  return total;
+}
+
+/**
+ * Extrai a data mais antiga de um conjunto de transações.
+ * Retorna undefined se o array for vazio.
+ */
+export function getStartDate(transactions: Transaction[]): string | undefined {
+  if (!transactions.length) return undefined;
+  const dates = Array.from(new Set(transactions.map(t => t.date)));
+  return dates.sort((a, b) => parseDate(a) - parseDate(b))[0];
+}
+
+/**
+ * Calcula o total de resgates/aplicações de uma empresa
+ * a partir do mapa dfcManualValues.
+ *
+ * Replica a lógica de getSimulationResgAplicTotal do Dashboard.tsx.
+ */
+export function calcResgAplicTotal(
+  companyId: string,
+  manualValues: Record<string, number>,
+): number {
+  let total = 0;
+  for (const [key, val] of Object.entries(manualValues ?? {})) {
+    if (key.startsWith('sim_resg_')) {
+      // Formato: sim_resg_{companyId}_{...}
+      const parts = key.split('_');
+      if (parts[2] === companyId) {
+        total += Number(val) || 0;
+      }
+    }
+  }
+  return total;
+}
+
+// ─── 8. ORDENAÇÃO ─────────────────────────────────────────────────────────────
+
+/**
+ * Comparador para ordenar strings de data cronologicamente.
+ * Compatível com Array.sort().
+ *
+ * Uso: dates.sort(byDate)
+ */
+export function byDate(a: string, b: string): number {
+  return parseDate(a) - parseDate(b);
+}
+
+/**
+ * Ordena um array de transações cronologicamente por t.date.
+ * Retorna um novo array (não muta o original).
+ */
+export function sortByDate<T extends Pick<Transaction, 'date'>>(transactions: T[]): T[] {
+  return [...transactions].sort((a, b) => parseDate(a.date) - parseDate(b.date));
+}
+
+// ─── 9. NORMALIZAÇÃO DE EMPRESA ──────────────────────────────────────────────
+
+/**
+ * Normaliza um companyCode para comparação com os IDs canônicos.
+ * Remove zeros à esquerda e espaços (ex: "01" → "1", " 14 " → "14").
+ */
+export function normalizeCompanyId(raw: string | undefined | null): string {
+  if (!raw) return '';
+  return String(raw).trim().replace(/^0+/, '') || '0';
+}
+
+/**
+ * Move datas de sábado → próxima segunda (+2 dias), domingo → próxima segunda (+1 dia).
+ * Formato esperado: dd/mm/yyyy. Retorna a data ajustada no mesmo formato.
+ */
+export function moveWeekendToMonday(dateStr: string): string {
+  if (!dateStr) return dateStr;
+  const parts = dateStr.split('/');
+  if (parts.length < 2) return dateStr;
+
+  const d = Number(parts[0]);
+  const m = Number(parts[1]) - 1;
+  const y = parts.length === 3 ? Number(parts[2]) : new Date().getFullYear();
+  const dt = new Date(y, m, d);
+
+  if (isNaN(dt.getTime())) return dateStr;
+
+  const dow = dt.getDay(); // 0=DOM, 6=SAB
+  if (dow === 6) dt.setDate(dt.getDate() + 2);       // SAB → SEG
+  else if (dow === 0) dt.setDate(dt.getDate() + 1);   // DOM → SEG
+
+  const dd = String(dt.getDate()).padStart(2, '0');
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const yyyy = dt.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+/**
+ * Classificação tributária: Federal, Estadual ou Municipal.
+ *
+ * Critério PRIMÁRIO: código do fornecedor (mais preciso).
+ * Critério SECUNDÁRIO: palavras-chave em descrição/categoria (fallback).
+ *
+ * Impostos FEDERAIS tipicamente antecipam (vencimento mais cedo no período).
+ * Impostos ESTADUAIS e MUNICIPAIS tipicamente postergam (vencimento mais tarde).
+ */
+export type TaxLevel = 'FEDERAL' | 'ESTADUAL' | 'MUNICIPAL' | null;
+
+// ─── Fornecedores conhecidos por esfera ───────────────────────────────────────
+const FEDERAL_SUPPLIERS = ['61369', '62858'];           // 61369 = Receita Federal, 62858 = INSS
+const ESTADUAL_SUPPLIERS = ['30228'];                   // 30228 = ICMS
+const MUNICIPAL_SUPPLIERS: string[] = [];               // Preencher conforme necessário
+
+// ─── Palavras-chave (fallback, sem acentos — o texto é normalizado antes) ─────
+const FEDERAL_KEYWORDS = [
+  'RECEITA FEDERAL', 'IRPJ', 'IRRF', 'PIS', 'COFINS', 'CSLL',
+  'INSS', 'FGTS', 'IOF', 'DARF', 'GPS', 'GFIP', 'E-SOCIAL', 'ESOCIAL',
+  'RAT', 'FUNRURAL',
+];
+
+const ESTADUAL_KEYWORDS = [
+  'ICMS', 'DIFAL', 'FECP', 'GNRE', 'SEFAZ',
+  'SECRETARIA DA FAZENDA', 'GOVERNO DO ESTADO', 'GOV ESTADO',
+];
+
+const MUNICIPAL_KEYWORDS = [
+  'PREFEITURA', 'MUNICIPIO', 'MUNICIPAL',
+  'ISS', 'IPTU', 'TFF', 'ALVARA',
+  'PMV', 'PMSERRA', 'PMVV', 'PMCI', 'SEMFA',
+];
+
+/** Remove acentos de um texto (pra matching seguro). */
+const stripAccents = (s: string) =>
+    s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+/** Checa se keyword existe no texto. Keywords curtas (≤4 chars) usam word boundary pra evitar falso positivo (ex: 'ISS' não casa com 'EMISSORAS'). */
+const textHasKeyword = (text: string, kw: string): boolean => {
+    if (kw.length <= 4) return new RegExp('\\b' + kw + '\\b').test(text);
+    return text.includes(kw);
+};
+
+export function classifyTax(t: {
+  category?: string;
+  description?: string;
+  supplierCode?: string;
+  supplier?: string;
+  flowTypeCode?: string;
+  flowTypeLevel2?: string;
+  species?: string;
+}): TaxLevel {
+  const code = (t.supplierCode || '').trim();
+
+  // ── 1) Código do fornecedor (mais preciso) ──
+  if (code && FEDERAL_SUPPLIERS.includes(code)) return 'FEDERAL';
+  if (code && ESTADUAL_SUPPLIERS.includes(code)) return 'ESTADUAL';
+  if (code && MUNICIPAL_SUPPLIERS.includes(code)) return 'MUNICIPAL';
+
+  // ── 2) Keywords em texto (fallback) — sem acentos pra casar "MUNICÍPIO" com "MUNICIPIO" ──
+  const text = stripAccents([
+    t.category || '',
+    t.description || '',
+    t.supplier || '',
+    t.species || '',
+  ].join(' ').toUpperCase());
+
+  const n2 = (t.flowTypeLevel2 || '').trim();
+  const isTaxN2 = n2 === '209' || n2 === '215';
+
+  if (!isTaxN2) {
+      const hasAnyKeyword = [...FEDERAL_KEYWORDS, ...ESTADUAL_KEYWORDS, ...MUNICIPAL_KEYWORDS]
+          .some(kw => textHasKeyword(text, kw));
+      if (!hasAnyKeyword) return null;
+  }
+
+  if (FEDERAL_KEYWORDS.some(kw => textHasKeyword(text, kw))) return 'FEDERAL';
+  if (ESTADUAL_KEYWORDS.some(kw => textHasKeyword(text, kw))) return 'ESTADUAL';
+  if (MUNICIPAL_KEYWORDS.some(kw => textHasKeyword(text, kw))) return 'MUNICIPAL';
+
+  // Na faixa tributária (209/215) mas sem keyword específica → NÃO classifica (evita falso positivo)
+  return null;
+}

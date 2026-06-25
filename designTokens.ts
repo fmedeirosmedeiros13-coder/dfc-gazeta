@@ -1,376 +1,241 @@
 /**
- * services/claudeService.ts
+ * utils/designTokens.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * Análise financeira executiva via Claude API.
+ * Sistema de design tokens para o projeto DFC.
  *
- * DIFERENÇA em relação ao geminiService.ts anterior:
+ * PROBLEMA QUE RESOLVE:
+ *   Antes, cores financeiras estavam espalhadas como strings hardcoded em
+ *   ~40 lugares diferentes no projeto:
+ *     'text-emerald-400'  → entrada de caixa
+ *     'text-rose-400'     → saída de caixa
+ *     'text-blue-400'     → investimento
+ *     'text-amber-400'    → previsto/neutro
+ *   Sem consistência: alguns componentes usavam 'text-green-400',
+ *   outros 'text-emerald-500'. Sem padrão documentado.
  *
- *   ANTES (Gemini):
- *     • Enviava apenas 50 transações brutas
- *     • Prompt genérico ("atue como CFO")
- *     • Retornava: summary, risks[], opportunities[]
+ * AGORA:
+ *   • Cores financeiras têm semântica nomeada e são centralizadas aqui
+ *   • Escala de ênfase (subtle → default → strong) para cada cor
+ *   • Helper functions retornam as classes Tailwind corretas
+ *   • Zero hardcode nos componentes — todos importam daqui
  *
- *   AGORA (Claude):
- *     • Envia visão consolidada por empresa + concentração de fornecedores
- *     • Envia histórico de desvios previsto×realizado quando disponível
- *     • Envia alertas de vencimentos críticos já calculados
- *     • Prompt estruturado como briefing de conselho (Board-level)
- *     • Retorna: executiveSummary, actionItems[], risks[], opportunities[],
- *                cashProjection, watchlist[], sentiment
- *     • Streaming opcional para feedback imediato na UI
- *
- * USO:
- *   import { analyzeFinancialData, streamAnalysis } from './claudeService';
- *
- *   // Análise completa (await)
- *   const result = await analyzeFinancialData({ summary, transactions, realized, alerts });
- *
- *   // Análise com streaming (para mostrar texto conforme chega)
- *   await streamAnalysis({ summary, transactions }, (chunk) => setBuffer(b => b + chunk));
+ * PALETA SEMÂNTICA:
+ *   inflow      → emerald  (entrada de caixa)
+ *   outflow     → rose     (saída de caixa)
+ *   investment  → blue     (aplicações financeiras)
+ *   neutral     → amber    (previsto, alertas)
+ *   balance     → slate    (saldo, neutro)
+ *   critical    → rose 800 (alertas críticos)
+ *   warning     → amber 600 (alertas de atenção)
+ *   info        → blue 400  (informativo)
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import {
-  FinancialSummary,
-  Transaction,
-  TransactionType,
-  AIAnalysisResult,
-} from '../types';
-import { formatCurrency, formatCompact, parseDate, COMPANIES } from '../utils/finance';
-import type { Alert } from '../engines/alerts';
+// ─── Paleta semântica financeira ──────────────────────────────────────────────
 
-// ─── Tipos estendidos de resposta ─────────────────────────────────────────────
+export const FINANCIAL_COLORS = {
+  inflow: {
+    subtle:  'text-emerald-500',
+    default: 'text-emerald-400',
+    strong:  'text-emerald-300',
+    bg:      'bg-emerald-900/20',
+    border:  'border-emerald-800/50',
+    dot:     'bg-emerald-500',
+    badge:   'bg-emerald-900/40 text-emerald-300 border border-emerald-800/50',
+  },
+  outflow: {
+    subtle:  'text-rose-500',
+    default: 'text-rose-400',
+    strong:  'text-rose-300',
+    bg:      'bg-rose-900/20',
+    border:  'border-rose-800/50',
+    dot:     'bg-rose-500',
+    badge:   'bg-rose-900/40 text-rose-300 border border-rose-800/50',
+  },
+  investment: {
+    subtle:  'text-blue-500',
+    default: 'text-blue-400',
+    strong:  'text-blue-300',
+    bg:      'bg-blue-900/20',
+    border:  'border-blue-800/50',
+    dot:     'bg-blue-500',
+    badge:   'bg-blue-900/40 text-blue-300 border border-blue-800/50',
+  },
+  neutral: {
+    subtle:  'text-amber-500',
+    default: 'text-amber-400',
+    strong:  'text-amber-300',
+    bg:      'bg-amber-900/20',
+    border:  'border-amber-800/50',
+    dot:     'bg-amber-500',
+    badge:   'bg-amber-900/40 text-amber-300 border border-amber-800/50',
+  },
+  balance: {
+    subtle:  'text-slate-500',
+    default: 'text-slate-300',
+    strong:  'text-slate-100',
+    bg:      'bg-slate-800/40',
+    border:  'border-slate-700/50',
+    dot:     'bg-slate-400',
+    badge:   'bg-slate-800/60 text-slate-300 border border-slate-700/50',
+  },
+} as const;
 
-export interface ExecutiveAnalysis extends AIAnalysisResult {
-  /** Itens de ação prioritários com responsável e prazo sugerido. */
-  actionItems: ActionItem[];
-  /** Projeção narrativa de caixa para os próximos 30 dias. */
-  cashProjection: string;
-  /**
-   * Fornecedores/clientes que merecem atenção especial
-   * (alta concentração, inadimplência, crescimento anômalo).
-   */
-  watchlist: WatchlistItem[];
-  /** Sentimento geral: positive | neutral | negative | critical */
-  sentiment: 'positive' | 'neutral' | 'negative' | 'critical';
-}
+export type FinancialColorKey = keyof typeof FINANCIAL_COLORS;
+export type ColorScale = 'subtle' | 'default' | 'strong';
 
-export interface ActionItem {
-  priority: 'alta' | 'média' | 'baixa';
-  description: string;
-  area: string;        // ex: "Contas a Pagar", "Tesouraria", "Controladoria"
-  deadline: string;    // ex: "Até sexta-feira", "Esta semana"
-}
+// ─── Tokens de alerta ─────────────────────────────────────────────────────────
 
-export interface WatchlistItem {
-  name: string;
-  type: 'fornecedor' | 'cliente' | 'empresa';
-  value: number;
-  reason: string;
-}
+export const ALERT_COLORS = {
+  critical: {
+    bg:     'bg-rose-950/40',
+    border: 'border-rose-800/60',
+    text:   'text-rose-300',
+    icon:   'text-rose-400',
+    badge:  'bg-rose-900/60 text-rose-300',
+  },
+  warning: {
+    bg:     'bg-amber-950/40',
+    border: 'border-amber-800/60',
+    text:   'text-amber-300',
+    icon:   'text-amber-400',
+    badge:  'bg-amber-900/60 text-amber-300',
+  },
+  info: {
+    bg:     'bg-blue-950/40',
+    border: 'border-blue-800/60',
+    text:   'text-blue-300',
+    icon:   'text-blue-400',
+    badge:  'bg-blue-900/60 text-blue-300',
+  },
+} as const;
 
-// ─── Helpers de contexto ──────────────────────────────────────────────────────
+// ─── Tokens de layout ─────────────────────────────────────────────────────────
 
-interface AnalysisInput {
-  summary: FinancialSummary;
-  transactions: Transaction[];
-  realizedTransactions?: Transaction[];
-  alerts?: Alert[];
-  companyFilter?: string;
-}
+export const LAYOUT = {
+  /** Card padrão dark */
+  card:        'bg-slate-900/40 border border-slate-800/60 rounded-xl',
+  /** Card com hover */
+  cardHover:   'bg-slate-900/40 border border-slate-800/60 rounded-xl hover:border-slate-700/60 transition-colors',
+  /** Card de destaque */
+  cardAccent:  'bg-slate-900 border border-slate-700 rounded-xl shadow-lg',
+  /** Input padrão */
+  input:       'bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-slate-500 outline-none transition-colors',
+  /** Badge */
+  badge:       'text-xs font-medium px-2 py-0.5 rounded-full',
+  /** Separador */
+  divider:     'border-t border-slate-800/60',
+  /** Tabela header */
+  tableHeader: 'bg-slate-800/60 text-slate-400 text-xs font-medium uppercase tracking-wider',
+  /** Tabela row */
+  tableRow:    'border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors',
+} as const;
 
-/** Agrega transações por empresa para dar contexto ao modelo. */
-function buildCompanyContext(transactions: Transaction[]): string {
-  const byCompany: Record<string, { inflow: number; outflow: number; count: number }> = {};
+export const TYPOGRAPHY = {
+  /** Título de seção */
+  sectionTitle: 'text-sm font-semibold text-slate-300 uppercase tracking-wider',
+  /** Valor KPI grande */
+  kpiValue:     'text-2xl font-semibold tracking-tight',
+  /** Label de KPI */
+  kpiLabel:     'text-xs font-medium text-slate-400 uppercase tracking-wider',
+  /** Texto de tabela */
+  tableCell:    'text-xs text-slate-300',
+  /** Texto muted */
+  muted:        'text-xs text-slate-500',
+} as const;
 
-  for (const t of transactions) {
-    const id = t.companyCode ?? 'N/D';
-    if (!byCompany[id]) byCompany[id] = { inflow: 0, outflow: 0, count: 0 };
-    if (t.type === TransactionType.RECEIVABLE) byCompany[id].inflow  += Number(t.value) || 0;
-    if (t.type === TransactionType.PAYABLE)    byCompany[id].outflow += Number(t.value) || 0;
-    byCompany[id].count++;
-  }
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-  const companyName = (id: string) =>
-    COMPANIES.find(c => c.id === id)?.name ?? `Empresa ${id}`;
-
-  return Object.entries(byCompany)
-    .sort(([, a], [, b]) => (b.inflow + b.outflow) - (a.inflow + a.outflow))
-    .slice(0, 8)
-    .map(([id, data]) =>
-      `  ${companyName(id)}: Entradas ${formatCompact(data.inflow)} | Saídas ${formatCompact(data.outflow)} | ${data.count} lançamentos`
-    )
-    .join('\n');
-}
-
-/** Top fornecedores por volume de pagamento. */
-function buildSupplierContext(transactions: Transaction[]): string {
-  const bySupplier: Record<string, number> = {};
-  const payables = transactions.filter(t => t.type === TransactionType.PAYABLE);
-  const total    = payables.reduce((s, t) => s + (Number(t.value) || 0), 0);
-
-  for (const t of payables) {
-    const key = t.supplier ?? t.description ?? 'Desconhecido';
-    bySupplier[key] = (bySupplier[key] ?? 0) + (Number(t.value) || 0);
-  }
-
-  return Object.entries(bySupplier)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 5)
-    .map(([name, val]) => {
-      const pct = total > 0 ? ((val / total) * 100).toFixed(1) : '0';
-      return `  ${name}: ${formatCompact(val)} (${pct}% das saídas)`;
-    })
-    .join('\n');
-}
-
-/** Desvio previsto × realizado. */
-function buildDeviationContext(
-  transactions: Transaction[],
-  realized: Transaction[],
-): string {
-  if (!realized.length) return '  (Dados realizados não importados neste período)';
-
-  const plannedTotal  = transactions
-    .filter(t => t.type === TransactionType.PAYABLE)
-    .reduce((s, t) => s + (Number(t.value) || 0), 0);
-
-  const realizedTotal = realized
-    .filter(t => t.type === TransactionType.PAYABLE)
-    .reduce((s, t) => s + (Number(t.value) || 0), 0);
-
-  const diff    = realizedTotal - plannedTotal;
-  const diffPct = plannedTotal > 0 ? ((diff / plannedTotal) * 100).toFixed(1) : '0';
-  const sign    = diff >= 0 ? '+' : '';
-
-  return `  Previsto: ${formatCurrency(plannedTotal)} | Realizado: ${formatCurrency(realizedTotal)} | Desvio: ${sign}${formatCurrency(diff)} (${sign}${diffPct}%)`;
-}
-
-/** Resumo dos alertas ativos. */
-function buildAlertContext(alerts: Alert[]): string {
-  if (!alerts.length) return '  Nenhum alerta ativo';
-  return alerts
-    .slice(0, 6)
-    .map(a => `  [${a.severity.toUpperCase()}] ${a.title}: ${a.description}`)
-    .join('\n');
-}
-
-// ─── Construção do prompt ─────────────────────────────────────────────────────
-
-function buildPrompt(input: AnalysisInput): string {
-  const { summary, transactions, realizedTransactions = [], alerts = [] } = input;
-  const net = summary.totalInflow - summary.totalOutflow;
-
-  return `Você é o CFO de um grupo de mídia brasileiro (Rede Gazeta, ES) analisando o Fluxo de Caixa semanal para o conselho de administração.
-
-## DADOS DO PERÍODO
-
-**Resumo Consolidado:**
-  Entradas:     ${formatCurrency(summary.totalInflow)}
-  Saídas:       ${formatCurrency(summary.totalOutflow)}
-  Resultado:    ${formatCurrency(net)} ${net >= 0 ? '✓' : '⚠ NEGATIVO'}
-  Investimentos: ${formatCurrency(summary.totalInvested)}
-  Saldo período: ${formatCurrency(summary.balance)}
-
-**Posição por Empresa:**
-${buildCompanyContext(transactions)}
-
-**Concentração de Fornecedores (Top 5 saídas):**
-${buildSupplierContext(transactions)}
-
-**Previsto × Realizado:**
-${buildDeviationContext(transactions, realizedTransactions)}
-
-**Alertas Ativos do Sistema:**
-${buildAlertContext(alerts)}
-
-**Total de Lançamentos:** ${transactions.length} previsto(s), ${realizedTransactions.length} realizado(s)
-
----
-
-## INSTRUÇÕES
-
-Gere uma análise executiva estruturada e objetiva. Seja direto — conselheiros leem em 90 segundos.
-
-Responda APENAS com JSON válido neste formato exato (sem markdown, sem texto antes ou depois):
-
-{
-  "summary": "2 parágrafos. Primeiro: situação atual de caixa em linguagem executiva. Segundo: dinâmica principal do período (quem puxou entradas, quem pressionou saídas).",
-  "actionItems": [
-    {
-      "priority": "alta|média|baixa",
-      "description": "Ação específica e mensurável",
-      "area": "área responsável",
-      "deadline": "prazo sugerido"
-    }
-  ],
-  "risks": ["Risco 1 com impacto financeiro estimado", "Risco 2", "Risco 3"],
-  "opportunities": ["Oportunidade 1 com potencial de ganho", "Oportunidade 2"],
-  "cashProjection": "Projeção narrativa de 30 dias baseada nos dados. Mencione vencimentos relevantes e tendências.",
-  "watchlist": [
-    {
-      "name": "nome do fornecedor/cliente/empresa",
-      "type": "fornecedor|cliente|empresa",
-      "value": 0,
-      "reason": "motivo de atenção"
-    }
-  ],
-  "sentiment": "positive|neutral|negative|critical",
-  "lastUpdated": "${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}"
-}`;
-}
-
-// ─── Serviço principal ────────────────────────────────────────────────────────
-
-const CLAUDE_MODEL   = 'claude-sonnet-4-20250514';
-const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-
-/** Fallback para quando a API não está configurada. */
-function unavailableResult(reason: string): ExecutiveAnalysis {
-  return {
-    summary:         `Análise indisponível: ${reason}`,
-    actionItems:     [],
-    risks:           [],
-    opportunities:   [],
-    cashProjection:  '',
-    watchlist:       [],
-    sentiment:       'neutral',
-    lastUpdated:     new Date().toLocaleTimeString('pt-BR'),
-  };
+/**
+ * Retorna a cor financeira correta baseada no valor.
+ * Positivo → inflow (verde), negativo → outflow (vermelho), zero → balance (cinza).
+ */
+export function valueColor(value: number, scale: ColorScale = 'default'): string {
+  if (value > 0)  return FINANCIAL_COLORS.inflow[scale];
+  if (value < 0)  return FINANCIAL_COLORS.outflow[scale];
+  return FINANCIAL_COLORS.balance[scale];
 }
 
 /**
- * Análise financeira executiva completa (sem streaming).
- * Retorna ExecutiveAnalysis — compatível com AIAnalysisResult por extensão.
+ * Retorna badge classes para uma categoria de transação.
  */
-export async function analyzeFinancialData(
-  summary: FinancialSummary,
-  transactions: Transaction[],
-  realizedTransactions?: Transaction[],
-  alerts?: Alert[],
-): Promise<ExecutiveAnalysis> {
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+export function categoryBadge(category: string): string {
+  const normalized = category.toLowerCase();
+  if (normalized.includes('pessoal') || normalized.includes('folha'))
+    return FINANCIAL_COLORS.outflow.badge;
+  if (normalized.includes('invest') || normalized.includes('capex'))
+    return FINANCIAL_COLORS.investment.badge;
+  if (normalized.includes('imposto') || normalized.includes('tribut'))
+    return FINANCIAL_COLORS.neutral.badge;
+  if (normalized.includes('receita') || normalized.includes('recebimento'))
+    return FINANCIAL_COLORS.inflow.badge;
+  return FINANCIAL_COLORS.balance.badge;
+}
 
-  if (!apiKey) {
-    console.warn('[claudeService] VITE_ANTHROPIC_API_KEY não configurada.');
-    return unavailableResult('Chave de API Anthropic não configurada (VITE_ANTHROPIC_API_KEY).');
-  }
-
-  const prompt = buildPrompt({ summary, transactions, realizedTransactions, alerts });
-
-  try {
-    const response = await fetch(CLAUDE_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type':         'application/json',
-        'x-api-key':            apiKey,
-        'anthropic-version':    '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model:      CLAUDE_MODEL,
-        max_tokens: 2000,
-        messages:   [{ role: 'user', content: prompt }],
-      }),
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Claude API ${response.status}: ${err}`);
-    }
-
-    const data = await response.json();
-    const text = data.content?.[0]?.text ?? '';
-
-    // Limpar possíveis fences de markdown
-    const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(clean) as ExecutiveAnalysis;
-
-    return parsed;
-
-  } catch (err) {
-    console.error('[claudeService] Erro na análise:', err);
-    return unavailableResult('Não foi possível conectar à API. Verifique a chave e a conexão.');
+/**
+ * Retorna cor de um sentimento de análise de IA.
+ */
+export function sentimentColor(sentiment: 'positive' | 'neutral' | 'negative' | 'critical'): string {
+  switch (sentiment) {
+    case 'positive': return FINANCIAL_COLORS.inflow.default;
+    case 'neutral':  return FINANCIAL_COLORS.balance.default;
+    case 'negative': return FINANCIAL_COLORS.neutral.default;
+    case 'critical': return FINANCIAL_COLORS.outflow.default;
   }
 }
 
 /**
- * Análise com streaming — ideal para mostrar o texto conforme chega na UI.
- *
- * @param input     Dados financeiros para análise
- * @param onChunk   Callback chamado a cada fragmento de texto recebido
- * @returns         O texto completo ao final
+ * Retorna o label semântico de sentimento em pt-BR.
  */
-export async function streamAnalysis(
-  input: AnalysisInput,
-  onChunk: (chunk: string) => void,
-): Promise<string> {
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-
-  if (!apiKey) {
-    const msg = 'Chave de API não configurada.';
-    onChunk(msg);
-    return msg;
-  }
-
-  const prompt = buildPrompt(input);
-  let fullText = '';
-
-  try {
-    const response = await fetch(CLAUDE_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type':         'application/json',
-        'x-api-key':            apiKey,
-        'anthropic-version':    '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model:      CLAUDE_MODEL,
-        max_tokens: 2000,
-        stream:     true,
-        messages:   [{ role: 'user', content: prompt }],
-      }),
-    });
-
-    if (!response.body) throw new Error('Sem stream na resposta.');
-
-    const reader  = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const chunk = decoder.decode(value);
-      // SSE: cada linha começa com "data: "
-      for (const line of chunk.split('\n')) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') break;
-        try {
-          const event = JSON.parse(data);
-          if (event.type === 'content_block_delta') {
-            const text = event.delta?.text ?? '';
-            fullText += text;
-            onChunk(text);
-          }
-        } catch { /* linha SSE parcial — ignorar */ }
-      }
-    }
-
-    return fullText;
-
-  } catch (err) {
-    console.error('[claudeService] Erro no stream:', err);
-    const msg = 'Erro ao gerar análise em streaming.';
-    onChunk(msg);
-    return msg;
+export function sentimentLabel(sentiment: 'positive' | 'neutral' | 'negative' | 'critical'): string {
+  switch (sentiment) {
+    case 'positive': return 'Favorável';
+    case 'neutral':  return 'Neutro';
+    case 'negative': return 'Desfavorável';
+    case 'critical': return 'Atenção Crítica';
   }
 }
 
-/**
- * Re-exporta AIAnalysisResult para compatibilidade com componentes
- * que ainda importam do serviço original.
- */
-export type { AIAnalysisResult };
+// ─── Constantes de cores para Recharts ────────────────────────────────────────
+// Recharts usa hex — os tokens de Tailwind não funcionam diretamente nos gráficos.
+
+export const CHART_COLORS = {
+  inflow:     '#34d399',  // emerald-400
+  outflow:    '#fb7185',  // rose-400
+  investment: '#60a5fa',  // blue-400
+  neutral:    '#fbbf24',  // amber-400
+  balance:    '#94a3b8',  // slate-400
+  grid:       '#1e293b',  // slate-800
+  tooltip: {
+    bg:     '#0f172a',    // slate-900
+    border: '#1e293b',    // slate--800
+    text:   '#f8fafc',    // slate-50
+  },
+} as const;
+
+/** Paleta sequencial para múltiplas séries (ex: empresas em barras agrupadas). */
+export const CHART_SERIES_COLORS = [
+  '#818cf8', // indigo-400
+  '#34d399', // emerald-400
+  '#fb7185', // rose-400
+  '#60a5fa', // blue-400
+  '#fbbf24', // amber-400
+  '#a78bfa', // violet-400
+  '#f472b6', // pink-400
+  '#2dd4bf', // teal-400
+  '#facc15', // yellow-400
+  '#4ade80', // green-400
+  '#f87171', // red-400
+] as const;
+
+/** Configuração padrão de Tooltip do Recharts. */
+export const RECHARTS_TOOLTIP_STYLE = {
+  contentStyle: {
+    backgroundColor: CHART_COLORS.tooltip.bg,
+    borderColor:     CHART_COLORS.tooltip.border,
+    color:           CHART_COLORS.tooltip.text,
+    borderRadius:    '8px',
+    fontSize:        '12px',
+  },
+  cursor: { fill: 'transparent' },
+} as const;
