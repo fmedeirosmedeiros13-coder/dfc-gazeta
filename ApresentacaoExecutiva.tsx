@@ -8,7 +8,6 @@ import pptxgen from "pptxgenjs";
 import html2canvas from "html2canvas";
 import { PPTExportAlternative } from './PPTExportAlternative';
 import { generatePayablesSlide, generateReceivablesSlide } from '../services/pptxNativeSlides';
-import { drawPayablesPage, drawReceivablesPage } from '../services/pdfNativeSlides';
 import { formatCurrency, parseDate } from '../utils/finance';
 
 interface ApresentacaoExecutivaProps {
@@ -154,21 +153,6 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
     }
 
     for (let i = 0; i < slides.length; i++) {
-      const slideType = slides[i].dataset.slideType;
-
-      if (i > 0) pdf.addPage();
-
-      // Slides de Contas a Pagar/Receber → desenho nativo (sem html2canvas)
-      if (slideType === 'payables') {
-        drawPayablesPage(pdf, transactions, realizedTransactions, dateRange);
-        continue;
-      }
-      if (slideType === 'receivables') {
-        drawReceivablesPage(pdf, transactions, dateRange);
-        continue;
-      }
-
-      // Demais slides → captura por html2canvas
       try {
         const canvas = await html2canvas(slides[i], {
           scale: 3,
@@ -177,6 +161,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
           logging: false,
         });
         const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        if (i > 0) pdf.addPage();
         pdf.addImage(imgData, 'JPEG', 0, 0, 10, 5.625, undefined, 'FAST');
       } catch (error) {
         console.error(`Erro ao capturar slide ${i + 1} no PDF:`, error);
