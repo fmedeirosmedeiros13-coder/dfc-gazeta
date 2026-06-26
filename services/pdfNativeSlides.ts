@@ -96,7 +96,7 @@ function drawHeader(pdf: jsPDF, title: string, dateRange: string) {
   pdf.rect(0, 0, 10, 5.625, 'F');
 
   textInBox(pdf,'REDE GAZETA', PAD, 0.15, 4, 0.18, {size:7, color:TXT_MUTED});
-  textInBox(pdf, title, PAD, 0.30, 6, 0.30, {size:20, color:TXT_WHITE, bold:true});
+  textInBox(pdf, title, PAD, 0.28, 6, 0.26, {size:15, color:TXT_WHITE, bold:true});
   textInBox(pdf, dateRange, 6.5, 0.33, 3.2, 0.22, {size:9, color:TXT_LIGHT, align:'right'});
 
   setFill(pdf, BORDER);

@@ -79,8 +79,8 @@ function drawHeader(slide: PptxGenJS.Slide, pres: PptxGenJS, title: string, date
     fontSize: 7, color: TXT_MUTED, fontFace: FONT, bold: false,
   });
   slide.addText(title, {
-    x: PAD, y: 0.30, w: 6, h: 0.30,
-    fontSize: 20, color: TXT_WHITE, fontFace: FONT, bold: true,
+    x: PAD, y: 0.28, w: 6, h: 0.26,
+    fontSize: 15, color: TXT_WHITE, fontFace: FONT, bold: true,
   });
   slide.addText(dateRange, {
     x: 6.5, y: 0.33, w: 3.2, h: 0.22,
@@ -210,7 +210,7 @@ function drawStackedCards(
   cards: { title: string; items: AggItem[]; borderColor: string }[],
   x: number, y: number, w: number, h: number,
 ) {
-  const gap = 0.08;
+  const gap = 0.05;
   const cardH = (h - (cards.length - 1) * gap) / cards.length;
 
   cards.forEach((card, ci) => {
@@ -226,11 +226,11 @@ function drawStackedCards(
 
     // Título do card
     slide.addText(card.title, {
-      x, y: cy + 0.04, w, h: 0.16,
+      x, y: cy + 0.03, w, h: 0.14,
       fontSize: 6, color: TXT_LIGHT, fontFace: FONT, bold: true, align: 'center',
     });
     slide.addShape(pres.ShapeType.rect, {
-      x: x + 0.05, y: cy + 0.22, w: w - 0.1, h: 0.004,
+      x: x + 0.05, y: cy + 0.19, w: w - 0.1, h: 0.003,
       fill: { color: BORDER },
     });
 
@@ -243,8 +243,8 @@ function drawStackedCards(
       return;
     }
 
-    const itemStartY = cy + 0.27;
-    const itemAvailH = cardH - 0.33;
+    const itemStartY = cy + 0.22;
+    const itemAvailH = cardH - 0.26;
     const itemH = Math.min(itemAvailH / display.length, 0.22);
 
     display.forEach((item, ii) => {
@@ -252,27 +252,27 @@ function drawStackedCards(
 
       // Borda esquerda colorida
       slide.addShape(pres.ShapeType.rect, {
-        x: x + 0.06, y: iy + 0.01, w: 0.025, h: itemH - 0.02,
-        fill: { color: card.borderColor }, rectRadius: 0.01,
+        x: x + 0.05, y: iy + 0.005, w: 0.025, h: itemH - 0.01,
+        fill: { color: card.borderColor }, rectRadius: 0.008,
       });
 
       // Fundo do item
       slide.addShape(pres.ShapeType.roundRect, {
-        x: x + 0.06, y: iy + 0.01, w: w - 0.12, h: itemH - 0.02,
-        fill: { color: '334155' }, rectRadius: 0.03,
+        x: x + 0.05, y: iy + 0.005, w: w - 0.10, h: itemH - 0.01,
+        fill: { color: '334155' }, rectRadius: 0.025,
       });
 
       // Nome
-      slide.addText(trunc(item.name, 18), {
-        x: x + 0.12, y: iy + 0.01, w: (w - 0.12) * 0.60, h: itemH - 0.02,
-        fontSize: 5, color: TXT_LIGHT, fontFace: FONT, bold: true, valign: 'middle',
+      slide.addText(trunc(item.name, 16), {
+        x: x + 0.10, y: iy + 0.005, w: (w - 0.10) * 0.58, h: itemH - 0.01,
+        fontSize: 4.5, color: TXT_LIGHT, fontFace: FONT, bold: true, valign: 'middle',
       });
 
       // Valor
       slide.addText(fmtVal(item.value), {
-        x: x + 0.12 + (w - 0.12) * 0.55, y: iy + 0.01,
-        w: (w - 0.12) * 0.40, h: itemH - 0.02,
-        fontSize: 5, color: TXT_WHITE, fontFace: FONT, bold: true,
+        x: x + 0.10 + (w - 0.10) * 0.53, y: iy + 0.005,
+        w: (w - 0.10) * 0.42, h: itemH - 0.01,
+        fontSize: 4.5, color: TXT_WHITE, fontFace: FONT, bold: true,
         align: 'right', valign: 'middle',
       });
     });
