@@ -149,32 +149,32 @@ function drawBarList(pdf: jsPDF, title: string, items: AggItem[], x: number, y: 
 }
 
 function drawStackedCards(pdf: jsPDF, cards:{title:string;items:AggItem[];borderColor:RGB}[], x: number, y: number, w: number, h: number) {
-  const gap=0.08, cardH=(h-(cards.length-1)*gap)/cards.length;
+  const gap=0.05, cardH=(h-(cards.length-1)*gap)/cards.length;
 
   cards.forEach((card,ci) => {
     const cy = y+ci*(cardH+gap);
     roundRect(pdf, x, cy, w, cardH, 0.05, CARD_BG, BORDER);
-    textInBox(pdf, card.title, x, cy+0.04, w, 0.16, {size:6, color:TXT_LIGHT, bold:true, align:'center'});
+    textInBox(pdf, card.title, x, cy+0.03, w, 0.14, {size:6, color:TXT_LIGHT, bold:true, align:'center'});
     setFill(pdf, BORDER);
-    pdf.rect(x+0.05, cy+0.22, w-0.1, 0.004, 'F');
+    pdf.rect(x+0.05, cy+0.19, w-0.1, 0.003, 'F');
 
     const display = card.items.slice(0,6);
     if (!display.length) {
       textInBox(pdf,'Sem registros.', x, cy+cardH*0.4, w, 0.15, {size:5, color:[100,116,139], align:'center'});
       return;
     }
-    const itemStartY = cy+0.27, itemAvailH = cardH-0.33;
+    const itemStartY = cy+0.22, itemAvailH = cardH-0.26;
     const itemH = Math.min(itemAvailH/display.length, 0.22);
 
     display.forEach((item,ii) => {
       const iy = itemStartY+ii*itemH;
       // Borda esquerda colorida
       setFill(pdf, card.borderColor);
-      pdf.roundedRect(x+0.06, iy+0.01, 0.025, itemH-0.02, 0.01, 0.01, 'F');
+      pdf.roundedRect(x+0.05, iy+0.005, 0.025, itemH-0.01, 0.008, 0.008, 'F');
       // Fundo item
-      roundRect(pdf, x+0.06, iy+0.01, w-0.12, itemH-0.02, 0.03, ITEM_BG);
-      textInBox(pdf, trunc(item.name,18), x+0.12, iy+0.01, (w-0.12)*0.60, itemH-0.02, {size:5, color:TXT_LIGHT, bold:true});
-      textInBox(pdf, fmtVal(item.value), x+0.12+(w-0.12)*0.55, iy+0.01, (w-0.12)*0.40, itemH-0.02, {size:5, color:TXT_WHITE, bold:true, align:'right'});
+      roundRect(pdf, x+0.05, iy+0.005, w-0.10, itemH-0.01, 0.025, ITEM_BG);
+      textInBox(pdf, trunc(item.name,16), x+0.10, iy+0.005, (w-0.10)*0.58, itemH-0.01, {size:4.5, color:TXT_LIGHT, bold:true});
+      textInBox(pdf, fmtVal(item.value), x+0.10+(w-0.10)*0.53, iy+0.005, (w-0.10)*0.42, itemH-0.01, {size:4.5, color:TXT_WHITE, bold:true, align:'right'});
     });
   });
 }
