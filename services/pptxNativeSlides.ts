@@ -29,14 +29,14 @@ const PAGAR = {
   kpiBg: '450a0a', kpiBorder: 'ef4444',
   bar1: '0284c7', bar1Light: '38bdf8', val1: '7dd3fc',       // sky — Acima 35k
   bar2: '4f46e5', bar2Light: '818cf8', val2: 'a5b4fc',       // indigo — Abaixo 35k
-  company: 'f97316', companyLabel: 'fb923c',
+  company: 'f97316', companyLight: 'fdba74', companyLabel: 'fb923c',
   cat: ['f97316', 'ef4444', 'f59e0b'],
 };
 const RECEBER = {
   kpiBg: '0f4c75', kpiBorder: '3282b8',
   bar1: '0d9488', bar1Light: '2dd4bf', val1: '5eead4',       // teal
   bar2: '0891b2', bar2Light: '22d3ee', val2: '67e8f9',       // cyan
-  company: '38bdf8', companyLabel: 'e2e8f0',
+  company: '38bdf8', companyLight: '7dd3fc', companyLabel: 'e2e8f0',
   cat: ['3b82f6', '10b981', '6366f1'],
 };
 
@@ -162,7 +162,7 @@ function drawBarList(
   const rowH = Math.min(availH / display.length, 0.26);
 
   const nameColW = 0.68;
-  const valColW  = 0.44;
+  const valColW  = 0.48;
   const gapInner = 0.04;
   const padLeft  = 0.06;
   const padRight = 0.04;
@@ -174,7 +174,7 @@ function drawBarList(
     // Nome (15 chars, fonte menor)
     slide.addText(trunc(item.name, 15), {
       x: x + padLeft, y: iy, w: nameColW, h: rowH,
-      fontSize: 4.5, color: TXT_MUTED, fontFace: FONT, bold: true, valign: 'middle',
+      fontSize: 4.5, color: TXT_MUTED, fontFace: FONT, bold: true, valign: 'middle', wrap: false,
     });
 
     // Barra com degradê (barra clara embaixo + barra escura em cima)
@@ -201,7 +201,7 @@ function drawBarList(
     slide.addText(fmtVal(item.value), {
       x: x + w - valColW - padRight, y: iy, w: valColW, h: rowH,
       fontSize: 5, color: valueColor, fontFace: FONT, bold: true,
-      align: 'right', valign: 'middle',
+      align: 'right', valign: 'middle', wrap: false,
     });
   });
 }
@@ -269,7 +269,7 @@ function drawStackedCards(
       // Nome
       slide.addText(trunc(item.name, 20), {
         x: x + 0.10, y: iy + 0.005, w: (w - 0.10) * 0.58, h: itemH - 0.01,
-        fontSize: 5, color: TXT_LIGHT, fontFace: FONT, bold: true, valign: 'middle',
+        fontSize: 5, color: TXT_LIGHT, fontFace: FONT, bold: true, valign: 'middle', wrap: false,
       });
 
       // Valor
@@ -277,7 +277,7 @@ function drawStackedCards(
         x: x + 0.10 + (w - 0.10) * 0.53, y: iy + 0.005,
         w: (w - 0.10) * 0.42, h: itemH - 0.01,
         fontSize: 5, color: TXT_WHITE, fontFace: FONT, bold: true,
-        align: 'right', valign: 'middle',
+        align: 'right', valign: 'middle', wrap: false,
       });
     });
   });
@@ -290,7 +290,7 @@ function drawCompanyBars(
   slide: PptxGenJS.Slide, pres: PptxGenJS,
   data: { name: string; value: number }[],
   x: number, y: number, w: number, h: number,
-  barColor: string, labelColor: string,
+  barColor: string, barColorLight: string, labelColor: string,
 ) {
   // Card
   slide.addShape(pres.ShapeType.roundRect, {
@@ -323,25 +323,32 @@ function drawCompanyBars(
     // Nome empresa
     slide.addText(trunc(d.name, 12), {
       x: x + 0.06, y: iy, w: nameColW, h: rowH,
-      fontSize: 5.5, color: TXT_MUTED, fontFace: FONT, bold: true, valign: 'middle',
+      fontSize: 5.5, color: TXT_MUTED, fontFace: FONT, bold: true, valign: 'middle', wrap: false,
     });
 
-    // Barra
+    // Barra com degradê
     const barH = Math.min(rowH * 0.55, 0.16);
     const barY = iy + (rowH - barH) / 2;
     const barX = x + 0.06 + nameColW + 0.04;
     const pct = Math.max(d.value / maxVal, 0.03);
+    const fullW = barAreaW * pct;
 
     slide.addShape(pres.ShapeType.rect, {
-      x: barX, y: barY, w: barAreaW * pct, h: barH,
-      fill: { color: barColor }, rectRadius: 0.03,
+      x: barX, y: barY, w: fullW, h: barH,
+      fill: { color: barColorLight }, rectRadius: 0.03,
     });
+    if (fullW > 0.05) {
+      slide.addShape(pres.ShapeType.rect, {
+        x: barX, y: barY, w: fullW * 0.7, h: barH,
+        fill: { color: barColor }, rectRadius: 0.03,
+      });
+    }
 
     // Valor
     slide.addText(`R$ ${fmtVal(d.value)}`, {
       x: x + w - valColW - 0.06, y: iy, w: valColW, h: rowH,
       fontSize: 5.5, color: labelColor, fontFace: FONT, bold: true,
-      align: 'right', valign: 'middle',
+      align: 'right', valign: 'middle', wrap: false,
     });
   });
 }
@@ -501,7 +508,7 @@ export function generatePayablesSlide(
     { title: 'COMISSÕES',    items: catComiss, borderColor: PAGAR.cat[2] },
   ], c3x, mainY, c3w, mainH);
 
-  drawCompanyBars(slide, pres, companyData, c4x, mainY, c4w, mainH, PAGAR.company, PAGAR.companyLabel);
+  drawCompanyBars(slide, pres, companyData, c4x, mainY, c4w, mainH, PAGAR.company, PAGAR.companyLight, PAGAR.companyLabel);
   drawVlDia(slide, pres, vlDia, c5x, mainY, c5w, mainH);
 }
 
@@ -618,6 +625,6 @@ export function generateReceivablesSlide(
     { title: 'GOV. MUNICIPAL', items: govMun, borderColor: RECEBER.cat[2] },
   ], c3x, mainY, c3w, mainH);
 
-  drawCompanyBars(slide, pres, companyData, c4x, mainY, c4w, mainH, RECEBER.company, RECEBER.companyLabel);
+  drawCompanyBars(slide, pres, companyData, c4x, mainY, c4w, mainH, RECEBER.company, RECEBER.companyLight, RECEBER.companyLabel);
   drawVlDia(slide, pres, vlDia, c5x, mainY, c5w, mainH);
 }

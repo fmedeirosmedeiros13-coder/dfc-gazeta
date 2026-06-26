@@ -23,14 +23,14 @@ const PAGAR = {
   kpiBg: [69, 10, 10], kpiBorder: [239, 68, 68],
   bar1: [2, 132, 199], bar1Light: [56, 189, 248], val1: [125, 211, 252],
   bar2: [79, 70, 229],  bar2Light: [129, 140, 248], val2: [165, 180, 252],
-  company: [249, 115, 22], companyLabel: [251, 146, 60],
+  company: [249, 115, 22], companyLight: [253, 186, 116], companyLabel: [251, 146, 60],
   cat: [[249,115,22],[239,68,68],[245,158,11]],
 };
 const RECEBER = {
   kpiBg: [15, 76, 117], kpiBorder: [50, 130, 184],
   bar1: [13, 148, 136], bar1Light: [45, 212, 191], val1: [94, 234, 212],
   bar2: [8, 145, 178],  bar2Light: [34, 211, 238], val2: [103, 232, 249],
-  company: [56, 189, 248], companyLabel: [226, 232, 240],
+  company: [56, 189, 248], companyLight: [125, 211, 252], companyLabel: [226, 232, 240],
   cat: [[59,130,246],[16,185,129],[99,102,241]],
 };
 
@@ -186,7 +186,7 @@ function drawStackedCards(pdf: jsPDF, cards:{title:string;items:AggItem[];border
   });
 }
 
-function drawCompanyBars(pdf: jsPDF, data:{name:string;value:number}[], x: number, y: number, w: number, h: number, barColor: RGB, labelColor: RGB) {
+function drawCompanyBars(pdf: jsPDF, data:{name:string;value:number}[], x: number, y: number, w: number, h: number, barColor: RGB, barColorLight: RGB, labelColor: RGB) {
   roundRect(pdf, x, y, w, h, 0.06, CARD_BG, BORDER);
   textInBox(pdf,'TOTAL POR EMPRESA', x, y+0.06, w, 0.18, {size:7, color:TXT_LIGHT, bold:true, align:'center'});
 
@@ -201,8 +201,10 @@ function drawCompanyBars(pdf: jsPDF, data:{name:string;value:number}[], x: numbe
     textInBox(pdf, trunc(d.name,12), x+0.06, iy, nameColW, rowH, {size:5.5, color:TXT_MUTED, bold:true});
     const barH=Math.min(rowH*0.55,0.16), barY=iy+(rowH-barH)/2, barX=x+0.06+nameColW+0.04;
     const pct=Math.max(d.value/maxVal,0.03);
-    setFill(pdf, barColor);
-    pdf.roundedRect(barX, barY, barAreaW*pct, barH, 0.03, 0.03, 'F');
+    const fullW=barAreaW*pct;
+    setFill(pdf, barColorLight);
+    pdf.roundedRect(barX, barY, fullW, barH, 0.03, 0.03, 'F');
+    if (fullW > 0.05) { setFill(pdf, barColor); pdf.roundedRect(barX, barY, fullW*0.7, barH, 0.03, 0.03, 'F'); }
     textInBox(pdf, `R$ ${fmtVal(d.value)}`, x+w-valColW-0.06, iy, valColW, rowH, {size:5.5, color:labelColor, bold:true, align:'right'});
   });
 }
@@ -281,7 +283,7 @@ export function drawPayablesPage(
     {title:'IMPOSTOS',items:catImpost,borderColor:PAGAR.cat[1]},
     {title:'COMISSÕES',items:catComiss,borderColor:PAGAR.cat[2]},
   ], 5.00,mainY,1.55,mainH);
-  drawCompanyBars(pdf,companyData, 6.65,mainY,2.15,mainH, PAGAR.company,PAGAR.companyLabel);
+  drawCompanyBars(pdf,companyData, 6.65,mainY,2.15,mainH, PAGAR.company,PAGAR.companyLight,PAGAR.companyLabel);
   drawVlDia(pdf,vlDia, 8.90,mainY,0.80,mainH);
 }
 
@@ -344,6 +346,6 @@ export function drawReceivablesPage(
     {title:'GOV. ESTADUAL',items:govEst,borderColor:RECEBER.cat[1]},
     {title:'GOV. MUNICIPAL',items:govMun,borderColor:RECEBER.cat[2]},
   ], 5.00,mainY,1.55,mainH);
-  drawCompanyBars(pdf,companyData, 6.65,mainY,2.15,mainH, RECEBER.company,RECEBER.companyLabel);
+  drawCompanyBars(pdf,companyData, 6.65,mainY,2.15,mainH, RECEBER.company,RECEBER.companyLight,RECEBER.companyLabel);
   drawVlDia(pdf,vlDia, 8.90,mainY,0.80,mainH);
 }
