@@ -1,5 +1,6 @@
 import PptxGenJS from "pptxgenjs";
 import { FinancialSummary, Transaction, TransactionType } from "../types";
+import { COVER_TEMPLATE } from "./coverTemplate";
 
 export async function downloadPPTX(summary: FinancialSummary, transactions: Transaction[]) {
     const pres = new PptxGenJS();
@@ -30,42 +31,58 @@ export async function downloadPPTX(summary: FinancialSummary, transactions: Tran
     const initialBalance = summary.balance - totalRec + totalPay + totalInv;
 
     // ==========================================
-    // SLIDE 1: CAPA / RESUMO DFC
+    // SLIDE 1: CAPA DINÂMICA
+    //   Fundo = arte 3D (azul claro) com os campos de valor em branco.
+    //   Os textos abaixo são escritos a cada relatório com os dados do período importado.
     // ==========================================
-    let slide1 = pres.addSlide();
-    slide1.background = { color: "F1F5F9" };
-    
-    // Barra Lateral Decorativa
-    slide1.addShape(pres.ShapeType.rect, { x: 0, y: 0, w: 1.0, h: "100%", fill: { color: COLOR_PRIMARY } });
-    
-    // Título
-    slide1.addText("Demonstrativo de Fluxo de Caixa", {
-        x: 1.5, y: 0.8, w: 8, fontSize: 36, color: COLOR_PRIMARY, bold: true, fontFace: "Arial"
-    });
-    slide1.addText(`Posição Consolidada Semanal`, {
-        x: 1.5, y: 1.5, fontSize: 18, color: "64748B", fontFace: "Arial"
-    });
+    const slide1 = pres.addSlide();
+    slide1.background = { color: "020610" };
+    // Arte de fundo full-bleed (16:9 = 10 x 5.625)
+    slide1.addImage({ data: COVER_TEMPLATE, x: 0, y: 0, w: 10, h: 5.625 });
 
-    // Tabela Resumo
-    const rows: any[] = [
-        [
-            { text: "Indicador", options: { fill: { color: COLOR_PRIMARY }, color: "FFFFFF", bold: true, align: "center" as const } },
-            { text: "Valor (R$)", options: { fill: { color: COLOR_PRIMARY }, color: "FFFFFF", bold: true, align: "right" as const } }
-        ],
-        ["Saldo Inicial (Estimado)", { text: initialBalance.toLocaleString("pt-BR", {minimumFractionDigits: 2}), options: { align: "right" as const } }],
-        ["(+) Entradas", { text: totalRec.toLocaleString("pt-BR", {minimumFractionDigits: 2}), options: { align: "right" as const, color: "15803d", bold: true } }], // Green
-        ["(-) Saídas", { text: totalPay.toLocaleString("pt-BR", {minimumFractionDigits: 2}), options: { align: "right" as const, color: "b91c1c", bold: true } }], // Red
-        ["(-) Investimentos", { text: totalInv.toLocaleString("pt-BR", {minimumFractionDigits: 2}), options: { align: "right" as const, color: "1e40af" } }], // Blue
-        ["(=) Saldo Final", { text: summary.balance.toLocaleString("pt-BR", {minimumFractionDigits: 2}), options: { align: "right" as const, bold: true, fill: { color: "E2E8F0" } } }]
-    ];
+    // --- Dados dinâmicos da capa ---
+    const fmtMi = (v: number): string => {
+        const a = Math.abs(v);
+        if (a >= 1e6) return "R$ " + (v / 1e6).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " mi";
+        if (a >= 1e3) return "R$ " + (v / 1e3).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " mil";
+        return "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+    const parseD = (s?: string): Date | null => {
+        if (!s) return null;
+        const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+        if (!m) return null;
+        let y = +m[3]; if (y < 100) y += 2000;
+        return new Date(y, +m[2] - 1, +m[1]);
+    };
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const fmtD = (d: Date) => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+    const dts = transactions.map(t => parseD(t.date)).filter((d): d is Date => !!d).map(d => +d);
+    const periodIni = dts.length ? fmtD(new Date(Math.min(...dts))) : "—";
+    const periodFim = dts.length ? fmtD(new Date(Math.max(...dts))) : "—";
+    const hoje = fmtD(new Date());
+    const netFlow = summary.totalInflow - summary.totalOutflow - (summary.totalInvested || 0);
 
-    slide1.addTable(rows, {
-        x: 2.5, y: 2.5, w: 6, rowH: 0.5,
-        border: { pt: 1, color: "CBD5E1" },
-        fill: { color: "FFFFFF" },
-        fontSize: 14,
-        align: "left"
-    });
+    // Cores da capa (azul claro)
+    const C_VAL = "DCE9FF", C_ACC = "8FC6FF", C_DIM = "6FA6D6";
+    // Opções base dos valores da barra de KPIs.
+    // >>> AJUSTE FINO: se algum valor ficar levemente acima/abaixo do slot, mude apenas o "y" (em polegadas). <<<
+    const kv = { fontFace: "Arial", bold: true, color: C_VAL, fontSize: 13, align: "left" as const, valign: "middle" as const };
+
+    // Pílula de período (topo, ao lado do ícone de calendário)
+    slide1.addText(`${periodIni}  A  ${periodFim}`, { x: 4.31, y: 1.58, w: 3.3, h: 0.40, fontFace: "Arial", bold: true, color: C_ACC, fontSize: 14, align: "left", valign: "middle" });
+
+    // Barra de KPIs (apenas os VALORES; rótulos/ícones já estão na arte)
+    slide1.addText(fmtMi(summary.balance),      { ...kv, x: 2.42, y: 4.67, w: 1.35, h: 0.34 }); // SALDO PREVISTO
+    slide1.addText(fmtMi(summary.totalInflow),  { ...kv, x: 3.62, y: 4.67, w: 1.35, h: 0.34 }); // ENTRADAS
+    slide1.addText(fmtMi(summary.totalOutflow), { ...kv, x: 4.82, y: 4.67, w: 1.35, h: 0.34 }); // SAÍDAS
+    slide1.addText(fmtMi(netFlow),              { ...kv, x: 6.34, y: 4.67, w: 1.35, h: 0.34 }); // FLUXO LÍQUIDO
+
+    // Coluna PERÍODO (2 linhas)
+    slide1.addText(periodIni,      { x: 7.54, y: 4.62, w: 1.7, h: 0.26, fontFace: "Arial", bold: true, color: C_ACC, fontSize: 11, align: "left", valign: "middle" });
+    slide1.addText("a " + periodFim, { x: 7.54, y: 4.84, w: 1.7, h: 0.26, fontFace: "Arial", bold: true, color: C_ACC, fontSize: 11, align: "left", valign: "middle" });
+
+    // Rodapé: data de geração
+    slide1.addText(`GERADO EM ${hoje} • VERSÃO 1.0`, { x: 6.36, y: 5.28, w: 3.45, h: 0.22, fontFace: "Arial", bold: true, color: C_DIM, fontSize: 8, align: "left", valign: "middle" });
 
     // ==========================================
     // SLIDE 2: RECEBIMENTOS
