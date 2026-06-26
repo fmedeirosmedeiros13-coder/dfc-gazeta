@@ -263,16 +263,16 @@ function drawStackedCards(
       });
 
       // Nome
-      slide.addText(trunc(item.name, 16), {
+      slide.addText(trunc(item.name, 20), {
         x: x + 0.10, y: iy + 0.005, w: (w - 0.10) * 0.58, h: itemH - 0.01,
-        fontSize: 4.5, color: TXT_LIGHT, fontFace: FONT, bold: true, valign: 'middle',
+        fontSize: 5, color: TXT_LIGHT, fontFace: FONT, bold: true, valign: 'middle',
       });
 
       // Valor
       slide.addText(fmtVal(item.value), {
         x: x + 0.10 + (w - 0.10) * 0.53, y: iy + 0.005,
         w: (w - 0.10) * 0.42, h: itemH - 0.01,
-        fontSize: 4.5, color: TXT_WHITE, fontFace: FONT, bold: true,
+        fontSize: 5, color: TXT_WHITE, fontFace: FONT, bold: true,
         align: 'right', valign: 'middle',
       });
     });
@@ -482,9 +482,9 @@ export function generatePayablesSlide(
   // Layout das colunas
   const mainY = 1.2;
   const mainH = 4.2;
-  const c1x = 0.30, c1w = 2.35;
-  const c2x = 2.75, c2w = 2.35;
-  const c3x = 5.20, c3w = 1.35;
+  const c1x = 0.30, c1w = 2.25;
+  const c2x = 2.65, c2w = 2.25;
+  const c3x = 5.00, c3w = 1.55;
   const c4x = 6.65, c4w = 2.15;
   const c5x = 8.90, c5w = 0.80;
 
@@ -599,9 +599,9 @@ export function generateReceivablesSlide(
   // Colunas
   const mainY = 1.2;
   const mainH = 4.2;
-  const c1x = 0.30, c1w = 2.35;
-  const c2x = 2.75, c2w = 2.35;
-  const c3x = 5.20, c3w = 1.35;
+  const c1x = 0.30, c1w = 2.25;
+  const c2x = 2.65, c2w = 2.25;
+  const c3x = 5.00, c3w = 1.55;
   const c4x = 6.65, c4w = 2.15;
   const c5x = 8.90, c5w = 0.80;
 

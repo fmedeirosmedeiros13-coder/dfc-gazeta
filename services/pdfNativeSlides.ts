@@ -173,8 +173,8 @@ function drawStackedCards(pdf: jsPDF, cards:{title:string;items:AggItem[];border
       pdf.roundedRect(x+0.05, iy+0.005, 0.025, itemH-0.01, 0.008, 0.008, 'F');
       // Fundo item
       roundRect(pdf, x+0.05, iy+0.005, w-0.10, itemH-0.01, 0.025, ITEM_BG);
-      textInBox(pdf, trunc(item.name,16), x+0.10, iy+0.005, (w-0.10)*0.58, itemH-0.01, {size:4.5, color:TXT_LIGHT, bold:true});
-      textInBox(pdf, fmtVal(item.value), x+0.10+(w-0.10)*0.53, iy+0.005, (w-0.10)*0.42, itemH-0.01, {size:4.5, color:TXT_WHITE, bold:true, align:'right'});
+      textInBox(pdf, trunc(item.name,20), x+0.10, iy+0.005, (w-0.10)*0.58, itemH-0.01, {size:5, color:TXT_LIGHT, bold:true});
+      textInBox(pdf, fmtVal(item.value), x+0.10+(w-0.10)*0.53, iy+0.005, (w-0.10)*0.42, itemH-0.01, {size:5, color:TXT_WHITE, bold:true, align:'right'});
     });
   });
 }
@@ -267,13 +267,13 @@ export function drawPayablesPage(
   ], PAGAR.kpiBg, PAGAR.kpiBorder);
 
   const mainY=1.2, mainH=4.2;
-  drawBarList(pdf,'ACIMA DE R$ 35 MIL',highValue, 0.30,mainY,2.35,mainH, PAGAR.bar1,PAGAR.val1);
-  drawBarList(pdf,'ABAIXO DE R$ 35 MIL',lowValue, 2.75,mainY,2.35,mainH, PAGAR.bar2,PAGAR.val2);
+  drawBarList(pdf,'ACIMA DE R$ 35 MIL',highValue, 0.30,mainY,2.25,mainH, PAGAR.bar1,PAGAR.val1);
+  drawBarList(pdf,'ABAIXO DE R$ 35 MIL',lowValue, 2.65,mainY,2.25,mainH, PAGAR.bar2,PAGAR.val2);
   drawStackedCards(pdf,[
     {title:'INVESTIMENTO',items:catInvest,borderColor:PAGAR.cat[0]},
     {title:'IMPOSTOS',items:catImpost,borderColor:PAGAR.cat[1]},
     {title:'COMISSÕES',items:catComiss,borderColor:PAGAR.cat[2]},
-  ], 5.20,mainY,1.35,mainH);
+  ], 5.00,mainY,1.55,mainH);
   drawCompanyBars(pdf,companyData, 6.65,mainY,2.15,mainH, PAGAR.company,PAGAR.companyLabel);
   drawVlDia(pdf,vlDia, 8.90,mainY,0.80,mainH);
 }
@@ -330,13 +330,13 @@ export function drawReceivablesPage(
   ], RECEBER.kpiBg, RECEBER.kpiBorder);
 
   const mainY=1.2, mainH=4.2;
-  drawBarList(pdf,'ACIMA DE R$ 35 MIL',highValue, 0.30,mainY,2.35,mainH, RECEBER.bar1,RECEBER.val1);
-  drawBarList(pdf,'ABAIXO DE R$ 35 MIL',lowValue, 2.75,mainY,2.35,mainH, RECEBER.bar2,RECEBER.val2);
+  drawBarList(pdf,'ACIMA DE R$ 35 MIL',highValue, 0.30,mainY,2.25,mainH, RECEBER.bar1,RECEBER.val1);
+  drawBarList(pdf,'ABAIXO DE R$ 35 MIL',lowValue, 2.65,mainY,2.25,mainH, RECEBER.bar2,RECEBER.val2);
   drawStackedCards(pdf,[
     {title:'GOV. FEDERAL',items:govFed,borderColor:RECEBER.cat[0]},
     {title:'GOV. ESTADUAL',items:govEst,borderColor:RECEBER.cat[1]},
     {title:'GOV. MUNICIPAL',items:govMun,borderColor:RECEBER.cat[2]},
-  ], 5.20,mainY,1.35,mainH);
+  ], 5.00,mainY,1.55,mainH);
   drawCompanyBars(pdf,companyData, 6.65,mainY,2.15,mainH, RECEBER.company,RECEBER.companyLabel);
   drawVlDia(pdf,vlDia, 8.90,mainY,0.80,mainH);
 }
