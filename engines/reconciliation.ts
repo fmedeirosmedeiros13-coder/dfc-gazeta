@@ -89,6 +89,51 @@ function realValue(t: Transaction): number {
   return Math.abs(Number(t.value) || 0);
 }
 
+/**
+ * Valores candidatos de um item para matching: Valor Pagamento e Valor Original.
+ * No realizado: value = Valor Pagamento, originalTitleValue = Valor Original.
+ * No previsto: value = VL Considerado, originalTitleValue = VL Original do título.
+ * Retorna os distintos > 0,01 para que um par case se QUALQUER combinação bater.
+ */
+function candidateValues(t: Transaction): number[] {
+  const out: number[] = [];
+  const v = Math.abs(Number(t.value) || 0);
+  const o = Math.abs(Number(t.originalTitleValue) || 0);
+  if (v > 0.01) out.push(v);
+  if (o > 0.01 && Math.abs(o - v) >= VALUE_TOLERANCE) out.push(o);
+  return out;
+}
+
+/** Verdadeiro se algum valor candidato de a casa com algum de b (± tolerância). */
+function valueMatches(a: Transaction, b: Transaction): boolean {
+  const va = candidateValues(a);
+  const vb = candidateValues(b);
+  return va.some(x => vb.some(y => Math.abs(x - y) < VALUE_TOLERANCE));
+}
+
+/** Chave de documento composta: Título + Parcela (normalizados). */
+function docKey(t: Transaction): string {
+  const doc  = norm(t.documentNumber);
+  const parc = norm(t.installment);
+  return parc ? `${doc}#${parc}` : doc;
+}
+
+/**
+ * Verdadeiro se dois itens referem o mesmo título.
+ * Título precisa bater; se AMBOS têm parcela, a parcela também precisa bater
+ * (evita casar parcela 1 com parcela 2). Se um dos lados não tem parcela,
+ * casa só pelo título (compatível com layouts sem coluna de parcela).
+ */
+function sameDocument(p: Transaction, r: Transaction): boolean {
+  const pDoc = norm(p.documentNumber);
+  const rDoc = norm(r.documentNumber);
+  if (!pDoc || !rDoc || pDoc !== rDoc) return false;
+  const pParc = norm(p.installment);
+  const rParc = norm(r.installment);
+  if (pParc && rParc) return pParc === rParc;
+  return true;
+}
+
 /** Remove itens pelo id de um array (retorna novo array). */
 function without(list: Transaction[], items: Transaction[]): Transaction[] {
   const ids = new Set(items.map(t => t.id));
@@ -182,7 +227,6 @@ export function reconcile(
   for (const p of remainingPrev) {
     const pForn = norm(p.supplierCode);
     const pDoc  = norm(p.documentNumber);
-    const pVal  = prevValue(p);
 
     // Match perfeito exige fornecedor E documento preenchidos
     if (!pForn || !pDoc) {
@@ -192,19 +236,21 @@ export function reconcile(
 
     const idx = remainingReal.findIndex(r => {
       const rForn = norm(r.supplierCode);
-      const rDoc  = norm(r.documentNumber);
-      return rForn === pForn && rDoc === pDoc && Math.abs(realValue(r) - pVal) < VALUE_TOLERANCE;
+      return rForn === pForn && sameDocument(p, r) && valueMatches(p, r);
     });
 
     if (idx > -1) {
       const r = remainingReal[idx];
+      const withParcela = norm(p.installment) && norm(r.installment);
       allMatched.push({
         prev: [p],
         real: [r],
-        diff: realValue(r) - pVal,
+        diff: realValue(r) - prevValue(p),
         type: 'EXACT',
         confidence: 100,
-        confidenceReason: 'Fornecedor + título + valor idênticos',
+        confidenceReason: withParcela
+          ? 'Fornecedor + título + parcela + valor idênticos'
+          : 'Fornecedor + título + valor idênticos',
       });
       remainingReal.splice(idx, 1);
     } else {
@@ -223,16 +269,15 @@ export function reconcile(
     let curPrev = [...bucket.prev];
     let curReal = [...bucket.real];
 
-    // Fase 2 (1:1): valor exato dentro do bucket
+    // Fase 2 (1:1): valor exato dentro do bucket (Valor Pagamento ou Valor Original)
     const nextPrev2: Transaction[] = [];
     for (const p of curPrev) {
-      const pVal = prevValue(p);
-      const idx  = curReal.findIndex(r => Math.abs(realValue(r) - pVal) < VALUE_TOLERANCE);
+      const idx  = curReal.findIndex(r => valueMatches(p, r));
       if (idx > -1) {
         const r = curReal[idx];
         allMatched.push({
           prev: [p], real: [r],
-          diff: realValue(r) - pVal,
+          diff: realValue(r) - prevValue(p),
           type: '1:1',
           confidence: 90,
           confidenceReason: 'Valor idêntico no mesmo fornecedor',
@@ -313,13 +358,12 @@ export function reconcile(
   const finalPrev: Transaction[] = [];
 
   for (const p of leftoverPrev) {
-    const pVal = prevValue(p);
-    const idx  = leftoverReal.findIndex(r => Math.abs(realValue(r) - pVal) < VALUE_TOLERANCE);
+    const idx  = leftoverReal.findIndex(r => valueMatches(p, r));
     if (idx > -1) {
       const r = leftoverReal[idx];
       allMatched.push({
         prev: [p], real: [r],
-        diff: realValue(r) - pVal,
+        diff: realValue(r) - prevValue(p),
         type: 'GLOBAL',
         confidence: 50,
         confidenceReason: 'Valor igual entre fornecedores diferentes — verificar',

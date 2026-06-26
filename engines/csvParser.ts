@@ -76,6 +76,8 @@ export interface ERPColumnLayout {
     establishment?: string[];
     species?:     string[];
     document?:    string[];
+    installment?: string[];
+    valueOriginal?: string[];
     businessUnit?: string[];
     customer?:    string[];
   };
@@ -93,7 +95,9 @@ export const ERP_LAYOUTS: ERPColumnLayout[] = [
       establishment:['ESTABELECIMENTO', 'ESTAB'],
       species:      ['ESPECIE DOCUMENTO', 'ESPECIE', 'TP DOCTO'],
       document:     ['TITULO', 'DOCUMENTO', 'NUMERO', 'NF'],
-      businessUnit: ['UNIDADE DE NEGOCIO', 'UNIDADE', 'CENTRO DE CUSTO'],
+      installment:  ['PARCELA', 'PARC'],
+      valueOriginal:['VALOR ORIGINAL', 'VL ORIGINAL', 'VLR ORIGINAL', 'VL ORIGINAL TITULO'],
+      businessUnit: ['UNIDADE DE NEGOCIO', 'UNID NEGOCIO', 'UNIDADE', 'CENTRO DE CUSTO'],
     },
   },
   {
@@ -213,19 +217,23 @@ function findDuplicate(
   existing: Transaction[],
 ): Transaction | null {
   const normDoc  = (t.documentNumber  ?? '').replace(/\D/g, '');
+  const normParc = (t.installment     ?? '').replace(/\D/g, '');
   const normForn = (t.supplierCode    ?? '').replace(/\D/g, '');
   const tVal     = Math.abs(t.value);
 
   return existing.find(e => {
     const eDoc  = (e.documentNumber  ?? '').replace(/\D/g, '');
+    const eParc = (e.installment     ?? '').replace(/\D/g, '');
     const eForn = (e.supplierCode    ?? '').replace(/\D/g, '');
     const eVal  = Math.abs(e.value);
 
+    // Título igual; se ambos têm parcela, ela também precisa bater.
     const sameDoc  = normDoc  && eDoc  && normDoc  === eDoc;
+    const sameParc = (!normParc || !eParc) || normParc === eParc;
     const sameForn = normForn && eForn && normForn === eForn;
     const sameVal  = Math.abs(tVal - eVal) < 0.02;
 
-    return (sameDoc && sameForn && sameVal) || (sameDoc && sameVal && !normForn);
+    return (sameDoc && sameParc && sameForn && sameVal) || (sameDoc && sameParc && sameVal && !normForn);
   }) ?? null;
 }
 
@@ -278,6 +286,8 @@ export function parseRealizedCSV(
     establishment:findColumnIndex(headers, layout.columns.establishment ?? []),
     species:      findColumnIndex(headers, layout.columns.species       ?? []),
     document:     findColumnIndex(headers, layout.columns.document      ?? []),
+    installment:  findColumnIndex(headers, layout.columns.installment   ?? []),
+    valueOriginal:findColumnIndex(headers, layout.columns.valueOriginal ?? []),
     businessUnit: findColumnIndex(headers, layout.columns.businessUnit  ?? []),
     customer:     findColumnIndex(headers, layout.columns.customer      ?? []),
   };
@@ -322,9 +332,18 @@ export function parseRealizedCSV(
     }
 
     const docNum     = getCell(cols.document);
+    const parcela    = getCell(cols.installment);
+    const estab      = getCell(cols.establishment);
     const desc       = getCell(cols.description) || 'Importado';
     const companyRaw = getCell(cols.company);
-    const companyId  = companyRaw || (selectedCompany !== 'all' ? defaultCompanyId : '');
+    // companyCode: coluna EMPRESA quando existe; senão Estabelecimento (CSV de realizados
+    // TOTVS não traz EMPRESA, e o Estabelecimento corresponde ao companyCode do previsto);
+    // por último, o filtro global selecionado.
+    const companyId  = companyRaw || estab || (selectedCompany !== 'all' ? defaultCompanyId : '');
+
+    // Valor Original do título — usado como critério secundário de matching na conciliação.
+    const origRaw    = getCell(cols.valueOriginal);
+    const origVal    = parseBRValue(origRaw);
 
     const transaction: Transaction = {
       id:            `real-${Date.now()}-${i}`,
@@ -338,9 +357,11 @@ export function parseRealizedCSV(
       supplierCode:  getCell(cols.supplier),
       supplier:      getCell(cols.description),
       companyCode:   companyId,
-      establishment: getCell(cols.establishment),
+      establishment: estab,
       species:       getCell(cols.species),
       documentNumber: docNum,
+      installment:   parcela,
+      originalTitleValue: origVal !== null ? Math.abs(origVal) : undefined,
       customer:      getCell(cols.customer),
     };
 
