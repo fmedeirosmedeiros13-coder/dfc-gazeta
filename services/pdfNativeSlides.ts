@@ -21,15 +21,15 @@ const TXT_WHITE    = [226, 232, 240];  // #e2e8f0
 
 const PAGAR = {
   kpiBg: [69, 10, 10], kpiBorder: [239, 68, 68],
-  bar1: [2, 132, 199], val1: [125, 211, 252],
-  bar2: [79, 70, 229],  val2: [165, 180, 252],
+  bar1: [2, 132, 199], bar1Light: [56, 189, 248], val1: [125, 211, 252],
+  bar2: [79, 70, 229],  bar2Light: [129, 140, 248], val2: [165, 180, 252],
   company: [249, 115, 22], companyLabel: [251, 146, 60],
   cat: [[249,115,22],[239,68,68],[245,158,11]],
 };
 const RECEBER = {
   kpiBg: [15, 76, 117], kpiBorder: [50, 130, 184],
-  bar1: [13, 148, 136], val1: [94, 234, 212],
-  bar2: [8, 145, 178],  val2: [103, 232, 249],
+  bar1: [13, 148, 136], bar1Light: [45, 212, 191], val1: [94, 234, 212],
+  bar2: [8, 145, 178],  bar2Light: [34, 211, 238], val2: [103, 232, 249],
   company: [56, 189, 248], companyLabel: [226, 232, 240],
   cat: [[59,130,246],[16,185,129],[99,102,241]],
 };
@@ -104,7 +104,7 @@ function drawHeader(pdf: jsPDF, title: string, dateRange: string) {
 }
 
 function drawKpis(pdf: jsPDF, kpis:{label:string;value:number}[], bgColor:RGB, borderColor:RGB) {
-  const y=0.72, h=0.36, n=kpis.length, totalW=10-2*PAD, gap=0.1;
+  const y=0.70, h=0.40, n=kpis.length, totalW=10-2*PAD, gap=0.06;
   const bw = (totalW-(n-1)*gap)/n;
 
   kpis.forEach((kpi,i) => {
@@ -112,12 +112,12 @@ function drawKpis(pdf: jsPDF, kpis:{label:string;value:number}[], bgColor:RGB, b
     roundRect(pdf, x, y, bw, h, 0.04, bgColor);
     setFill(pdf, borderColor);
     pdf.roundedRect(x+0.02, y+h-0.025, bw-0.04, 0.025, 0.01, 0.01, 'F');
-    textInBox(pdf, kpi.label, x, y+0.03, bw, 0.13, {size:5.5, color:TXT_LIGHT, bold:true, align:'center'});
-    textInBox(pdf, `R$ ${fmtVal(kpi.value)}`, x, y+0.14, bw, 0.16, {size:9, color:[255,255,255], bold:true, align:'center'});
+    textInBox(pdf, kpi.label, x, y+0.03, bw, 0.14, {size:5, color:TXT_LIGHT, bold:true, align:'center'});
+    textInBox(pdf, `R$ ${fmtVal(kpi.value)}`, x, y+0.16, bw, 0.18, {size:8, color:[255,255,255], bold:true, align:'center'});
   });
 }
 
-function drawBarList(pdf: jsPDF, title: string, items: AggItem[], x: number, y: number, w: number, h: number, barColor: RGB, valueColor: RGB) {
+function drawBarList(pdf: jsPDF, title: string, items: AggItem[], x: number, y: number, w: number, h: number, barColor: RGB, barColorLight: RGB, valueColor: RGB) {
   roundRect(pdf, x, y, w, h, 0.06, CARD_BG, BORDER);
   textInBox(pdf, title, x, y+0.06, w, 0.18, {size:7, color:TXT_LIGHT, bold:true, align:'center'});
 
@@ -128,23 +128,30 @@ function drawBarList(pdf: jsPDF, title: string, items: AggItem[], x: number, y: 
   }
 
   const maxVal = Math.max(...display.map(t=>t.value));
-  const startY = y+0.32, availH = h-0.40;
+  const startY = y+0.30, availH = h-0.36;
   const rowH = Math.min(availH/display.length, 0.26);
-  const nameColW=0.85, valColW=0.48, gapInner=0.06, padL=0.06, padR=0.06;
+  const nameColW=0.68, valColW=0.44, gapInner=0.04, padL=0.06, padR=0.04;
   const barAreaW = w-padL-nameColW-gapInner-valColW-padR;
 
   display.forEach((item,i) => {
     const iy = startY + i*rowH;
-    textInBox(pdf, trunc(item.name,18), x+padL, iy, nameColW, rowH, {size:5, color:TXT_MUTED, bold:true});
+    textInBox(pdf, trunc(item.name,15), x+padL, iy, nameColW, rowH, {size:4.5, color:TXT_MUTED, bold:true});
 
     const barH = Math.min(rowH*0.55, 0.14);
     const barY = iy+(rowH-barH)/2;
     const barX = x+padL+nameColW+gapInner;
     const pct = Math.max(item.value/maxVal, 0.03);
-    setFill(pdf, barColor);
-    pdf.roundedRect(barX, barY, barAreaW*pct, barH, 0.03, 0.03, 'F');
+    const fullW = barAreaW*pct;
 
-    textInBox(pdf, fmtVal(item.value), x+w-valColW-padR, iy, valColW, rowH, {size:5.5, color:valueColor, bold:true, align:'right'});
+    // Degradê: cor clara (toda) + cor escura (70%)
+    setFill(pdf, barColorLight);
+    pdf.roundedRect(barX, barY, fullW, barH, 0.02, 0.02, 'F');
+    if (fullW > 0.05) {
+      setFill(pdf, barColor);
+      pdf.roundedRect(barX, barY, fullW*0.7, barH, 0.02, 0.02, 'F');
+    }
+
+    textInBox(pdf, fmtVal(item.value), x+w-valColW-padR, iy, valColW, rowH, {size:5, color:valueColor, bold:true, align:'right'});
   });
 }
 
@@ -267,8 +274,8 @@ export function drawPayablesPage(
   ], PAGAR.kpiBg, PAGAR.kpiBorder);
 
   const mainY=1.2, mainH=4.2;
-  drawBarList(pdf,'ACIMA DE R$ 35 MIL',highValue, 0.30,mainY,2.25,mainH, PAGAR.bar1,PAGAR.val1);
-  drawBarList(pdf,'ABAIXO DE R$ 35 MIL',lowValue, 2.65,mainY,2.25,mainH, PAGAR.bar2,PAGAR.val2);
+  drawBarList(pdf,'ACIMA DE R$ 35 MIL',highValue, 0.30,mainY,2.25,mainH, PAGAR.bar1,PAGAR.bar1Light,PAGAR.val1);
+  drawBarList(pdf,'ABAIXO DE R$ 35 MIL',lowValue, 2.65,mainY,2.25,mainH, PAGAR.bar2,PAGAR.bar2Light,PAGAR.val2);
   drawStackedCards(pdf,[
     {title:'INVESTIMENTO',items:catInvest,borderColor:PAGAR.cat[0]},
     {title:'IMPOSTOS',items:catImpost,borderColor:PAGAR.cat[1]},
@@ -330,8 +337,8 @@ export function drawReceivablesPage(
   ], RECEBER.kpiBg, RECEBER.kpiBorder);
 
   const mainY=1.2, mainH=4.2;
-  drawBarList(pdf,'ACIMA DE R$ 35 MIL',highValue, 0.30,mainY,2.25,mainH, RECEBER.bar1,RECEBER.val1);
-  drawBarList(pdf,'ABAIXO DE R$ 35 MIL',lowValue, 2.65,mainY,2.25,mainH, RECEBER.bar2,RECEBER.val2);
+  drawBarList(pdf,'ACIMA DE R$ 35 MIL',highValue, 0.30,mainY,2.25,mainH, RECEBER.bar1,RECEBER.bar1Light,RECEBER.val1);
+  drawBarList(pdf,'ABAIXO DE R$ 35 MIL',lowValue, 2.65,mainY,2.25,mainH, RECEBER.bar2,RECEBER.bar2Light,RECEBER.val2);
   drawStackedCards(pdf,[
     {title:'GOV. FEDERAL',items:govFed,borderColor:RECEBER.cat[0]},
     {title:'GOV. ESTADUAL',items:govEst,borderColor:RECEBER.cat[1]},

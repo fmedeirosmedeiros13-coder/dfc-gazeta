@@ -27,17 +27,17 @@ const PAD          = 0.3;   // margem lateral do slide
 // ─── CORES POR CONTEXTO ──────────────────────────────────────────────────────
 const PAGAR = {
   kpiBg: '450a0a', kpiBorder: 'ef4444',
-  bar1: '0284c7', val1: '7dd3fc',           // sky — Acima 35k
-  bar2: '4f46e5', val2: 'a5b4fc',           // indigo — Abaixo 35k
-  company: 'f97316', companyLabel: 'fb923c', // orange
-  cat: ['f97316', 'ef4444', 'f59e0b'],       // invest, imposto, comissão border
+  bar1: '0284c7', bar1Light: '38bdf8', val1: '7dd3fc',       // sky — Acima 35k
+  bar2: '4f46e5', bar2Light: '818cf8', val2: 'a5b4fc',       // indigo — Abaixo 35k
+  company: 'f97316', companyLabel: 'fb923c',
+  cat: ['f97316', 'ef4444', 'f59e0b'],
 };
 const RECEBER = {
   kpiBg: '0f4c75', kpiBorder: '3282b8',
-  bar1: '0d9488', val1: '5eead4',           // teal
-  bar2: '0891b2', val2: '67e8f9',           // cyan
+  bar1: '0d9488', bar1Light: '2dd4bf', val1: '5eead4',       // teal
+  bar2: '0891b2', bar2Light: '22d3ee', val2: '67e8f9',       // cyan
   company: '38bdf8', companyLabel: 'e2e8f0',
-  cat: ['3b82f6', '10b981', '6366f1'],      // federal, estadual, municipal border
+  cat: ['3b82f6', '10b981', '6366f1'],
 };
 
 const COMPANIES_MAP: Record<string, string> = {
@@ -98,10 +98,10 @@ function drawKpis(
   kpis: { label: string; value: number }[],
   bgColor: string, borderColor: string,
 ) {
-  const y = 0.72;
-  const h = 0.36;
+  const y = 0.70;
+  const h = 0.40;
   const totalW = 10 - 2 * PAD;
-  const gap = 0.1;
+  const gap = 0.06;
   const n = kpis.length;
   const bw = (totalW - (n - 1) * gap) / n;
 
@@ -111,33 +111,30 @@ function drawKpis(
     slide.addShape(pres.ShapeType.roundRect, {
       x, y, w: bw, h, fill: { color: bgColor }, rectRadius: 0.04,
     });
-    // borda inferior colorida
     slide.addShape(pres.ShapeType.rect, {
       x: x + 0.02, y: y + h - 0.025, w: bw - 0.04, h: 0.025,
       fill: { color: borderColor }, rectRadius: 0.01,
     });
     slide.addText(kpi.label, {
-      x, y: y + 0.03, w: bw, h: 0.13,
-      fontSize: 5.5, color: TXT_LIGHT, fontFace: FONT, bold: true, align: 'center',
+      x, y: y + 0.03, w: bw, h: 0.14,
+      fontSize: 5, color: TXT_LIGHT, fontFace: FONT, bold: true, align: 'center',
     });
     slide.addText(`R$ ${fmtVal(kpi.value)}`, {
-      x, y: y + 0.14, w: bw, h: 0.16,
-      fontSize: 9, color: 'FFFFFF', fontFace: FONT, bold: true, align: 'center',
+      x, y: y + 0.16, w: bw, h: 0.18,
+      fontSize: 8, color: 'FFFFFF', fontFace: FONT, bold: true, align: 'center',
     });
   });
 }
 
 /**
- * Desenha uma coluna com lista de barras horizontais (Acima/Abaixo de R$ 35 mil).
- * Layout idêntico ao "TOTAL POR EMPRESA": nome à esquerda, barra, valor à direita.
+ * Desenha uma coluna com lista de barras horizontais com degradê.
  */
 function drawBarList(
   slide: PptxGenJS.Slide, pres: PptxGenJS,
   title: string, items: AggItem[],
   x: number, y: number, w: number, h: number,
-  barColor: string, valueColor: string,
+  barColor: string, barColorLight: string, valueColor: string,
 ) {
-  // Card background
   slide.addShape(pres.ShapeType.roundRect, {
     x, y, w, h,
     fill: { color: CARD_BG },
@@ -145,7 +142,6 @@ function drawBarList(
     rectRadius: 0.06,
   });
 
-  // Título
   slide.addText(title, {
     x, y: y + 0.06, w, h: 0.18,
     fontSize: 7, color: TXT_LIGHT, fontFace: FONT, bold: true, align: 'center',
@@ -161,42 +157,50 @@ function drawBarList(
   }
 
   const maxVal = Math.max(...display.map(t => t.value));
-  const startY = y + 0.32;
-  const availH = h - 0.40;
+  const startY = y + 0.30;
+  const availH = h - 0.36;
   const rowH = Math.min(availH / display.length, 0.26);
 
-  // Mesmo padrão do TOTAL POR EMPRESA: nome | barra | valor
-  const nameColW = 0.85;
-  const valColW  = 0.48;
-  const gapInner = 0.06;
+  const nameColW = 0.68;
+  const valColW  = 0.44;
+  const gapInner = 0.04;
   const padLeft  = 0.06;
-  const padRight = 0.06;
+  const padRight = 0.04;
   const barAreaW = w - padLeft - nameColW - gapInner - valColW - padRight;
 
   display.forEach((item, i) => {
     const iy = startY + i * rowH;
 
-    // Nome (esquerda, truncado)
-    slide.addText(trunc(item.name, 18), {
+    // Nome (15 chars, fonte menor)
+    slide.addText(trunc(item.name, 15), {
       x: x + padLeft, y: iy, w: nameColW, h: rowH,
-      fontSize: 5, color: TXT_MUTED, fontFace: FONT, bold: true, valign: 'middle',
+      fontSize: 4.5, color: TXT_MUTED, fontFace: FONT, bold: true, valign: 'middle',
     });
 
-    // Barra (só preenchimento, sem fundo — igual TOTAL POR EMPRESA)
+    // Barra com degradê (barra clara embaixo + barra escura em cima)
     const barH = Math.min(rowH * 0.55, 0.14);
     const barY = iy + (rowH - barH) / 2;
     const barX = x + padLeft + nameColW + gapInner;
     const pct = Math.max(item.value / maxVal, 0.03);
+    const fullW = barAreaW * pct;
 
+    // Camada 1: cor clara (toda a barra)
     slide.addShape(pres.ShapeType.rect, {
-      x: barX, y: barY, w: barAreaW * pct, h: barH,
-      fill: { color: barColor }, rectRadius: 0.03,
+      x: barX, y: barY, w: fullW, h: barH,
+      fill: { color: barColorLight }, rectRadius: 0.02,
     });
+    // Camada 2: cor escura (70% da barra)
+    if (fullW > 0.05) {
+      slide.addShape(pres.ShapeType.rect, {
+        x: barX, y: barY, w: fullW * 0.7, h: barH,
+        fill: { color: barColor }, rectRadius: 0.02,
+      });
+    }
 
-    // Valor (direita)
+    // Valor
     slide.addText(fmtVal(item.value), {
       x: x + w - valColW - padRight, y: iy, w: valColW, h: rowH,
-      fontSize: 5.5, color: valueColor, fontFace: FONT, bold: true,
+      fontSize: 5, color: valueColor, fontFace: FONT, bold: true,
       align: 'right', valign: 'middle',
     });
   });
@@ -488,8 +492,8 @@ export function generatePayablesSlide(
   const c4x = 6.65, c4w = 2.15;
   const c5x = 8.90, c5w = 0.80;
 
-  drawBarList(slide, pres, 'ACIMA DE R$ 35 MIL', highValue, c1x, mainY, c1w, mainH, PAGAR.bar1, PAGAR.val1);
-  drawBarList(slide, pres, 'ABAIXO DE R$ 35 MIL', lowValue, c2x, mainY, c2w, mainH, PAGAR.bar2, PAGAR.val2);
+  drawBarList(slide, pres, 'ACIMA DE R$ 35 MIL', highValue, c1x, mainY, c1w, mainH, PAGAR.bar1, PAGAR.bar1Light, PAGAR.val1);
+  drawBarList(slide, pres, 'ABAIXO DE R$ 35 MIL', lowValue, c2x, mainY, c2w, mainH, PAGAR.bar2, PAGAR.bar2Light, PAGAR.val2);
 
   drawStackedCards(slide, pres, [
     { title: 'INVESTIMENTO', items: catInvest, borderColor: PAGAR.cat[0] },
@@ -605,8 +609,8 @@ export function generateReceivablesSlide(
   const c4x = 6.65, c4w = 2.15;
   const c5x = 8.90, c5w = 0.80;
 
-  drawBarList(slide, pres, 'ACIMA DE R$ 35 MIL', highValue, c1x, mainY, c1w, mainH, RECEBER.bar1, RECEBER.val1);
-  drawBarList(slide, pres, 'ABAIXO DE R$ 35 MIL', lowValue, c2x, mainY, c2w, mainH, RECEBER.bar2, RECEBER.val2);
+  drawBarList(slide, pres, 'ACIMA DE R$ 35 MIL', highValue, c1x, mainY, c1w, mainH, RECEBER.bar1, RECEBER.bar1Light, RECEBER.val1);
+  drawBarList(slide, pres, 'ABAIXO DE R$ 35 MIL', lowValue, c2x, mainY, c2w, mainH, RECEBER.bar2, RECEBER.bar2Light, RECEBER.val2);
 
   drawStackedCards(slide, pres, [
     { title: 'GOV. FEDERAL',   items: govFed, borderColor: RECEBER.cat[0] },
