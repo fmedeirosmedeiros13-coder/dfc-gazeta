@@ -10,6 +10,7 @@ import { PPTExportAlternative } from './PPTExportAlternative';
 import { generatePayablesSlide, generateReceivablesSlide } from '../services/pptxNativeSlides';
 import { drawPayablesPage, drawReceivablesPage } from '../services/pdfNativeSlides';
 import { formatCurrency, parseDate } from '../utils/finance';
+import { COVER_TEMPLATE } from '../services/coverTemplate';
 
 interface ApresentacaoExecutivaProps {
   summary: FinancialSummary;
@@ -85,6 +86,18 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   }, [transactions]);
 
   // formatCurrency importado de utils/finance.ts
+
+  // --- Capa dinâmica: período separado + valores formatados ---
+  const [coverIni, coverFim] = dateRange.includes(' A ')
+    ? dateRange.split(' A ').map(s => s.trim())
+    : [dateRange, ''];
+  const coverNetFlow = summary.totalInflow - summary.totalOutflow - (summary.totalInvested || 0);
+  const fmtMi = (v: number): string => {
+    const a = Math.abs(v);
+    if (a >= 1e6) return 'R$ ' + (v / 1e6).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' mi';
+    if (a >= 1e3) return 'R$ ' + (v / 1e3).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' mil';
+    return 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
 
   const [boardSummary, setBoardSummary] = useState('');
   const [isEditingSummary, setIsEditingSummary] = useState(false);
@@ -217,22 +230,33 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
 
 
         {/* CAPA */}
-        <div className="pdf-export-page bg-gradient-to-br from-[#0f172a] to-[#1e293b] w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto border border-slate-800 items-center justify-center text-center">
-            <div className="flex flex-col items-center gap-6">
-                <span className="inline-block bg-emerald-500/10 text-emerald-400 px-6 py-2 rounded-full text-sm font-semibold border border-emerald-500/20 tracking-widest uppercase">
-                    Planejamento Financeiro
-                </span>
-                <h1 className="text-5xl font-extrabold text-white leading-tight">
-                    Demonstrativo de Fluxo de Caixa<br/>Previsto (DFC)
-                </h1>
-                <p className="text-xl text-sky-400 font-medium flex items-center gap-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                    {dateRange}
-                </p>
-                <div className="mt-4 text-sm text-slate-500">Rede Gazeta • Relatório de Gestão Semanal</div>
-            </div>
-            <div className="absolute bottom-6 left-8 text-[10px] text-slate-600">Confidencial — Uso Interno</div>
-            <div className="absolute bottom-6 right-8 text-[10px] text-slate-600">Gerado em {new Date().toLocaleDateString('pt-BR')}</div>
+        <div
+          data-slide-type="cover"
+          className="pdf-export-page w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden relative print:break-after-page print:shadow-none mx-auto border border-slate-800"
+          style={{ containerType: 'inline-size' as any, backgroundColor: '#020610' }}
+        >
+            {/* Arte 3D (azul claro) — slots de valores em branco */}
+            <img src={COVER_TEMPLATE} alt="Capa DFC" className="absolute inset-0 w-full h-full object-cover" />
+
+            {/* Pílula de período (topo) */}
+            <span style={{ position: 'absolute', left: '43%', top: '29%', color: '#8fc6ff', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '1.7cqw' }}>
+                {coverIni}{coverFim ? `  A  ${coverFim}` : ''}
+            </span>
+
+            {/* Barra de KPIs — apenas os valores (rótulos/ícones estão na arte) */}
+            <span style={{ position: 'absolute', left: '24.2%', top: '84.6%', color: '#dce9ff', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '1.62cqw' }}>{fmtMi(summary.balance)}</span>
+            <span style={{ position: 'absolute', left: '36.2%', top: '84.6%', color: '#dce9ff', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '1.62cqw' }}>{fmtMi(summary.totalInflow)}</span>
+            <span style={{ position: 'absolute', left: '48.2%', top: '84.6%', color: '#dce9ff', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '1.62cqw' }}>{fmtMi(summary.totalOutflow)}</span>
+            <span style={{ position: 'absolute', left: '63.4%', top: '84.6%', color: '#dce9ff', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '1.62cqw' }}>{fmtMi(coverNetFlow)}</span>
+
+            {/* Coluna PERÍODO (2 linhas) */}
+            <span style={{ position: 'absolute', left: '75.3%', top: '83.8%', color: '#8fc6ff', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '1.4cqw' }}>{coverIni}</span>
+            <span style={{ position: 'absolute', left: '75.3%', top: '87.6%', color: '#8fc6ff', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '1.4cqw' }}>{coverFim ? `a ${coverFim}` : ''}</span>
+
+            {/* Rodapé: data de geração */}
+            <span style={{ position: 'absolute', left: '63.5%', top: '94.8%', color: '#6fa6d6', fontWeight: 700, whiteSpace: 'nowrap', fontSize: '1.05cqw' }}>
+                GERADO EM {new Date().toLocaleDateString('pt-BR')} • VERSÃO 1.0
+            </span>
         </div>
 
         {/* PÁGINA 1: DEMONSTRATIVO FINANCEIRO CONSOLIDADO */}
