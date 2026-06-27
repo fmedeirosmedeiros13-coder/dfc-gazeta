@@ -10,7 +10,7 @@ import { PPTExportAlternative } from './PPTExportAlternative';
 import { generatePayablesSlide, generateReceivablesSlide } from '../services/pptxNativeSlides';
 import { drawPayablesPage, drawReceivablesPage } from '../services/pdfNativeSlides';
 import { formatCurrency, parseDate } from '../utils/finance';
-import { COVER_TEMPLATE } from '../services/coverTemplate';
+import { IC_TV, IC_INTERNET, IC_RADIO, IC_EVENTOS, IC_DESPESAS } from '../services/coverIcons';
 
 interface ApresentacaoExecutivaProps {
   summary: FinancialSummary;
@@ -233,30 +233,43 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
         <div
           data-slide-type="cover"
           className="pdf-export-page w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden relative print:break-after-page print:shadow-none mx-auto border border-slate-800"
-          style={{ containerType: 'inline-size' as any, backgroundColor: '#020610' }}
+          style={{ containerType: 'inline-size' as any, background: 'radial-gradient(72% 72% at 50% 46%, #0b2236 0%, #061522 55%, #02060f 100%)' }}
         >
-            {/* Arte 3D (azul claro) — slots de valores em branco */}
-            <img src={COVER_TEMPLATE} alt="Capa DFC" className="absolute inset-0 w-full h-full object-cover" />
+            {/* Desenhos 3D em segundo plano (alinhados em pares: mesma altura e tamanho) */}
+            <img src={IC_RADIO}    alt="" className="absolute pointer-events-none select-none" style={{ left: '36%', top: '28%', width: '28%', opacity: 0.16 }} />
+            <img src={IC_TV}       alt="" className="absolute pointer-events-none select-none object-contain" style={{ left: '4%',  top: '27%', width: '14%', height: '22%', opacity: 0.13 }} />
+            <img src={IC_EVENTOS}  alt="" className="absolute pointer-events-none select-none object-contain" style={{ left: '82%', top: '27%', width: '14%', height: '22%', opacity: 0.13 }} />
+            <img src={IC_INTERNET} alt="" className="absolute pointer-events-none select-none object-contain" style={{ left: '4%',  top: '55%', width: '14%', height: '22%', opacity: 0.13 }} />
+            <img src={IC_DESPESAS} alt="" className="absolute pointer-events-none select-none object-contain" style={{ left: '82%', top: '55%', width: '14%', height: '22%', opacity: 0.13 }} />
 
-            {/* Pílula de período (topo) */}
-            <span style={{ position: 'absolute', left: '43%', top: '29%', color: '#8fc6ff', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '1.7cqw' }}>
-                {coverIni}{coverFim ? `  A  ${coverFim}` : ''}
-            </span>
+            {/* Título */}
+            <div className="absolute inset-x-0 top-[6%] flex flex-col items-center text-center px-8">
+                <h1 className="text-white font-extrabold leading-tight" style={{ fontSize: 'clamp(20px, 3.4cqw, 52px)' }}>Demonstrativo de Fluxo de Caixa</h1>
+                <h2 className="font-extrabold" style={{ color: '#8fc6ff', letterSpacing: '0.15em', fontSize: 'clamp(18px, 3.1cqw, 46px)' }}>DFC</h2>
+                <div className="mt-3 inline-flex items-center rounded-full px-5 py-1.5 border" style={{ background: '#0a1722', borderColor: '#1f8f7e' }}>
+                    <span style={{ color: '#8fc6ff', fontWeight: 700, fontSize: 'clamp(10px, 1.2cqw, 16px)' }}>{dateRange}</span>
+                </div>
+            </div>
 
-            {/* Barra de KPIs — apenas os valores (rótulos/ícones estão na arte) */}
-            <span style={{ position: 'absolute', left: '24.2%', top: '84.6%', color: '#dce9ff', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '1.62cqw' }}>{fmtMi(summary.balance)}</span>
-            <span style={{ position: 'absolute', left: '36.2%', top: '84.6%', color: '#dce9ff', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '1.62cqw' }}>{fmtMi(summary.totalInflow)}</span>
-            <span style={{ position: 'absolute', left: '48.2%', top: '84.6%', color: '#dce9ff', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '1.62cqw' }}>{fmtMi(summary.totalOutflow)}</span>
-            <span style={{ position: 'absolute', left: '63.4%', top: '84.6%', color: '#dce9ff', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '1.62cqw' }}>{fmtMi(coverNetFlow)}</span>
+            {/* Barra de KPIs (dinâmica) */}
+            <div className="absolute inset-x-[3%] bottom-[12%] rounded-xl border flex items-stretch" style={{ background: '#0a1320', borderColor: '#1e3a34' }}>
+                {[
+                    { l: 'SALDO PREVISTO', v: fmtMi(summary.balance),      s: 'no período',        c: '#fcd34d' },
+                    { l: 'ENTRADAS',       v: fmtMi(summary.totalInflow),  s: 'Total previsto',    c: '#6ee7b7' },
+                    { l: 'SAÍDAS',         v: fmtMi(summary.totalOutflow), s: 'Total previsto',    c: '#fda4af' },
+                    { l: 'FLUXO LÍQUIDO',  v: fmtMi(coverNetFlow),         s: 'Resultado líquido', c: '#6ee7b7' },
+                    { l: 'PERÍODO',        v: coverFim ? coverIni : (coverIni || '—'), s: coverFim ? `a ${coverFim}` : '', c: '#5eead4' },
+                ].map((k, i) => (
+                    <div key={i} className="flex-1 px-4 py-3" style={{ borderLeft: i ? '1px solid #15283a' : 'none' }}>
+                        <div style={{ color: '#94a3b8', fontWeight: 700, fontSize: 'clamp(8px, 0.95cqw, 12px)' }}>{k.l}</div>
+                        <div style={{ color: k.c, fontWeight: 800, fontSize: 'clamp(12px, 1.5cqw, 20px)' }}>{k.v}</div>
+                        <div style={{ color: '#64748b', fontSize: 'clamp(7px, 0.8cqw, 10px)' }}>{k.s}</div>
+                    </div>
+                ))}
+            </div>
 
-            {/* Coluna PERÍODO (2 linhas) */}
-            <span style={{ position: 'absolute', left: '75.3%', top: '83.8%', color: '#8fc6ff', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '1.4cqw' }}>{coverIni}</span>
-            <span style={{ position: 'absolute', left: '75.3%', top: '87.6%', color: '#8fc6ff', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '1.4cqw' }}>{coverFim ? `a ${coverFim}` : ''}</span>
-
-            {/* Rodapé: data de geração */}
-            <span style={{ position: 'absolute', left: '63.5%', top: '94.8%', color: '#6fa6d6', fontWeight: 700, whiteSpace: 'nowrap', fontSize: '1.05cqw' }}>
-                GERADO EM {new Date().toLocaleDateString('pt-BR')} • VERSÃO 1.0
-            </span>
+            {/* Rodapé */}
+            <div className="absolute bottom-[3%] right-[3%]" style={{ color: '#3f7a6e', fontWeight: 700, fontSize: 'clamp(7px, 0.85cqw, 11px)' }}>GERADO EM {new Date().toLocaleDateString('pt-BR')} • VERSÃO 1.0</div>
         </div>
 
         {/* PÁGINA 1: DEMONSTRATIVO FINANCEIRO CONSOLIDADO */}
