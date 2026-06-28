@@ -88,9 +88,23 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   // formatCurrency importado de utils/finance.ts
 
   // --- Capa dinâmica: período separado + valores formatados ---
-  const [coverIni, coverFim] = dateRange.includes(' A ')
+  // Início do período rola para o 1º dia útil: se cair em sábado/domingo (ou feriado, futuro),
+  // avança para o próximo dia útil. Ex.: 31/05 (sáb) -> 01/06 (seg).
+  const isHoliday = (_d: Date): boolean => false; // TODO: plugar lista de feriados (nacionais/ES)
+  const rollToBusinessDay = (br: string): string => {
+    const m = (br || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return br;
+    const d = new Date(+m[3], +m[2] - 1, +m[1]);
+    while (d.getDay() === 0 || d.getDay() === 6 || isHoliday(d)) {
+      d.setDate(d.getDate() + 1);
+    }
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+  };
+  const [coverIniRaw, coverFim] = dateRange.includes(' A ')
     ? dateRange.split(' A ').map(s => s.trim())
     : [dateRange, ''];
+  const coverIni = coverFim ? rollToBusinessDay(coverIniRaw) : coverIniRaw;
   const coverNetFlow = summary.totalInflow - summary.totalOutflow - (summary.totalInvested || 0);
   const fmtMi = (v: number): string => {
     const a = Math.abs(v);
@@ -247,7 +261,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                 <h1 className="text-white font-extrabold leading-tight" style={{ fontSize: 'clamp(20px, 3.4cqw, 52px)' }}>Demonstrativo de Fluxo de Caixa</h1>
                 <h2 className="font-extrabold" style={{ color: '#8fc6ff', letterSpacing: '0.15em', fontSize: 'clamp(18px, 3.1cqw, 46px)' }}>DFC</h2>
                 <div className="mt-3 inline-flex items-center rounded-full px-5 py-1.5 border" style={{ background: '#0a1722', borderColor: '#1f8f7e' }}>
-                    <span style={{ color: '#8fc6ff', fontWeight: 700, fontSize: 'clamp(10px, 1.2cqw, 16px)' }}>{dateRange}</span>
+                    <span style={{ color: '#8fc6ff', fontWeight: 700, fontSize: 'clamp(10px, 1.2cqw, 16px)' }}>{coverFim ? `${coverIni} A ${coverFim}` : coverIni}</span>
                 </div>
             </div>
 
@@ -260,7 +274,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                     { l: 'FLUXO LÍQUIDO',  v: fmtMi(coverNetFlow),         s: 'Resultado líquido', c: '#6ee7b7' },
                     { l: 'PERÍODO',        v: coverFim ? coverIni : (coverIni || '—'), s: coverFim ? `a ${coverFim}` : '', c: '#5eead4' },
                 ].map((k, i) => (
-                    <div key={i} className="flex-1 px-4 py-3" style={{ borderLeft: i ? '1px solid #15283a' : 'none' }}>
+                    <div key={i} className="flex-1 px-4 py-3" style={{ textAlign: 'center', borderLeft: i ? '1px solid #15283a' : 'none' }}>
                         <div style={{ color: '#94a3b8', fontWeight: 700, fontSize: 'clamp(8px, 0.95cqw, 12px)' }}>{k.l}</div>
                         <div style={{ color: k.c, fontWeight: 800, fontSize: 'clamp(12px, 1.5cqw, 20px)' }}>{k.v}</div>
                         <div style={{ color: '#64748b', fontSize: 'clamp(7px, 0.8cqw, 10px)' }}>{k.s}</div>
