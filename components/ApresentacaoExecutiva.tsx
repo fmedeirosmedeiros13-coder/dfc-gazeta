@@ -272,11 +272,11 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                     { l: 'ENTRADAS',       v: fmtMi(summary.totalInflow),  s: 'Total previsto',    c: '#6ee7b7' },
                     { l: 'SAÍDAS',         v: fmtMi(summary.totalOutflow), s: 'Total previsto',    c: '#fda4af' },
                     { l: 'FLUXO LÍQUIDO',  v: fmtMi(coverNetFlow),         s: 'Resultado líquido', c: '#6ee7b7' },
-                    { l: 'PERÍODO',        v: coverFim ? coverIni : (coverIni || '—'), s: coverFim ? `a ${coverFim}` : '', c: '#5eead4' },
+                    { l: 'PERÍODO',        v: coverFim ? `${coverIni} a ${coverFim}` : (coverIni || '—'), s: '', c: '#5eead4' },
                 ].map((k, i) => (
                     <div key={i} className="flex-1 px-4 py-3" style={{ textAlign: 'center', borderLeft: i ? '1px solid #15283a' : 'none' }}>
                         <div style={{ color: '#94a3b8', fontWeight: 700, fontSize: 'clamp(8px, 0.95cqw, 12px)' }}>{k.l}</div>
-                        <div style={{ color: k.c, fontWeight: 800, fontSize: 'clamp(12px, 1.5cqw, 20px)' }}>{k.v}</div>
+                        <div style={{ color: k.c, fontWeight: 800, whiteSpace: 'nowrap', fontSize: 'clamp(12px, 1.5cqw, 20px)' }}>{k.v}</div>
                         <div style={{ color: '#64748b', fontSize: 'clamp(7px, 0.8cqw, 10px)' }}>{k.s}</div>
                     </div>
                 ))}
