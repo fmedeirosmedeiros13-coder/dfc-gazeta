@@ -87,15 +87,15 @@ export const ERP_LAYOUTS: ERPColumnLayout[] = [
   {
     name: 'TOTVS Contas a Pagar',
     columns: {
-      date:         ['DATA PAGAMENTO', 'DT PAGTO', 'DT LIQUIDACAO', 'DATA'],
+      date:         ['DATA PAGAMENTO', 'DATA PAGTO', 'DT PAGTO', 'DT LIQUIDACAO', 'DATA'],
       value:        ['VALOR PAGAMENTO', 'VLR PAGO', 'VLR LIQUIDO', 'VALOR'],
       description:  ['NOME ABREVIADO', 'HISTORICO', 'DESCRICAO', 'NOME'],
-      supplier:     ['FORNECEDOR', 'COD FORNECEDOR', 'COD FORNEC'],
-      company:      ['EMPRESA', 'COD EMPRESA'],
-      establishment:['ESTABELECIMENTO', 'ESTAB'],
-      species:      ['ESPECIE DOCUMENTO', 'ESPECIE', 'TP DOCTO'],
+      supplier:     ['FORNECEDOR', 'COD FORNECEDOR', 'COD FORNEC', 'FORNEC'],
+      company:      ['EMPRESA', 'COD EMPRESA', 'EMP'],
+      establishment:['ESTABELECIMENTO', 'ESTAB', 'EST'],
+      species:      ['ESPECIE DOCUMENTO', 'ESPECIE', 'TP DOCTO', 'ESP'],
       document:     ['TITULO', 'DOCUMENTO', 'NUMERO', 'NF'],
-      installment:  ['PARCELA', 'PARC'],
+      installment:  ['PARCELA', 'PARC', '/P'],
       valueOriginal:['VALOR ORIGINAL', 'VL ORIGINAL', 'VLR ORIGINAL', 'VL ORIGINAL TITULO'],
       businessUnit: ['UNIDADE DE NEGOCIO', 'UNID NEGOCIO', 'UNIDADE', 'CENTRO DE CUSTO'],
     },
@@ -183,6 +183,31 @@ function detectSeparator(headerLine: string): ';' | ',' {
   const countSemi  = (headerLine.match(/;/g) ?? []).length;
   const countComma = (headerLine.match(/,/g) ?? []).length;
   return countSemi >= countComma ? ';' : ',';
+}
+
+/**
+ * Detecta se as datas vêm em ordem BR (DD/MM) ou US (MM/DD).
+ * Export TOTVS "Por Estabelecimento" sai em MM/DD/AA; o CSV antigo em DD/MM/AAAA.
+ */
+function detectDateOrder(samples: string[]): 'BR' | 'US' {
+  for (const s of samples) {
+    const m = (s || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (!m) continue;
+    if (+m[1] > 12) return 'BR'; // 1º campo > 12 => só pode ser dia
+    if (+m[2] > 12) return 'US'; // 2º campo > 12 => só pode ser dia => mês vem 1º
+  }
+  // Ambíguo: ano com 2 dígitos é o export novo (US); 4 dígitos é o padrão antigo (BR).
+  return samples.some(s => /\/\d{2}$/.test(s || '')) ? 'US' : 'BR';
+}
+
+/** Normaliza data slash para DD/MM/AAAA (formato esperado por parseDate). */
+function toBRDate(raw: string, order: 'BR' | 'US'): string {
+  const m = (raw || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (!m) return raw; // formato desconhecido — mantém como veio
+  const day  = order === 'US' ? m[2] : m[1];
+  const mon  = order === 'US' ? m[1] : m[2];
+  const year = m[3].length === 2 ? '20' + m[3] : m[3];
+  return `${day.padStart(2, '0')}/${mon.padStart(2, '0')}/${year}`;
 }
 
 /** Encontra índice de coluna usando as listas de possíveis nomes. */
@@ -297,6 +322,17 @@ export function parseRealizedCSV(
   if (cols.date  === -1) missingRequired.push('Data');
   if (cols.value === -1) missingRequired.push('Valor');
 
+  // Detecta a ordem das datas (BR DD/MM vs US MM/DD) a partir de uma amostra das linhas.
+  const dateSamples: string[] = [];
+  if (cols.date >= 0) {
+    for (let i = 1; i < lines.length && dateSamples.length < 60; i++) {
+      const c = parseCSVLine(lines[i], sep);
+      const d = cleanCell(c[cols.date] ?? '');
+      if (d) dateSamples.push(d);
+    }
+  }
+  const dateOrder = detectDateOrder(dateSamples);
+
   for (let i = 1; i < lines.length; i++) {
     const rawLine    = lines[i];
     const lineNumber = i + 1; // 1-based para o usuário
@@ -347,7 +383,7 @@ export function parseRealizedCSV(
 
     const transaction: Transaction = {
       id:            `real-${Date.now()}-${i}`,
-      date:          rawDate,
+      date:          toBRDate(rawDate, dateOrder),
       description:   desc,
       value:         Math.abs(parsedValue),
       type:          TransactionType.PAYABLE,

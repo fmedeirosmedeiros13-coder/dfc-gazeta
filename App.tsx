@@ -50,6 +50,7 @@ import { useSnapshots }             from './hooks/useSnapshots';
 
 // Engines
 import { parseRealizedCSV, summarizeParseResult } from './engines/csvParser';
+import * as XLSX from 'xlsx';
 import { detectAlerts, alertCount, type Alert }   from './engines/alerts';
 import { auditLog }                               from './engines/auditLog';
 
@@ -218,7 +219,32 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const csvText = ev.target?.result as string;
+        const buf   = ev.target?.result as ArrayBuffer;
+        const bytes = new Uint8Array(buf);
+        let csvText: string;
+
+        if (bytes[0] === 0x50 && bytes[1] === 0x4B) {
+          // É um XLSX (assinatura "PK") — inclusive arquivos .csv que na verdade são Excel.
+          const wb   = XLSX.read(buf, { type: 'array' });
+          const ws   = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' }) as any[][];
+          // Localiza a linha de cabeçalho real (pula a banda de metadados do TOTVS).
+          let hr = rows.findIndex(r => {
+            const j = (r || []).map(c => String(c).toUpperCase()).join('|');
+            return (j.includes('DATA PAGTO') || j.includes('DATA PAGAMENTO')) &&
+                   (j.includes('VALOR PAGAMENTO') || j.includes('VLR'));
+          });
+          if (hr < 0) hr = 0;
+          const header   = rows[hr] || [];
+          // Mantém só linhas de dados (1ª coluna = código de empresa numérico); descarta subtotais/rodapés.
+          const dataRows = rows.slice(hr + 1).filter(r => /^\d+$/.test(String((r || [])[0] ?? '').trim()));
+          const esc = (c: any) => String(c ?? '').replace(/;/g, ',');
+          csvText = [header.map(esc).join(';'), ...dataRows.map(r => r.map(esc).join(';'))].join('\n');
+        } else {
+          // CSV/TXT — decodifica como ISO-8859-1 (padrão dos exports TOTVS).
+          csvText = new TextDecoder('iso-8859-1').decode(buf);
+        }
+
         const result  = parseRealizedCSV(
           csvText,
           [...transactions, ...realizedTransactions],
@@ -257,7 +283,7 @@ export default function App() {
         alert('Erro inesperado ao processar o arquivo.');
       }
     };
-    reader.readAsText(file, 'ISO-8859-1');
+    reader.readAsArrayBuffer(file);
   }, [transactions, realizedTransactions, selectedCompany]);
 
   // ── 9. Sincronização ERP ──────────────────────────────────────────────────

@@ -223,7 +223,7 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={onImportRealized} />
+          <input ref={fileRef} type="file" accept=".csv,.txt,.xls,.xlsx" className="hidden" onChange={onImportRealized} />
           <button
             onClick={() => fileRef.current?.click()}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-900/30 border border-amber-800/50 text-amber-400 text-xs font-medium hover:bg-amber-900/50 transition-colors"
