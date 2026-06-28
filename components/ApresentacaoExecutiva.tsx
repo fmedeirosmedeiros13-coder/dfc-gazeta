@@ -10,7 +10,51 @@ import { PPTExportAlternative } from './PPTExportAlternative';
 import { generatePayablesSlide, generateReceivablesSlide } from '../services/pptxNativeSlides';
 import { drawPayablesPage, drawReceivablesPage } from '../services/pdfNativeSlides';
 import { formatCurrency, parseDate } from '../utils/finance';
+
+// ── Gráficos dos quadros de Pontos Críticos ──────────────────────────────────
+const RiskDonut: React.FC<{ pct: number; color: string; caption?: string }> = ({ pct, color, caption }) => {
+  const p = Math.max(0, Math.min(100, pct));
+  const data = [{ value: p }, { value: 100 - p }];
+  return (
+    <div className="relative w-full h-full flex items-center justify-center">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie data={data} dataKey="value" innerRadius="64%" outerRadius="88%" startAngle={90} endAngle={-270} stroke="none" isAnimationActive={false}>
+            <Cell fill={color} />
+            <Cell fill="#1f2937" />
+          </Pie>
+        </PieChart>
+      </ResponsiveContainer>
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <span className="text-3xl font-bold" style={{ color }}>{p.toFixed(0)}%</span>
+        {caption && <span className="text-[10px] text-slate-500 mt-0.5 px-2 text-center">{caption}</span>}
+      </div>
+    </div>
+  );
+};
+
+const LiquidityBars: React.FC<{ entradas: number; saidas: number; resultado: number }> = ({ entradas, saidas, resultado }) => {
+  const data = [
+    { name: 'Entradas',  v: entradas,  c: '#34d399' },
+    { name: 'Saídas',    v: saidas,    c: '#fb7185' },
+    { name: 'Resultado', v: resultado, c: resultado >= 0 ? '#38bdf8' : '#fbbf24' },
+  ];
+  const fmt = (v: number) => `R$ ${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil`;
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={{ top: 20, right: 8, left: 8, bottom: 0 }}>
+        <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+        <YAxis hide domain={[0, 'dataMax']} />
+        <Bar dataKey="v" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+          {data.map((d, i) => <Cell key={i} fill={d.c} />)}
+          <LabelList dataKey="v" position="top" formatter={fmt} style={{ fill: '#cbd5e1', fontSize: 10, fontWeight: 700 }} />
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+};
 import { IC_TV, IC_INTERNET, IC_RADIO, IC_EVENTOS, IC_DESPESAS } from '../services/coverIcons';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, LabelList } from 'recharts';
 
 interface ApresentacaoExecutivaProps {
   summary: FinancialSummary;
@@ -649,31 +693,38 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                             icon: '⏱', color: 'text-amber-400 bg-amber-500/10',
                             title: 'Concentração de Recebimento',
                             text: topRecDate ? `${fmtPct(recConcentration)} (${fmtK(topRecDate[1])}) dos recebimentos estão previstos para o dia ${topRecDate[0]}.` : 'Sem dados de recebimentos.',
+                            chart: <RiskDonut pct={recConcentration} color="#fbbf24" caption={topRecDate ? `concentrado em ${topRecDate[0]}` : 'do total recebido'} />,
                         },
                         {
                             icon: '👥', color: 'text-sky-400 bg-sky-500/10',
                             title: 'Despesas de Pessoal',
                             text: totalOut > 0 ? `${fmtPct(pessoalPct)} (${fmtK(pessoalVal)}) do total de saídas está comprometido com Folha e Benefícios.` : 'Sem dados de saídas.',
+                            chart: <RiskDonut pct={pessoalPct} color="#38bdf8" caption="do total de saídas" />,
                         },
                         {
                             icon: '🏛', color: 'text-blue-400 bg-blue-500/10',
                             title: 'Impacto Tributário',
                             text: totalOut > 0 ? `${fmtPct(impPct)} (${fmtK(impVal)}) referentes a impostos e contribuições no período. Federais antecipam, estaduais/municipais postergam.` : 'Sem dados de impostos.',
+                            chart: <RiskDonut pct={impPct} color="#60a5fa" caption="do total de saídas" />,
                         },
                         {
                             icon: '🛡', color: 'text-emerald-400 bg-emerald-500/10',
                             title: 'Estratégia de Liquidez',
                             text: invVal > 0 ? `Aplicações/Resgates de investimentos no período: ${fmtK(invVal)}. Geração líquida de caixa: ${fmtK(totalIn - totalOut)}.` : `Geração líquida de caixa prevista: ${fmtK(totalIn - totalOut)}. Sem movimentação de investimentos.`,
+                            chart: <LiquidityBars entradas={totalIn} saidas={totalOut} resultado={totalIn - totalOut} />,
                         },
                     ];
 
                     return cards.map((c, i) => (
-                        <div key={i} className="bg-[#111827] rounded-xl border border-slate-700/50 p-5 flex gap-4 items-start">
-                            <div className={`text-2xl p-3 rounded-lg ${c.color}`}>{c.icon}</div>
-                            <div>
-                                <h4 className="text-base font-bold text-slate-100 mb-1">{c.title}</h4>
-                                <p className="text-sm text-slate-400 leading-relaxed">{c.text}</p>
+                        <div key={i} className="bg-[#111827] rounded-xl border border-slate-700/50 p-5 flex flex-col gap-3 min-h-0">
+                            <div className="flex gap-4 items-start shrink-0">
+                                <div className={`text-2xl p-3 rounded-lg ${c.color}`}>{c.icon}</div>
+                                <div>
+                                    <h4 className="text-base font-bold text-slate-100 mb-1">{c.title}</h4>
+                                    <p className="text-sm text-slate-400 leading-relaxed">{c.text}</p>
+                                </div>
                             </div>
+                            <div className="flex-1 min-h-0">{c.chart}</div>
                         </div>
                     ));
                 })()}
