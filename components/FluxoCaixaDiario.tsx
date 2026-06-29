@@ -1,7 +1,26 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { Transaction, TransactionType, ManualValues } from '../types';
 import { parseDate, BANKS_MAPPING, byDate, moveWeekendToMonday } from '../utils/finance';
 import { Calculator } from 'lucide-react';
+
+// Data canônica em ISO (yyyy-mm-dd), independente do formato de exibição.
+// Usada como chave do fechamento persistido, para o seed funcionar mesmo
+// quando os lançamentos do dia anterior já não estão mais carregados.
+const toISO = (dateStr: string): string => {
+  const t = parseDate(dateStr);
+  if (!t) return dateStr;
+  const dt = new Date(t);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+};
+
+// Dia útil anterior (pula sábado e domingo): segunda → sexta anterior.
+const prevBusinessDayISO = (dateStr: string): string => {
+  const t = parseDate(dateStr);
+  if (!t) return '';
+  const dt = new Date(t);
+  do { dt.setDate(dt.getDate() - 1); } while (dt.getDay() === 0 || dt.getDay() === 6);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+};
 
 interface FluxoCaixaDiarioProps {
   transactions: Transaction[];
@@ -109,7 +128,15 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
 
       // Helper to calculate Row Data on the fly
       const calculateRowData = (storageId: string, compId: string, bankId: string | null) => {
-          let currentBalance = dfcManualValues?.[`sim_start_${storageId}`] || 0; 
+          // Saldo de abertura do PRIMEIRO dia exibido: herda o fechamento persistido
+          // do dia útil anterior (ex.: segunda pega a sexta). Se não houver fechamento
+          // salvo (primeiríssimo uso), cai no seed único sim_start (ou 0).
+          const firstDate = displayDates[0];
+          const prevISO = firstDate ? prevBusinessDayISO(firstDate) : '';
+          const prevClose = prevISO ? dfcManualValues?.[`sim_close_${storageId}_${prevISO}`] : undefined;
+          let currentBalance = (prevClose !== undefined && !Number.isNaN(prevClose))
+            ? prevClose
+            : (dfcManualValues?.[`sim_start_${storageId}`] || 0);
 
           return displayDates.map((date: string) => {
               const pagtos = bankId 
@@ -125,7 +152,12 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
               const keyTransf = `sim_transf_${storageId}_${date}`;
               
               const manualSdIni = dfcManualValues?.[keySdInicial];
-              const sdInicial = manualSdIni !== undefined ? manualSdIni : currentBalance;
+              // Só usa o valor digitado se for um número válido. Campo apagado vira
+              // NaN (parseFloat('')) — nesse caso cai no saldo encadeado em vez de
+              // contaminar parcial/final e todos os dias seguintes com NaN.
+              const sdInicial = (manualSdIni !== undefined && !Number.isNaN(manualSdIni))
+                ? manualSdIni
+                : currentBalance;
               
               const resg = dfcManualValues?.[keyResg] || 0;
               const transf = dfcManualValues?.[keyTransf] || 0;
@@ -196,6 +228,27 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
 
           return { entity: c, days: companyRow, banks: bankRows };
       }), [COMPANIES, BANKS_MAPPING, calculateRowData, displayDates]);
+
+      // Persiste o fechamento (sdFinal) de cada dia por data e banco. É o que
+      // permite a próxima janela (ex.: semana seguinte) herdar o saldo do último
+      // dia útil mesmo quando os lançamentos daquele dia já saíram da tela.
+      // Guarda contra regravação: só escreve quando o valor realmente muda.
+      useEffect(() => {
+          if (!onManualValueChange) return;
+          structuredData.forEach(comp => {
+              comp.banks.forEach(br => {
+                  const storageId = `${comp.entity.id}_${br.bank.id}`;
+                  br.days.forEach((d: any) => {
+                      if (!Number.isFinite(d.sdFinal)) return;
+                      const key = `sim_close_${storageId}_${toISO(d.date)}`;
+                      const stored = dfcManualValues?.[key];
+                      if (stored === undefined || Math.abs(stored - d.sdFinal) > 0.005) {
+                          onManualValueChange(key, d.sdFinal);
+                      }
+                  });
+              });
+          });
+      }, [structuredData, dfcManualValues, onManualValueChange]);
 
       // Totals
       const companyTotals = useMemo(() => {
