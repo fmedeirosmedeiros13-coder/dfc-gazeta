@@ -315,12 +315,24 @@ export function reconcile(
       const idx  = curReal.findIndex(r => valueMatches(p, r));
       if (idx > -1) {
         const r = curReal[idx];
+        // Explica POR QUE ficou em 90% (não chegou a Exato): o valor bateu no
+        // mesmo fornecedor, mas o título não pôde ser confirmado.
+        const pDoc = norm(p.documentNumber);
+        const rDoc = norm(r.documentNumber);
+        let reason: string;
+        if (!pDoc && !rDoc) {
+          reason = 'Casou pelo valor no mesmo fornecedor — sem número de título nos dois lados';
+        } else if (!pDoc || !rDoc) {
+          reason = 'Casou pelo valor no mesmo fornecedor — título ausente em um dos lados';
+        } else {
+          reason = `Casou pelo valor no mesmo fornecedor — título não confere (previsto ${p.documentNumber} × realizado ${r.documentNumber})`;
+        }
         allMatched.push({
           prev: [p], real: [r],
           diff: realValue(r) - prevValue(p),
           type: '1:1',
           confidence: 90,
-          confidenceReason: 'Valor idêntico no mesmo fornecedor',
+          confidenceReason: reason,
         });
         curReal.splice(idx, 1);
       } else {
