@@ -178,8 +178,11 @@ function groupByBucket(
   const buckets: Record<string, { prev: Transaction[]; real: Transaction[] }> = {};
 
   const key = (t: Transaction): string => {
-    const emp  = String(t.companyCode  ?? 'S/E').trim();
-    const forn = String(t.supplierCode ?? '').trim();
+    // Normaliza igual ao norm() (tira zero à esquerda): empresa "1" casa com "001",
+    // fornecedor "1464" casa com "01464". Sem isso, o mesmo fornecedor cai em
+    // buckets diferentes e as fases 2–5 (1:1, 1:N, N:1, N:M) não enxergam o par.
+    const emp  = norm(t.companyCode) || 'S/E';
+    const forn = norm(t.supplierCode);
     // Sem fornecedor → chave única por id (evita agrupamento indevido)
     if (!forn) return `NOMATCH-${t.id}`;
     return `${emp}|${forn}`;
@@ -234,23 +237,41 @@ export function reconcile(
       continue;
     }
 
-    const idx = remainingReal.findIndex(r => {
+    // 1ª tentativa: fornecedor + título (+ parcela) + valor idênticos → score 100.
+    let idx = remainingReal.findIndex(r => {
       const rForn = norm(r.supplierCode);
       return rForn === pForn && sameDocument(p, r) && valueMatches(p, r);
     });
+    let byValue = idx > -1;
+
+    // 2ª tentativa: mesmo fornecedor + mesmo título (+ parcela), mas valor difere.
+    // É o MESMO título pago com juros/multa/desconto — casa assim mesmo e registra
+    // a diferença, em vez de jogar pra "revisar". Score alto (95): a identidade do
+    // título é mais confiável que o valor.
+    if (idx === -1) {
+      idx = remainingReal.findIndex(r => {
+        const rForn = norm(r.supplierCode);
+        return rForn === pForn && sameDocument(p, r);
+      });
+    }
 
     if (idx > -1) {
       const r = remainingReal[idx];
       const withParcela = norm(p.installment) && norm(r.installment);
+      const diff = realValue(r) - prevValue(p);
       allMatched.push({
         prev: [p],
         real: [r],
-        diff: realValue(r) - prevValue(p),
+        diff,
         type: 'EXACT',
-        confidence: 100,
-        confidenceReason: withParcela
-          ? 'Fornecedor + título + parcela + valor idênticos'
-          : 'Fornecedor + título + valor idênticos',
+        confidence: byValue ? 100 : 95,
+        confidenceReason: byValue
+          ? (withParcela
+              ? 'Fornecedor + título + parcela + valor idênticos'
+              : 'Fornecedor + título + valor idênticos')
+          : (withParcela
+              ? `Fornecedor + título + parcela (valor difere R$ ${diff.toFixed(2)} — juros/multa/desconto)`
+              : `Fornecedor + título (valor difere R$ ${diff.toFixed(2)} — juros/multa/desconto)`),
       });
       remainingReal.splice(idx, 1);
     } else {
