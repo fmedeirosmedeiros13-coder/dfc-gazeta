@@ -70,6 +70,25 @@ const VALUE_TOLERANCE = 0.02;
 /** Profundidade máxima do subset-sum para evitar travamento em buckets grandes. */
 const MAX_SUBSET_DEPTH = 5;
 
+/**
+ * Lista de exceção para casar entre fornecedores DIFERENTES (fase GLOBAL).
+ *
+ * Por padrão está VAZIA: se o fornecedor não bater, NÃO casa — vai pra
+ * "Em aberto"/"Surpresas". Isso evita os falsos pares "valor igual entre
+ * fornecedores diferentes" que apareciam na Revisão.
+ *
+ * Para autorizar um caso conhecido (ex.: um título lançado num fornecedor mas
+ * pago por outro código — holding pagando pela coligada, etc.), adicione AQUI
+ * o código do fornecedor (sem zero à esquerda; entra normalizado). Basta que UM
+ * dos lados (previsto OU realizado) esteja na lista para o par ser permitido,
+ * e o motivo na tela vai dizer quais fornecedores estavam envolvidos.
+ *
+ * Ex.: const CROSS_SUPPLIER_ALLOWLIST = new Set(['1464', '2667']);
+ */
+const CROSS_SUPPLIER_ALLOWLIST = new Set<string>([
+  // adicione aqui os códigos de fornecedor autorizados a casar entre si
+]);
+
 // ─── Helpers internos ─────────────────────────────────────────────────────────
 
 function norm(s: string | undefined | null): string {
@@ -375,11 +394,22 @@ export function reconcile(
     leftoverReal.push(...curReal);
   }
 
-  // ── Fase 6 (GLOBAL): match por valor entre buckets diferentes ────────────
+  // ── Fase 6 (GLOBAL): match por valor entre fornecedores DIFERENTES ────────
+  // Só ocorre se UM dos lados estiver na CROSS_SUPPLIER_ALLOWLIST. Lista vazia
+  // por padrão → fornecedor que não bate NÃO casa (vai pra Em aberto/Surpresas).
   const finalPrev: Transaction[] = [];
 
   for (const p of leftoverPrev) {
-    const idx  = leftoverReal.findIndex(r => valueMatches(p, r));
+    const pForn = norm(p.supplierCode);
+    const allowedP = CROSS_SUPPLIER_ALLOWLIST.has(pForn);
+
+    const idx = leftoverReal.findIndex(r => {
+      if (!valueMatches(p, r)) return false;
+      const rForn = norm(r.supplierCode);
+      // permite só se p OU r estiver autorizado na lista de exceção
+      return allowedP || CROSS_SUPPLIER_ALLOWLIST.has(rForn);
+    });
+
     if (idx > -1) {
       const r = leftoverReal[idx];
       allMatched.push({
@@ -387,7 +417,7 @@ export function reconcile(
         diff: realValue(r) - prevValue(p),
         type: 'GLOBAL',
         confidence: 50,
-        confidenceReason: 'Valor igual entre fornecedores diferentes — verificar',
+        confidenceReason: `Fornecedores diferentes autorizados (previsto ${p.supplier ?? pForn} × realizado ${r.supplier ?? norm(r.supplierCode)}) — verificar`,
       });
       leftoverReal.splice(idx, 1);
     } else {
