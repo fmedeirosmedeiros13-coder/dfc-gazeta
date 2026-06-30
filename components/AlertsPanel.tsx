@@ -53,6 +53,16 @@ const TYPE_LABELS: Record<AlertType, string> = {
   UNMATCHED:     'Conciliação',
 };
 
+// Rótulos em português dos metadados dos alertas (ex.: value → Valor).
+const META_LABELS: Record<string, string> = {
+  mean:      'Média',
+  stdDev:    'Desvio-padrão',
+  threshold: 'Limite',
+  value:     'Valor',
+  percent:   'Percentual',
+  supplier:  'Fornecedor',
+};
+
 // ─── Severity badge ───────────────────────────────────────────────────────────
 
 function SeverityBadge({ severity }: { severity: AlertSeverity }) {
@@ -158,7 +168,7 @@ function AlertCard({
             <div className="grid grid-cols-2 gap-2 pt-1">
               {Object.entries(alert.meta).slice(0, 4).map(([k, v]) => (
                 <div key={k} className="bg-slate-900/50 rounded-md px-2 py-1.5">
-                  <p className="text-[9px] text-slate-600 uppercase tracking-wider">{k}</p>
+                  <p className="text-[9px] text-slate-600 uppercase tracking-wider">{META_LABELS[k] ?? k}</p>
                   <p className="text-xs text-slate-400 font-medium truncate">
                     {typeof v === 'number'
                       ? v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })

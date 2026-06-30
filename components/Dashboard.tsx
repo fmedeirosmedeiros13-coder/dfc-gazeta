@@ -1,6 +1,7 @@
 import React, { useRef, useState, useMemo } from 'react';
 import { Transaction, TransactionType, FinancialSummary, AIAnalysisResult, DashboardViewType, ManualValues } from '../types';
 import { parseDate, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell, calcInitialBalance, calcResgAplicTotal, getStartDate } from '../utils/finance';
+import { FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS } from '../utils/flowDePara';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, PieChart, Pie, LabelList, AreaChart, Area, LineChart, Line } from 'recharts';
 import { TrendingUp, TrendingDown, Wallet, AlertCircle, RefreshCw, Briefcase, ChevronRight, ArrowUpCircle, BrainCircuit, ShieldCheck, Lightbulb, Table2, Scale, Upload, Trash2, AlertTriangle, CheckCircle2, FileX, Tag, ArrowLeft, Layers, CalendarRange, DollarSign, Calendar, ArrowDownRight, ArrowUpRight, Printer, Calculator, Target, LayoutGrid, ListFilter, Landmark } from 'lucide-react';
 import { FluxoCaixaDiario }      from './FluxoCaixaDiario';
@@ -83,10 +84,27 @@ interface MatchGroup {
 const parseDateGlobal = parseDate;
 const BANKS_MAPPING_GLOBAL = BANKS_MAPPING;
 
+// Mapa N3 (5 dígitos) → descrição, montado do De-Para. Usado para rotular as
+// subcategorias N3 no detalhe da Base DFC.
+const N3_DESC: Record<string, string> = (() => {
+  const m: Record<string, string> = {};
+  Object.values(FLOW_DEPARA).forEach(f => { if (f.n3 && !m[f.n3]) m[f.n3] = f.desc; });
+  Object.values(FLOW_DEPARA_AMBIGUOUS).forEach(arr => arr.forEach(f => { if (f.n3 && !m[f.n3]) m[f.n3] = f.desc; }));
+  return m;
+})();
+
 export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTransactions = [], summary, aiAnalysis, onGenerateAI, isGeneratingAI, viewType, dfcManualValues, onManualValueChange, onImportRealized, onClearRealized, isSlide = false, alerts = [], snapshots = [] }) => {
   
   const [activeConciliationTab, setActiveConciliationTab] = useState<'DEFAULT' | 'MATCHED' | 'PENDING' | 'UNEXPECTED' | 'STRATEGIC'>('DEFAULT');
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Quais grupos N2 estão abertos mostrando o detalhe N3 (na Base DFC).
+  const [expandedN2, setExpandedN2] = useState<Set<string>>(new Set());
+  const toggleN2 = (rowKey: string) => setExpandedN2(prev => {
+    const next = new Set(prev);
+    next.has(rowKey) ? next.delete(rowKey) : next.add(rowKey);
+    return next;
+  });
 
   // formatCurrency, formatCompact e formatDFCCell importados de utils/finance.ts
   const formatFullCurrency = formatCurrency; // alias — idênticos em uso
@@ -545,6 +563,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
       const matrix: Record<string, number> = {};
       const totals: Record<string, number> = {}; 
 
+      // Detalhe N3 dentro de cada grupo N2.
+      const n3Matrix: Record<string, number> = {};       // `${prefix}_${codN2}_N3_${n3}_${colId}`
+      const n3Totals: Record<string, number> = {};       // `${prefix}_${codN2}_N3_${n3}`
+      const n3ByGroup: Record<string, Set<string>> = {};  // `${prefix}_${codN2}` -> conjunto de N3
+
       // --- INTEGRATION: USE CALCULATED INITIAL BALANCE ---
       COLS.forEach(col => {
           matrix[`0_${col.id}`] = getSimulationInitialBalance(col.id);
@@ -603,6 +626,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
               
               matrix[key] = (matrix[key] || 0) + (Number(t.value) || 0);
               totals[totalKey] = (totals[totalKey] || 0) + (Number(t.value) || 0);
+
+              // Detalhe N3: usa o código de fluxo de 5 dígitos; sem ele, agrupa em "—".
+              const n3 = String(t.flowTypeCode || '').trim() || '—';
+              const gkey = `${prefix}_${categoryCode}`;
+              n3Matrix[`${gkey}_N3_${n3}_${col.id}`] = (n3Matrix[`${gkey}_N3_${n3}_${col.id}`] || 0) + (Number(t.value) || 0);
+              n3Totals[`${gkey}_N3_${n3}`] = (n3Totals[`${gkey}_N3_${n3}`] || 0) + (Number(t.value) || 0);
+              (n3ByGroup[gkey] = n3ByGroup[gkey] || new Set<string>()).add(n3);
           }
       });
 
@@ -611,9 +641,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           const rowTotal = totals[rowKey] || 0;
           const showCode = rowDef.code !== 'INV_TOTAL';
 
+          // N3 do grupo, ordenados por valor (maior primeiro).
+          const n3List = Array.from(n3ByGroup[rowKey] || [])
+              .map(n3 => ({ n3, total: n3Totals[`${rowKey}_N3_${n3}`] || 0 }))
+              .filter(x => x.total !== 0)
+              .sort((a, b) => b.total - a.total);
+          const canExpand = n3List.length > 0;
+          const isOpen = expandedN2.has(rowKey);
+
           return (
-              <tr key={rowKey} className={`bg-slate-800 border-b border-slate-700 ${isSlide ? 'text-[7px]' : 'text-[10px]'} hover:bg-slate-700/50`}>
+              <React.Fragment key={rowKey}>
+              <tr
+                  className={`bg-slate-800 border-b border-slate-700 ${isSlide ? 'text-[7px]' : 'text-[10px]'} hover:bg-slate-700/50 ${canExpand ? 'cursor-pointer' : ''}`}
+                  onClick={canExpand ? () => toggleN2(rowKey) : undefined}
+              >
                   <td className={`${isSlide ? 'p-0.5 pl-1' : 'p-1 pl-4'} border-r border-slate-700 font-medium text-slate-300 flex gap-2 items-start whitespace-normal min-w-[250px]`}>
+                      {canExpand && <ChevronRight className={`w-3 h-3 shrink-0 mt-0.5 text-slate-500 transition-transform ${isOpen ? 'rotate-90' : ''}`} />}
                       {showCode && <span className="w-6 text-right text-slate-500 shrink-0">{rowDef.code}</span>}
                       <span className="break-words leading-tight">{rowDef.label}</span>
                   </td>
@@ -629,6 +672,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                       {rowTotal ? rowTotal.toLocaleString('pt-BR', {minimumFractionDigits: 0}) : '-'}
                   </td>
               </tr>
+              {isOpen && n3List.map(({ n3 }) => (
+                  <tr key={`${rowKey}_${n3}`} className={`bg-slate-900/60 border-b border-slate-800 ${isSlide ? 'text-[7px]' : 'text-[10px]'} text-slate-400`}>
+                      <td className={`${isSlide ? 'p-0.5 pl-6' : 'p-1 pl-12'} border-r border-slate-800 whitespace-normal min-w-[250px]`}>
+                          <span className="w-10 inline-block text-right text-slate-600 mr-2">{n3 === '—' ? '' : n3}</span>
+                          <span className="break-words leading-tight italic">{n3 === '—' ? 'Sem N3 informado' : (N3_DESC[n3] || 'N3 fora do De-Para')}</span>
+                      </td>
+                      {COLS.map(c => {
+                          const val = n3Matrix[`${rowKey}_N3_${n3}_${c.id}`];
+                          return (
+                              <td key={c.id} className={`${isSlide ? 'p-0.5' : 'p-1'} border-r border-slate-800 text-right`}>
+                                  {val ? val.toLocaleString('pt-BR', {minimumFractionDigits: 0}) : '-'}
+                              </td>
+                          );
+                      })}
+                      <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right text-slate-300 bg-slate-900/70`}>
+                          {(n3Totals[`${rowKey}_N3_${n3}`] || 0).toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                      </td>
+                  </tr>
+              ))}
+              </React.Fragment>
           );
       };
 
@@ -686,6 +749,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                  <h2 className="text-sm font-medium uppercase pl-2 text-slate-100 flex items-center gap-2">
                      <LayoutGrid className="w-4 h-4 text-slate-400" />
                      Base DFC - Nível 02
+                     <span className="hidden sm:inline text-[10px] normal-case text-slate-500 font-normal ml-1">· clique numa linha para ver o detalhe N3</span>
                  </h2>
                  <div className="flex gap-2">
                      <button className="px-4 py-1.5 bg-slate-800/60 border border-slate-700/60 text-slate-100 rounded-lg text-xs font-medium uppercase hover:bg-slate-700/60 transition-colors">
