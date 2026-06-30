@@ -318,25 +318,35 @@ function detectAnomalies(transactions: Transaction[]): Alert[] {
   }
 
   for (const [, data] of Object.entries(bySupplier)) {
-    if (data.values.length < 3) continue; // Precisa de histórico mínimo
-    const mean = data.values.reduce((s, v) => s + v, 0) / data.values.length;
-    const sd   = stdDev(data.values);
-    if (!sd) continue;
-    const threshold = mean + CONFIG.anomalyStdDevMultiplier * sd;
+    const n = data.values.length;
+    if (n < 3) continue; // Precisa de histórico mínimo (o próprio valor + 2 outros)
 
-    const anomalies = data.values
-      .map((v, i) => ({ v, id: data.ids[i] }))
-      .filter(({ v }) => v > threshold);
+    // Estatística "deixa-um-de-fora": para cada lançamento, a média e o desvio
+    // são calculados com os OUTROS lançamentos do fornecedor, sem incluir o
+    // próprio valor testado. Assim um valor muito alto não infla a própria base
+    // e mascara a detecção. Sum/sumSq totais permitem fazer isso em O(n).
+    const sum   = data.values.reduce((s, v) => s + v, 0);
+    const sumSq = data.values.reduce((s, v) => s + v * v, 0);
 
-    for (const { v, id } of anomalies) {
+    for (let i = 0; i < n; i++) {
+      const v  = data.values[i];
+      const m  = n - 1;                       // nº de "outros" lançamentos
+      if (m < 2) continue;                    // precisa de ao menos 2 para comparar
+      const mean = (sum - v) / m;             // média dos demais
+      const variance = Math.max(0, (sumSq - v * v) / m - mean * mean);
+      const sd = Math.sqrt(variance);
+      if (!sd || mean <= 0) continue;
+      const threshold = mean + CONFIG.anomalyStdDevMultiplier * sd;
+      if (v <= threshold) continue;
+
       alerts.push({
         id:                    makeId('ANOMALY'),
         type:                  'ANOMALY',
         severity:              'warning',
         title:                 `Valor anômalo: ${data.name}`,
-        description:           `${formatCurrency(v)} está ${((v / mean - 1) * 100).toFixed(0)}% acima da média histórica (${formatCurrency(mean)}) deste fornecedor.`,
+        description:           `${formatCurrency(v)} está ${((v / mean - 1) * 100).toFixed(0)}% acima da média dos demais lançamentos deste fornecedor (${formatCurrency(mean)}), com base em ${n} lançamentos no sistema.`,
         impactValue:           v,
-        relatedTransactionIds: [id],
+        relatedTransactionIds: [data.ids[i]],
         generatedAt:           new Date(),
         meta: { mean, stdDev: sd, threshold, value: v },
       });
