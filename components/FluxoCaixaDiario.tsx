@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { Transaction, TransactionType, ManualValues } from '../types';
 import { parseDate, BANKS_MAPPING, byDate, moveWeekendToMonday } from '../utils/finance';
 import { Calculator } from 'lucide-react';
@@ -43,6 +43,15 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
       const allDates = (Array.from(new Set(adjustedTransactions.map(t => t.date))) as string[]).sort(byDate);
       
       const displayDates = allDates.slice(0, 5);
+
+      // Botão "ocultar dia anterior": quando ligado, mostra só o dia corrente
+      // (hoje) em diante. O cálculo do saldo continua passando por todos os dias;
+      // só a EXIBIÇÃO das colunas anteriores é escondida.
+      const [hidePast, setHidePast] = useState(false);
+      const todayStart = (() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime(); })();
+      const anyFuture = displayDates.some(d => parseDate(d) >= todayStart);
+      const effectiveHide = hidePast && anyFuture; // não esconde tudo se não houver dia >= hoje
+      const isVisibleIdx = (i: number) => !effectiveHide || parseDate(displayDates[i]) >= todayStart;
 
       const COMPANIES = [
           { id: '1', name: 'S.A. A GAZETA' },
@@ -282,6 +291,13 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                      Fluxo de Caixa - Simulação Diária
                  </h2>
                  <div className="flex gap-2">
+                     <button
+                         onClick={() => setHidePast(v => !v)}
+                         className={`px-3 py-1 rounded text-[10px] font-bold uppercase transition-colors border ${hidePast ? 'bg-indigo-600 text-white border-indigo-500 hover:bg-indigo-700' : 'bg-slate-700 text-slate-300 border-slate-600 hover:bg-slate-600'}`}
+                         title="Mostra só o dia corrente em diante, ocultando os dias anteriores"
+                     >
+                         {hidePast ? 'Mostrar dias anteriores' : 'Ocultar dias anteriores'}
+                     </button>
                      <button className="px-3 py-1 bg-blue-600 text-white rounded text-[10px] font-bold uppercase hover:bg-blue-700">
                          Exportar Excel
                      </button>
@@ -299,7 +315,8 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                      <span className="mt-1 font-black text-slate-100">REDE GAZETA</span>
                                  </div>
                              </th>
-                             {displayDates.map(date => {
+                             {displayDates.map((date, idx) => {
+                                 if (!isVisibleIdx(idx)) return null;
                                  const [d, m, y] = date.split('/').map(Number);
                                  const dateObj = new Date(y, m - 1, d);
                                  const days = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -325,7 +342,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                              <th className="sticky left-0 z-30 bg-slate-800 border border-slate-700 p-1 w-[200px] min-w-[200px] text-left pl-2 font-bold text-slate-300 uppercase align-bottom">
                                  EMPRESAS
                              </th>
-                             {displayDates.map(date => (
+                             {displayDates.map((date, idx) => isVisibleIdx(idx) && (
                                  <React.Fragment key={date}>
                                      <th className="bg-slate-800 border border-slate-700 p-1 w-[80px] font-bold text-slate-400 text-center border-l-4 border-l-slate-600">SD Inicial</th>
                                      <th className="bg-slate-800 border border-slate-700 p-1 w-[80px] font-bold text-slate-400 text-center">Pagamentos</th>
@@ -348,7 +365,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                      <td className="sticky left-0 z-10 bg-slate-800/90 border-r border-slate-700 p-1 pl-2 font-bold text-slate-200 border-l-4 border-l-indigo-500 truncate">
                                          {group.entity.name}
                                      </td>
-                                     {group.days.map((day, i) => (
+                                     {group.days.map((day, i) => isVisibleIdx(i) && (
                                          <React.Fragment key={i}>
                                              <td className="border border-slate-700 p-1 bg-slate-900/50 border-l-4 border-l-slate-700 text-right font-medium text-slate-300">
                                                  {day.sdInicial.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
@@ -381,7 +398,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                          <td className="sticky left-0 z-10 bg-slate-900 border-r border-slate-700 p-1 pl-6 text-[9px] font-medium text-slate-400 italic flex items-center gap-1">
                                              <span className="text-slate-600">↳</span> {bRow.bank.id}
                                          </td>
-                                         {bRow.days.map((day, i) => (
+                                         {bRow.days.map((day, i) => isVisibleIdx(i) && (
                                              <React.Fragment key={i}>
                                                  <td className="border border-slate-800 p-0 bg-slate-900 border-l-4 border-l-slate-800">
                                                       <input 
@@ -430,7 +447,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                          {/* TOTAL EMPRESAS */}
                          <tr className="bg-[#0f172a] text-white font-bold border-t-4 border-slate-900">
                              <td className="sticky left-0 z-30 bg-[#0f172a] border border-slate-700 p-2 text-center uppercase text-[11px]">TOTAL</td>
-                             {companyTotals.map((t, i) => (
+                             {companyTotals.map((t, i) => isVisibleIdx(i) && (
                                  <React.Fragment key={i}>
                                      <td className="border border-slate-700 p-1 text-right bg-[#1e293b] border-l-4 border-l-slate-600">{t.sumInicial.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
                                      <td className="border border-slate-700 p-1 text-right bg-[#1e293b] text-red-400">{t.sumPagtos.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
