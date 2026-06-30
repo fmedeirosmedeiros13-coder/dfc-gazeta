@@ -6,6 +6,7 @@ import { Lancamentos } from './Lancamentos';
 import { MultiSelect } from './MultiSelect';
 import { useTransactionFilters } from '../hooks/useTransactionFilters';
 import { parseDate, formatCurrency } from '../utils/finance';
+import { resolveFlowFromConta, FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS } from '../utils/flowDePara';
 
 interface GestaoLancamentosProps {
   transactions: Transaction[];
@@ -42,6 +43,26 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
 
   const [isConfirmingClear, setIsConfirmingClear] = useState(false);
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
+
+  // Modal "informar fluxo": títulos importados sem fluxo (após o fallback).
+  const [missingFlowOpen, setMissingFlowOpen] = useState(false);
+  const [pendingImport, setPendingImport] = useState<Transaction[]>([]);
+  const [pendingWarning, setPendingWarning] = useState('');
+  const [flowDrafts, setFlowDrafts] = useState<Record<string, string>>({});
+
+  // Lista de opções de fluxo (N3) a partir do De-Para, deduplicada por N3.
+  const FLOW_OPTIONS = useMemo(() => {
+    const m = new Map<string, { n3: string; n2: string; desc: string }>();
+    Object.values(FLOW_DEPARA).forEach(f => { if (!m.has(f.n3)) m.set(f.n3, { n3: f.n3, n2: f.n2, desc: f.desc }); });
+    Object.values(FLOW_DEPARA_AMBIGUOUS).forEach(arr => arr.forEach(f => { if (!m.has(f.n3)) m.set(f.n3, { n3: f.n3, n2: f.n2, desc: f.desc }); }));
+    return Array.from(m.values()).sort((a, b) => a.n3.localeCompare(b.n3));
+  }, []);
+  const n3ToN2 = useMemo(() => {
+    const m: Record<string, string> = {};
+    FLOW_OPTIONS.forEach(o => { m[o.n3] = o.n2; });
+    return m;
+  }, [FLOW_OPTIONS]);
+
   const [pasteText, setPasteText] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -489,6 +510,18 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                    const n2Cadastro = flowN2Map.get(String(fluxoCod).trim());
                    if (n2Cadastro) fluxo2 = n2Cadastro;
                }
+               // Fallback (raro): a planilha do TOTVS quase sempre traz o fluxo.
+               // Se NÃO vier o N3, tenta resolver pela Conta TOTVS no De-Para embutido.
+               // Conta ambígua (vários N3 conforme produto) não é chutada — fica vazia.
+               let fluxoCodFinal = fluxoCod;
+               if (!fluxoCodFinal) {
+                   const contaTotvs = getVal(['CONTA TOTVS', 'CONTA', 'CTB']);
+                   const dep = resolveFlowFromConta(contaTotvs);
+                   if (dep && dep !== 'AMBIGUOUS') {
+                       fluxoCodFinal = dep.n3;
+                       if (!fluxo2) fluxo2 = dep.n2;
+                   }
+               }
                const dataPrev  = getVal(['DT PREV PAGT', 'DATA PAGAMENTO', 'DT PREVISAO', 'DATA', 'DIA']);
                const valor     = getVal(['VALOR', 'VLR', 'R$']);
 
@@ -507,7 +540,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                        supplier: nomeForn || despesas,
                        species: esp,
                        documentNumber: tit,
-                       flowTypeCode: fluxoCod,
+                       flowTypeCode: fluxoCodFinal,
                        flowTypeLevel2: fluxo2,
                    } as Transaction;
                }
@@ -567,6 +600,16 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                const vlConsiderado = getVal(['VLR ORIGINAL CC CONTA', 'VLR ORIGINAL CC/CONTA', 'VL CONSID', 'VL CONSIDERADO', 'VALOR', 'VLR LIQUIDO', 'R$', 'VALOR RECEBER']);
 
                let flowLevel2 = getVal(['FLUXO NIVEL 2', 'FLUXO N2', 'NIVEL 2']);
+               // Fallback (raro) por Conta TOTVS quando o N3 não vier na planilha.
+               let tpFluxoFinal = tpFluxo;
+               if (!tpFluxoFinal) {
+                   const contaTotvsR = getVal(['CONTA TOTVS', 'CONTA', 'CTB']);
+                   const depR = resolveFlowFromConta(contaTotvsR);
+                   if (depR && depR !== 'AMBIGUOUS') {
+                       tpFluxoFinal = depR.n3;
+                       if (!flowLevel2) flowLevel2 = depR.n2;
+                   }
+               }
                // Prioridade 1: Lookup no cadastro de Tipo de Fluxo
                if (!flowLevel2 && tpFluxo) {
                    const n2Cadastro = flowN2Map.get(String(tpFluxo).trim());
@@ -602,7 +645,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                        portfolio: carteira,
                        businessUnitCode: unCod,
                        businessUnit: unNome,
-                       flowTypeCode: tpFluxo,
+                       flowTypeCode: tpFluxoFinal,
                        flowTypeLevel2: flowLevel2,
                        category: categoryVal,
                        emissionDate: parseDateExcel(dtEmissao),
@@ -726,6 +769,29 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           if (tr) newTransactions.push(tr);
       }
 
+      // Antes de importar: existe título a pagar/receber SEM fluxo (após o fallback
+      // por Conta TOTVS)? Se sim, pergunta ao usuário e dá a opção de informar o
+      // fluxo de cada um antes de concluir a importação.
+      const semFluxo = newTransactions.filter(t =>
+          (t.type === TransactionType.PAYABLE || t.type === TransactionType.RECEIVABLE)
+          && !String(t.flowTypeCode || '').trim()
+      );
+      if (semFluxo.length > 0) {
+          const drafts: Record<string, string> = {};
+          semFluxo.forEach(t => { drafts[t.id] = ''; });
+          setPendingImport(newTransactions);
+          setPendingWarning(missingColsWarning);
+          setFlowDrafts(drafts);
+          setMissingFlowOpen(true);
+          return; // aguarda o usuário informar os fluxos no modal
+      }
+
+      commitImport(newTransactions, missingColsWarning);
+  };
+
+  // Conclui a importação: gera recorrentes do calendário, grava e avisa.
+  // Chamado direto (sem fluxo faltante) ou após o modal de "informar fluxo".
+  const commitImport = (newTransactions: Transaction[], missingColsWarning: string) => {
       // Verificação automática Calendário × Pagamentos:
       // gera o que faltar e marca 'OK' o que já veio na importação.
       const importPayables = [
@@ -774,6 +840,34 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
       } else {
           alert(`Nenhum registro compatível encontrado para ${activeTab}.`);
       }
+  };
+
+  // Aplica os fluxos informados no modal e conclui a importação.
+  const confirmMissingFlow = (importAnyway: boolean) => {
+      const list = pendingImport.map(t => {
+          const chosen = (flowDrafts[t.id] || '').trim();
+          if (chosen) {
+              const n2 = n3ToN2[chosen];
+              return { ...t, flowTypeCode: chosen, flowTypeLevel2: t.flowTypeLevel2 || n2 || t.flowTypeLevel2 } as Transaction;
+          }
+          return t;
+      });
+      // Se não for "importar mesmo assim", impede concluir com algum fluxo ainda vazio.
+      if (!importAnyway) {
+          const aindaVazio = list.some(t =>
+              (t.type === TransactionType.PAYABLE || t.type === TransactionType.RECEIVABLE)
+              && !String(t.flowTypeCode || '').trim()
+          );
+          if (aindaVazio) {
+              alert('Ainda há título(s) sem fluxo. Informe o fluxo de todos ou use "Importar mesmo assim".');
+              return;
+          }
+      }
+      setMissingFlowOpen(false);
+      commitImport(list, pendingWarning);
+      setPendingImport([]);
+      setFlowDrafts({});
+      setPendingWarning('');
   };
 
   // Chave de match: Fornecedor (código) + Tipo de Fluxo (ambos preenchidos).
@@ -1030,6 +1124,71 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                             <Check className="w-4 h-4" /> Confirmar Exclusão
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Modal: informar fluxo de títulos importados sem fluxo */}
+      {missingFlowOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+            <div className="bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl p-6 border border-slate-800/60 flex flex-col" style={{ maxHeight: '85vh' }}>
+                <div className="flex items-start gap-3 mb-4">
+                    <div className="w-12 h-12 bg-amber-900/40 rounded-full flex items-center justify-center shrink-0">
+                        <AlertTriangle className="w-6 h-6 text-amber-400" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold text-slate-100">Títulos sem fluxo</h3>
+                        <p className="text-sm text-slate-400 mt-1">
+                            {Object.keys(flowDrafts).length} título(s) vieram na planilha sem o código de fluxo e não foram resolvidos pela Conta TOTVS. Informe o fluxo de cada um antes de concluir.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="overflow-auto flex-1 -mx-2 px-2 space-y-2">
+                    {pendingImport.filter(t => t.id in flowDrafts).map(t => (
+                        <div key={t.id} className="bg-slate-800/50 border border-slate-700/60 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm text-slate-200 font-medium truncate">{t.supplier || t.customer || t.description || 'Sem descrição'}</p>
+                                <p className="text-[11px] text-slate-500">
+                                    {t.type === TransactionType.PAYABLE ? 'A pagar' : 'A receber'}
+                                    {t.documentNumber ? ` · Título ${t.documentNumber}` : ''}
+                                    {' · '}{formatCurrency(Number(t.value) || 0)}
+                                </p>
+                            </div>
+                            <select
+                                value={flowDrafts[t.id] || ''}
+                                onChange={(e) => setFlowDrafts(prev => ({ ...prev, [t.id]: e.target.value }))}
+                                className="w-full sm:w-72 px-2 py-2 rounded-md border border-slate-600 bg-slate-900 text-slate-100 text-xs"
+                            >
+                                <option value="">— escolher fluxo (N3) —</option>
+                                {FLOW_OPTIONS.map(o => (
+                                    <option key={o.n3} value={o.n3}>{o.n3} — {o.desc}</option>
+                                ))}
+                            </select>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 w-full mt-5">
+                    <button
+                        onClick={() => { setMissingFlowOpen(false); setPendingImport([]); setFlowDrafts({}); setPendingWarning(''); }}
+                        className="flex-1 px-4 py-3 bg-slate-800/60 hover:bg-slate-700/60 text-slate-100 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 border border-slate-700/60"
+                    >
+                        <X className="w-4 h-4" /> Cancelar importação
+                    </button>
+                    <button
+                        onClick={() => confirmMissingFlow(true)}
+                        className="flex-1 px-4 py-3 bg-slate-700 hover:bg-slate-600 text-slate-100 font-bold rounded-xl transition-colors"
+                    >
+                        Importar mesmo assim
+                    </button>
+                    <button
+                        onClick={() => confirmMissingFlow(false)}
+                        className="flex-1 px-4 py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-xl shadow-sm transition-colors flex items-center justify-center gap-2"
+                    >
+                        <Check className="w-4 h-4" /> Confirmar e importar
+                    </button>
                 </div>
             </div>
         </div>
