@@ -62,9 +62,9 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
 
   // Lista de opções de fluxo (N3) a partir do De-Para, deduplicada por N3.
   const FLOW_OPTIONS = useMemo(() => {
-    const m = new Map<string, { n3: string; n2: string; desc: string }>();
-    Object.values(FLOW_DEPARA).forEach(f => { if (!m.has(f.n3)) m.set(f.n3, { n3: f.n3, n2: f.n2, desc: f.desc }); });
-    Object.values(FLOW_DEPARA_AMBIGUOUS).forEach(arr => arr.forEach(f => { if (!m.has(f.n3)) m.set(f.n3, { n3: f.n3, n2: f.n2, desc: f.desc }); }));
+    const m = new Map<string, { n3: string; n2: string; desc: string; fluxo: string }>();
+    Object.values(FLOW_DEPARA).forEach(f => { if (!m.has(f.n3)) m.set(f.n3, { n3: f.n3, n2: f.n2, desc: f.desc, fluxo: f.fluxo }); });
+    Object.values(FLOW_DEPARA_AMBIGUOUS).forEach(arr => arr.forEach(f => { if (!m.has(f.n3)) m.set(f.n3, { n3: f.n3, n2: f.n2, desc: f.desc, fluxo: f.fluxo }); }));
     return Array.from(m.values()).sort((a, b) => a.n3.localeCompare(b.n3));
   }, []);
   const n3ToN2 = useMemo(() => {
@@ -72,6 +72,25 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
     FLOW_OPTIONS.forEach(o => { m[o.n3] = o.n2; });
     return m;
   }, [FLOW_OPTIONS]);
+  const n3ToFluxo = useMemo(() => {
+    const m: Record<string, string> = {};
+    FLOW_OPTIONS.forEach(o => { m[o.n3] = o.fluxo; });
+    return m;
+  }, [FLOW_OPTIONS]);
+
+  // Direção esperada por tipo de lançamento: Contas a Pagar só aceita fluxo de
+  // Saída; Contas a Receber só aceita fluxo de Entrada. Fluxos sem direção
+  // conhecida no De-Para (raro) ficam disponíveis para os dois, para não
+  // travar o usuário por falta de informação.
+  const flowOptionsFor = (t: Transaction) => {
+      if (t.type === TransactionType.PAYABLE) {
+          return FLOW_OPTIONS.filter(o => o.fluxo !== 'Entrada');
+      }
+      if (t.type === TransactionType.RECEIVABLE) {
+          return FLOW_OPTIONS.filter(o => o.fluxo !== 'Saída');
+      }
+      return FLOW_OPTIONS;
+  };
 
   const [pasteText, setPasteText] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -939,6 +958,23 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           }
           return t;
       });
+      // Segunda camada de proteção (a primeira é o dropdown já filtrado por
+      // direção): barra qualquer combinação errada — fluxo de Entrada num
+      // Contas a Pagar, ou de Saída num Contas a Receber — mesmo que tenha
+      // entrado por outro caminho.
+      const direcaoErrada = list.find(t => {
+          const fluxo = n3ToFluxo[String(t.flowTypeCode || '').trim()];
+          if (!fluxo) return false;
+          if (t.type === TransactionType.PAYABLE    && fluxo === 'Entrada') return true;
+          if (t.type === TransactionType.RECEIVABLE && fluxo === 'Saída')   return true;
+          return false;
+      });
+      if (direcaoErrada) {
+          const fluxo = n3ToFluxo[String(direcaoErrada.flowTypeCode || '').trim()];
+          const tipoLabel = direcaoErrada.type === TransactionType.PAYABLE ? 'Contas a Pagar' : 'Contas a Receber';
+          alert(`Fluxo incompatível: "${direcaoErrada.flowTypeCode}" é um fluxo de ${fluxo}, mas este lançamento é ${tipoLabel}. Escolha um fluxo de ${direcaoErrada.type === TransactionType.PAYABLE ? 'Saída' : 'Entrada'}.`);
+          return;
+      }
       // Se não for "importar mesmo assim", impede concluir com algum fluxo ainda vazio.
       if (!importAnyway) {
           const aindaVazio = list.some(t =>
@@ -1268,7 +1304,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                             <div className="flex-1 min-w-0">
                                 <p className="text-sm text-slate-200 font-medium truncate">{t.supplier || t.customer || t.description || 'Sem descrição'}</p>
                                 <p className="text-[11px] text-slate-500">
-                                    {t.type === TransactionType.PAYABLE ? 'A pagar' : 'A receber'}
+                                    {t.type === TransactionType.PAYABLE ? 'A pagar (aceita só fluxo de Saída)' : 'A receber (aceita só fluxo de Entrada)'}
                                     {t.documentNumber ? ` · Título ${t.documentNumber}` : ''}
                                     {' · '}{formatCurrency(Number(t.value) || 0)}
                                 </p>
@@ -1279,7 +1315,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                                 className="w-full sm:w-72 px-2 py-2 rounded-md border border-slate-600 bg-slate-900 text-slate-100 text-xs"
                             >
                                 <option value="">— escolher fluxo (N3) —</option>
-                                {FLOW_OPTIONS.map(o => (
+                                {flowOptionsFor(t).map(o => (
                                     <option key={o.n3} value={o.n3}>{o.n3} — {o.desc}</option>
                                 ))}
                             </select>
