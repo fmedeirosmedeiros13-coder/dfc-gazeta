@@ -47,6 +47,7 @@ import { notificationService }                           from './services/notifi
 import { useFinancialCalculations } from './hooks/useFinancialCalculations';
 import { usePersistence }           from './hooks/usePersistence';
 import { useSnapshots }             from './hooks/useSnapshots';
+import { usePrevistoSnapshots }     from './hooks/usePrevistoSnapshots';
 
 // Engines
 import { parseRealizedCSV, summarizeParseResult } from './engines/csvParser';
@@ -139,6 +140,9 @@ export default function App() {
 
   // ── 4. Snapshots históricos ───────────────────────────────────────────────
   const snapshots = useSnapshots();
+  // Snapshot do Previsto por período (guarda cada importação para confrontar
+  // depois com o Realizado do mesmo período, sem misturar meses diferentes).
+  const previstoSnapshots = usePrevistoSnapshots();
 
   // ── 5. Inicialização única ────────────────────────────────────────────────
   useEffect(() => {
@@ -455,7 +459,7 @@ export default function App() {
             transactions={transactions}
             onAddTransaction={t => { setTransactions(p => [...p, t]); auditLog.record({ action: 'TRANSACTION_ADD', subject: t.id, after: t }); }}
             onDeleteTransaction={id => { setTransactions(p => p.filter(t => t.id !== id)); auditLog.record({ action: 'TRANSACTION_DELETE', subject: id }); }}
-            onImportTransactions={ts => setTransactions(p => [...p, ...ts])}
+            onImportTransactions={ts => { setTransactions(p => [...p, ...ts]); previstoSnapshots.capture(ts); }}
             onClearTransactions={type => { setTransactions(p => p.filter(t => t.type !== type)); auditLog.record({ action: 'DATA_CLEAR', subject: `type:${type}` }); }}
             onUpdateTransaction={handleUpdateTransaction}
           />
@@ -474,6 +478,7 @@ export default function App() {
             onImportRealized={handleImportRealized}
             alerts={alerts}
             snapshots={snapshots.snapshots}
+            previstoSnapshots={previstoSnapshots.snapshots}
             onClearRealized={() => {
               if (window.confirm('Limpar todos os lançamentos realizados?')) {
                 setRealizedTransactions([]);

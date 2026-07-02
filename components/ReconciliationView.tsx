@@ -17,8 +17,9 @@ import {
 } from 'lucide-react';
 import { Transaction } from '../types';
 import { reconcile, confidenceColor, formatCoverage, type MatchGroup, type ReconciliationResult } from '../engines/reconciliation';
-import { formatCurrency, formatCompact } from '../utils/finance';
+import { formatCurrency, formatCompact, parseDate } from '../utils/finance';
 import { VisaoEstrategicaRealizado } from './VisaoEstrategicaRealizado';
+import type { PrevistoSnapshot } from '../hooks/usePrevistoSnapshots';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,8 @@ interface ReconciliationViewProps {
   realizedTransactions: Transaction[];
   onImportRealized?:   (e: React.ChangeEvent<HTMLInputElement>) => void;
   onClearRealized?:    () => void;
+  /** Snapshots do Previsto por período (cada importação = um período). */
+  previstoSnapshots?:  PrevistoSnapshot[];
 }
 
 // ─── Confidence badge ─────────────────────────────────────────────────────────
@@ -188,13 +191,37 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
   realizedTransactions,
   onImportRealized,
   onClearRealized,
+  previstoSnapshots = [],
 }) => {
   const [tab, setTab] = useState<Tab>('overview');
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Período selecionado: por padrão, o mais recente importado (se houver
+  // algum snapshot de previsto); "ALL" mantém o comportamento antigo
+  // (todo o previsto acumulado, sem filtro de período).
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string>(
+    previstoSnapshots[0]?.id ?? 'ALL'
+  );
+  const selectedPeriod = previstoSnapshots.find(s => s.id === selectedPeriodId) ?? null;
+
+  // Previsto do período: usa a FOTO salva no snapshot (imune a importações
+  // futuras de outros meses), não o `transactions` acumulado inteiro.
+  const previstoFiltrado = selectedPeriod ? selectedPeriod.transactions : transactions;
+
+  // Realizado do MESMO período: filtra pela data, para não misturar meses.
+  const realizadoFiltrado = useMemo(() => {
+    if (!selectedPeriod) return realizedTransactions;
+    const start = parseDate(selectedPeriod.period.start.split('-').reverse().join('/'));
+    const end   = parseDate(selectedPeriod.period.end.split('-').reverse().join('/'));
+    return realizedTransactions.filter(t => {
+      const d = parseDate(t.date);
+      return d >= start && d <= end;
+    });
+  }, [realizedTransactions, selectedPeriod]);
+
   const result: ReconciliationResult = useMemo(
-    () => reconcile(transactions, realizedTransactions),
-    [transactions, realizedTransactions]
+    () => reconcile(previstoFiltrado, realizadoFiltrado),
+    [previstoFiltrado, realizadoFiltrado]
   );
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
@@ -243,7 +270,27 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
         </div>
       </div>
 
-      {realizedTransactions.length === 0 ? (
+      {/* Seletor de período do Previsto */}
+      {previstoSnapshots.length > 0 && (
+        <div className="flex items-center gap-3 bg-slate-900/40 border border-slate-800/60 rounded-xl px-5 py-3">
+          <span className="text-xs text-slate-500 font-medium shrink-0">Período do previsto:</span>
+          <select
+            value={selectedPeriodId}
+            onChange={e => setSelectedPeriodId(e.target.value)}
+            className="px-2 py-1.5 rounded-md border border-slate-700 bg-slate-950 text-slate-200 text-xs"
+          >
+            {previstoSnapshots.map(s => (
+              <option key={s.id} value={s.id}>{s.label} ({s.transactions.length} título(s))</option>
+            ))}
+            <option value="ALL">Todos os períodos (comportamento antigo — pode misturar meses)</option>
+          </select>
+          <span className="text-[11px] text-slate-600">
+            {realizadoFiltrado.length} realizado(s) neste período
+          </span>
+        </div>
+      )}
+
+      {realizadoFiltrado.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-4 py-16 bg-slate-900/20 border border-dashed border-slate-700/50 rounded-xl">
           <GitMerge size={32} className="text-slate-700" />
           <div className="text-center">
@@ -387,8 +434,8 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
 
             {tab === 'strategic' && (
               <VisaoEstrategicaRealizado
-                planned={transactions}
-                realized={realizedTransactions}
+                planned={previstoFiltrado}
+                realized={realizadoFiltrado}
               />
             )}
           </div>

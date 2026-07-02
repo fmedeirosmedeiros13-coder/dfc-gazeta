@@ -7,6 +7,8 @@ import { MultiSelect } from './MultiSelect';
 import { useTransactionFilters } from '../hooks/useTransactionFilters';
 import { parseDate, formatCurrency } from '../utils/finance';
 import { resolveFlowFromConta, FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS } from '../utils/flowDePara';
+import { resolveCompanyFromCCPadrao } from '../utils/ccPadraoDePara';
+import { COMPANIES } from '../utils/finance';
 
 interface GestaoLancamentosProps {
   transactions: Transaction[];
@@ -49,6 +51,14 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
   const [pendingImport, setPendingImport] = useState<Transaction[]>([]);
   const [pendingWarning, setPendingWarning] = useState('');
   const [flowDrafts, setFlowDrafts] = useState<Record<string, string>>({});
+
+  // Modal "informar empresa": aplicações importadas cujo C/C Padrão não está
+  // no De-Para (utils/ccPadraoDePara.ts). Agrupado por C/C Padrão — todas as
+  // aplicações da mesma conta recebem a mesma empresa escolhida de uma vez.
+  const [missingCompanyOpen, setMissingCompanyOpen] = useState(false);
+  const [pendingImportApp, setPendingImportApp] = useState<Transaction[]>([]);
+  const [companyDrafts, setCompanyDrafts] = useState<Record<string, string>>({}); // ccPadrao -> companyId
+  const [pendingWarningApp, setPendingWarningApp] = useState('');
 
   // Lista de opções de fluxo (N3) a partir do De-Para, deduplicada por N3.
   const FLOW_OPTIONS = useMemo(() => {
@@ -330,12 +340,23 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
 
   const processCSV = (text: string) => {
       text = text.replace(/\r/g, '\n');
-      const lines = text.split(/\r\n|\n/).filter(l => l.trim().length > 0);
+      let lines = text.split(/\r\n|\n/).filter(l => l.trim().length > 0);
       if (lines.length < 2) {
           alert("Conteúdo insuficiente.");
           return;
       }
-      
+
+      // Aplicações: o relatório TOTVS traz uma linha de título do relatório
+      // ANTES do cabeçalho real (ex.: "rs_sea_operac_financ: Por Banco").
+      // Localiza a linha que de fato tem os cabeçalhos e descarta o que vem antes.
+      if (activeTab === 'APLICACOES') {
+          const headerIdx = lines.findIndex(l => {
+              const up = l.toUpperCase();
+              return up.includes('BANCO') && up.includes('PRODUTO') && up.includes('VENCTO');
+          });
+          if (headerIdx > 0) lines = lines.slice(headerIdx);
+      }
+
       const firstLine = lines[0];
 
       let separator = ';';
@@ -438,6 +459,12 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               }
           });
       }
+
+      // Aplicações cujo C/C Padrão não tem empresa definida no De-Para são
+      // desconsideradas na importação (decisão do usuário) — acumulado aqui
+      // só para avisar quantas/quais foram descartadas no resumo final.
+      const skippedAppAccounts = new Set<string>();
+      let skippedAppCount = 0;
 
       for(let i=1; i<lines.length; i++) {
           if (!lines[i].trim()) continue;
@@ -659,6 +686,59 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                    } as Transaction;
                }
 
+          } else if (type === TransactionType.APPLICATION) {
+               // Base de Aplicações Financeiras (relatório TOTVS: Banco/Produto/
+               // Operação/Data/Vencto/Moeda/C-C Padrão/Situação/Sdo Operação/
+               // Em Andamento/Categoria). Ignora linhas de título/rodapé do
+               // relatório (não têm valor de saldo válido).
+               const bancoCod   = getVal(['BANCO']);
+               const produto    = getVal(['PRODUTO']);
+               const operacao   = getVal(['OPERACAO', 'OPERAÇÃO']);
+               const dtOperacao = getVal(['DATA']);
+               const dtVencto   = getVal(['VENCTO', 'VENCIMENTO']);
+               const ccPadrao   = getVal(['C/C PADRAO', 'CC PADRAO', 'C C PADRAO']);
+               const situacao   = getVal(['SITUACAO']);
+               const sdoOperacao = getVal(['SDO OPERACAO', 'SALDO OPERACAO']);
+               const emAndamento = getVal(['EM ANDAMENTO']);
+               const categoria  = getVal(['CATEGORIA']);
+
+               const valorSaldo = parseNumber(sdoOperacao);
+               // Linha de título/rodapé do relatório TOTVS: sem saldo, descarta.
+               if (valorSaldo !== 0 && ccPadrao) {
+                   const companyId = resolveCompanyFromCCPadrao(ccPadrao);
+                   if (!companyId) {
+                       // Conta sem empresa definida no De-Para (ex.: BANES-TEMP,
+                       // BANESAMALF, Banes-PF, Banes-TM2) — decisão do usuário:
+                       // DESCONSIDERAR ao importar, não perguntar nem gravar.
+                       skippedAppAccounts.add(ccPadrao);
+                       skippedAppCount++;
+                   } else {
+                       const companyName = COMPANIES.find(c => c.id === companyId)?.name;
+                       tr = {
+                           id: crypto.randomUUID(),
+                           // Posição ATUAL (data da importação) — não a data de
+                           // contratação do CDB/Fundo. Ver utils/ccPadraoDePara.ts
+                           // e a conversa com o usuário: usar a data original faria
+                           // o sistema tratar o saldo inteiro como saída de caixa
+                           // naquele dia passado, distorcendo DFC/alertas/resumo.
+                           date: new Date().toLocaleDateString('pt-BR'),
+                           emissionDate: parseDateExcel(dtOperacao),  // referência apenas
+                           dueDate: parseDateExcel(dtVencto),          // referência apenas
+                           value: valorSaldo,
+                           type: TransactionType.APPLICATION,
+                           status: 'REALIZADO',
+                           description: `${produto || 'Aplicação'} ${operacao || ''} — ${ccPadrao}`.trim(),
+                           companyCode: companyId,
+                           establishment: ccPadrao,
+                           accountCode: bancoCod,
+                           documentNumber: operacao,
+                           species: situacao,
+                           category: produto || categoria || 'Aplicação',
+                           businessUnit: companyName || 'Sem empresa definida',
+                       } as Transaction;
+                   }
+               }
+
           } else {
               // PAGAMENTOS
               const dtVenc = getVal(['DT VENCIMENTO', 'VENCIMENTO']);
@@ -786,7 +866,14 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           return; // aguarda o usuário informar os fluxos no modal
       }
 
-      commitImport(newTransactions, missingColsWarning);
+      // Aplicações: contas sem empresa definida foram descartadas acima —
+      // avisa no resumo final quais/quantas, para transparência.
+      let appSkipWarning = '';
+      if (skippedAppCount > 0) {
+          appSkipWarning = `\n\n⚠️ ${skippedAppCount} aplicaç${skippedAppCount === 1 ? 'ão' : 'ões'} desconsiderada(s) por não ter empresa definida: ${[...skippedAppAccounts].join(', ')}.`;
+      }
+
+      commitImport(newTransactions, missingColsWarning + appSkipWarning);
   };
 
   // Conclui a importação: gera recorrentes do calendário, grava e avisa.
@@ -868,6 +955,36 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
       setPendingImport([]);
       setFlowDrafts({});
       setPendingWarning('');
+  };
+
+  // Aplica a empresa escolhida (por C/C Padrão) a todas as aplicações daquela
+  // conta e conclui a importação.
+  const confirmMissingCompany = (importAnyway: boolean) => {
+      const list = pendingImportApp.map(t => {
+          const cc = (t as any).__ccPadraoPendente;
+          if (!cc) return t;
+          const chosen = (companyDrafts[cc] || '').trim();
+          if (chosen) {
+              const companyName = COMPANIES.find(c => c.id === chosen)?.name;
+              const { __ccPadraoPendente, ...rest } = t as any;
+              return { ...rest, companyCode: chosen, businessUnit: companyName || rest.businessUnit } as Transaction;
+          }
+          return t;
+      });
+      if (!importAnyway) {
+          const aindaVazio = list.some(t => (t as any).__ccPadraoPendente);
+          if (aindaVazio) {
+              alert('Ainda há conta(s) sem empresa definida. Escolha a empresa de todas ou use "Importar mesmo assim".');
+              return;
+          }
+      }
+      // Limpa o campo auxiliar antes de gravar (não faz parte do schema).
+      const clean = list.map(t => { const { __ccPadraoPendente, ...rest } = t as any; return rest as Transaction; });
+      setMissingCompanyOpen(false);
+      commitImport(clean, pendingWarningApp);
+      setPendingImportApp([]);
+      setCompanyDrafts({});
+      setPendingWarningApp('');
   };
 
   // Chave de match: Fornecedor (código) + Tipo de Fluxo (ambos preenchidos).
@@ -1185,6 +1302,73 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                     </button>
                     <button
                         onClick={() => confirmMissingFlow(false)}
+                        className="flex-1 px-4 py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-xl shadow-sm transition-colors flex items-center justify-center gap-2"
+                    >
+                        <Check className="w-4 h-4" /> Confirmar e importar
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Modal: informar empresa das aplicações sem C/C Padrão mapeado */}
+      {missingCompanyOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+            <div className="bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl p-6 border border-slate-800/60 flex flex-col" style={{ maxHeight: '85vh' }}>
+                <div className="flex items-start gap-3 mb-4">
+                    <div className="w-12 h-12 bg-amber-900/40 rounded-full flex items-center justify-center shrink-0">
+                        <AlertTriangle className="w-6 h-6 text-amber-400" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold text-slate-100">Contas sem empresa definida</h3>
+                        <p className="text-sm text-slate-400 mt-1">
+                            {Object.keys(companyDrafts).length} conta(s) (C/C Padrão) desta importação não estão no De-Para de empresas. Informe a empresa de cada uma antes de concluir.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="overflow-auto flex-1 -mx-2 px-2 space-y-2">
+                    {Object.keys(companyDrafts).map(cc => {
+                        const rows = pendingImportApp.filter(t => (t as any).__ccPadraoPendente === cc);
+                        const total = rows.reduce((s, t) => s + (Number(t.value) || 0), 0);
+                        return (
+                            <div key={cc} className="bg-slate-800/50 border border-slate-700/60 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm text-slate-200 font-medium truncate">{cc}</p>
+                                    <p className="text-[11px] text-slate-500">
+                                        {rows.length} aplicaç{rows.length === 1 ? 'ão' : 'ões'} · {formatCurrency(total)}
+                                    </p>
+                                </div>
+                                <select
+                                    value={companyDrafts[cc] || ''}
+                                    onChange={(e) => setCompanyDrafts(prev => ({ ...prev, [cc]: e.target.value }))}
+                                    className="w-full sm:w-64 px-2 py-2 rounded-md border border-slate-600 bg-slate-900 text-slate-100 text-xs"
+                                >
+                                    <option value="">— escolher empresa —</option>
+                                    {COMPANIES.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 w-full mt-5">
+                    <button
+                        onClick={() => { setMissingCompanyOpen(false); setPendingImportApp([]); setCompanyDrafts({}); setPendingWarningApp(''); }}
+                        className="flex-1 px-4 py-3 bg-slate-800/60 hover:bg-slate-700/60 text-slate-100 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 border border-slate-700/60"
+                    >
+                        <X className="w-4 h-4" /> Cancelar importação
+                    </button>
+                    <button
+                        onClick={() => confirmMissingCompany(true)}
+                        className="flex-1 px-4 py-3 bg-slate-700 hover:bg-slate-600 text-slate-100 font-bold rounded-xl transition-colors"
+                    >
+                        Importar mesmo assim
+                    </button>
+                    <button
+                        onClick={() => confirmMissingCompany(false)}
                         className="flex-1 px-4 py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-xl shadow-sm transition-colors flex items-center justify-center gap-2"
                     >
                         <Check className="w-4 h-4" /> Confirmar e importar
