@@ -1232,18 +1232,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                              {DFC_COLS.map(c => <td key={c.id} className={`${isSlide ? 'p-0.5' : 'p-1'} text-right border-r border-red-900/30 font-bold`}>{c.label}</td>)}
                              <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right font-bold`}>TOTAL</td>
                         </tr>
-                        {renderRow('Fundo de Invest - BTG Pactual', 'DATA', { tType: TransactionType.APPLICATION, filter: 'BTG' })}
-                        {renderRow('CDB - Banestes', 'DATA', { tType: TransactionType.APPLICATION, filter: 'Banestes' })}
+                        {renderRow('Fundo de Invest - BTG Pactual', 'DATA', { tType: TransactionType.APPLICATION, filter: 'FUNDOS' })}
+                        {renderRow('CDB - Banestes', 'DATA', { tType: TransactionType.APPLICATION, filter: 'CDB' })}
                         {renderRow('Ebricks', 'DATA', { tType: TransactionType.APPLICATION, filter: 'Ebricks' })}
-                        {/* Categorias reais das aplicações importadas (ex.: CDB, FUNDOS) —
-                            as 3 linhas acima são exemplos fixos que não batem com a categoria
-                            do import (ficam em branco quando não há match; mantidas caso
-                            algum dia existam lançamentos manuais com esses nomes). */}
-                        {Array.from(new Set(
-                            transactions
-                                .filter(t => t.type === TransactionType.APPLICATION)
-                                .map(t => t.category || 'Aplicação')
-                        )).sort().map(cat => renderRow(cat, 'DATA', { tType: TransactionType.APPLICATION, filter: cat }))}
 
                         {renderSummaryRow('SALDO ATUAL', 'investment', 'bg-[#1e3a8a]', 'text-white')}
                         {renderRow('(+/-) Previsão de Aplic/Resg', 'INPUT', { manualKey: 'dfc_prev_aplic', bgColor: 'bg-amber-900/30', textColor: 'text-amber-200' })}
