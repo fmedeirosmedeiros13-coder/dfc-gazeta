@@ -48,6 +48,8 @@ import { useFinancialCalculations } from './hooks/useFinancialCalculations';
 import { usePersistence }           from './hooks/usePersistence';
 import { useSnapshots }             from './hooks/useSnapshots';
 import { usePrevistoSnapshots }     from './hooks/usePrevistoSnapshots';
+import { useRealizadoSnapshots }    from './hooks/useRealizadoSnapshots';
+import { useApplicationSnapshots }  from './hooks/useApplicationSnapshots';
 
 // Engines
 import { parseRealizedCSV, summarizeParseResult } from './engines/csvParser';
@@ -143,6 +145,11 @@ export default function App() {
   // Snapshot do Previsto por período (guarda cada importação para confrontar
   // depois com o Realizado do mesmo período, sem misturar meses diferentes).
   const previstoSnapshots = usePrevistoSnapshots();
+  // Idem para o Realizado — permite escolher o período do realizado de forma
+  // explícita e simétrica ao período do previsto, na tela de Reconciliação.
+  const realizadoSnapshots = useRealizadoSnapshots();
+  // Posição das Aplicações Financeiras por mês (para o relatório de evolução).
+  const applicationSnapshots = useApplicationSnapshots();
 
   // ── 5. Inicialização única ────────────────────────────────────────────────
   useEffect(() => {
@@ -277,6 +284,7 @@ export default function App() {
 
         const newTx = result.valid.map(r => r.transaction);
         setRealizedTransactions(prev => [...prev, ...newTx]);
+        realizadoSnapshots.capture(newTx);
 
         auditLog.record({
           action: 'CSV_IMPORT', subject: file.name,
@@ -288,7 +296,7 @@ export default function App() {
       }
     };
     reader.readAsArrayBuffer(file);
-  }, [transactions, realizedTransactions, selectedCompany]);
+  }, [transactions, realizedTransactions, selectedCompany, realizadoSnapshots]);
 
   // ── 9. Sincronização ERP ──────────────────────────────────────────────────
   const handleERPSync = useCallback(async () => {
@@ -304,6 +312,7 @@ export default function App() {
       const result = await syncFromERP(erpConfig, [...transactions, ...realizedTransactions]);
       if (result.success && result.imported.length > 0) {
         setRealizedTransactions(prev => [...prev, ...result.imported]);
+        realizadoSnapshots.capture(result.imported);
         setLastERPSync(result.syncedAt);
         alert(`✓ ERP: ${result.imported.length} transação(ões) importadas. ${result.skipped} ignoradas (duplicatas).`);
       } else if (result.errors.length > 0) {
@@ -314,7 +323,7 @@ export default function App() {
     } finally {
       setIsSyncingERP(false);
     }
-  }, [isSyncingERP, transactions, realizedTransactions]);
+  }, [isSyncingERP, transactions, realizedTransactions, realizadoSnapshots]);
 
   // ── 10. Apresentação Executiva (sem Sidebar) ──────────────────────────────
 
@@ -330,6 +339,7 @@ export default function App() {
         onManualValueChange={handleManualValueChange}
         initialBalance={executiveInitialBalance}
         totalManualResgates={totalManualResgates}
+        applicationSnapshots={applicationSnapshots.snapshots}
         onExit={() => setViewMode(ViewMode.DASHBOARD_DAILY_GAZETA)}
       />
     );
@@ -459,9 +469,29 @@ export default function App() {
             transactions={transactions}
             onAddTransaction={t => { setTransactions(p => [...p, t]); auditLog.record({ action: 'TRANSACTION_ADD', subject: t.id, after: t }); }}
             onDeleteTransaction={id => { setTransactions(p => p.filter(t => t.id !== id)); auditLog.record({ action: 'TRANSACTION_DELETE', subject: id }); }}
-            onImportTransactions={ts => { setTransactions(p => [...p, ...ts]); previstoSnapshots.capture(ts); }}
+            onImportTransactions={ts => {
+                const temApp = ts.some(t => t.type === TransactionType.APPLICATION);
+                if (temApp) {
+                  // Aplicações não acumulam: cada importação é a posição ATUAL,
+                  // substitui a anterior (evita somar junho+julho em dobra).
+                  // O histórico mês a mês fica guardado à parte, no snapshot.
+                  const novasApp = ts.filter(t => t.type === TransactionType.APPLICATION);
+                  const outras   = ts.filter(t => t.type !== TransactionType.APPLICATION);
+                  setTransactions(p => [
+                    ...p.filter(t => t.type !== TransactionType.APPLICATION),
+                    ...novasApp,
+                    ...outras,
+                  ]);
+                  applicationSnapshots.capture(novasApp);
+                  if (outras.length > 0) previstoSnapshots.capture(outras);
+                } else {
+                  setTransactions(p => [...p, ...ts]);
+                  previstoSnapshots.capture(ts);
+                }
+            }}
             onClearTransactions={type => { setTransactions(p => p.filter(t => t.type !== type)); auditLog.record({ action: 'DATA_CLEAR', subject: `type:${type}` }); }}
             onUpdateTransaction={handleUpdateTransaction}
+            applicationSnapshots={applicationSnapshots.snapshots}
           />
         ) : viewMode === ViewMode.RESUMO_FINANCEIRO ? (
           <ResumoFinanceiro key="resumo" summary={summary} transactions={filteredTransactions} aiAnalysis={aiAnalysis} isGeneratingAI={isGeneratingAI} onGenerateAI={handleGenerateAI} />
@@ -479,6 +509,7 @@ export default function App() {
             alerts={alerts}
             snapshots={snapshots.snapshots}
             previstoSnapshots={previstoSnapshots.snapshots}
+            realizadoSnapshots={realizadoSnapshots.snapshots}
             onClearRealized={() => {
               if (window.confirm('Limpar todos os lançamentos realizados?')) {
                 setRealizedTransactions([]);

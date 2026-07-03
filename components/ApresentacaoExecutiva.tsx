@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { FinancialSummary, Transaction, AIAnalysisResult, TransactionType, DashboardViewType } from '../types';
-import { X, Printer, FileDown, Lock, Edit2, RefreshCw, Trash2, Check, Presentation } from 'lucide-react';
+import { X, Printer, FileDown, Lock, Edit2, RefreshCw, Trash2, Check, Presentation, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { ResumoFinanceiro } from './ResumoFinanceiro';
 import { Dashboard } from './Dashboard';
 import { VisaoEstrategicaRealizado } from './VisaoEstrategicaRealizado';
@@ -9,7 +9,7 @@ import html2canvas from "html2canvas";
 import { PPTExportAlternative } from './PPTExportAlternative';
 import { generatePayablesSlide, generateReceivablesSlide } from '../services/pptxNativeSlides';
 import { drawPayablesPage, drawReceivablesPage } from '../services/pdfNativeSlides';
-import { formatCurrency, parseDate } from '../utils/finance';
+import { formatCurrency, parseDate, COMPANIES } from '../utils/finance';
 
 // ── Gráficos dos quadros de Pontos Críticos ──────────────────────────────────
 const RiskDonut: React.FC<{ pct: number; color: string; caption?: string }> = ({ pct, color, caption }) => {
@@ -54,7 +54,7 @@ const LiquidityBars: React.FC<{ entradas: number; saidas: number; resultado: num
   );
 };
 import { IC_TV, IC_INTERNET, IC_RADIO, IC_EVENTOS, IC_DESPESAS } from '../services/coverIcons';
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, LabelList } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, LabelList, LineChart, Line, CartesianGrid, Tooltip as RechartsTooltip } from 'recharts';
 
 interface ApresentacaoExecutivaProps {
   summary: FinancialSummary;
@@ -66,6 +66,7 @@ interface ApresentacaoExecutivaProps {
   onManualValueChange?: (key: string, value: number) => void;
   initialBalance: number;
   totalManualResgates: number;
+  applicationSnapshots?: import('../hooks/useApplicationSnapshots').ApplicationSnapshot[];
   onExit: () => void;
 }
 
@@ -79,6 +80,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   onManualValueChange = () => {},
   initialBalance, 
   totalManualResgates, 
+  applicationSnapshots = [],
   onExit 
 }) => {
 
@@ -735,6 +737,107 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                 <span>Rede Gazeta</span>
             </footer>
         </div>
+
+        {/* APLICAÇÕES FINANCEIRAS */}
+        {applicationSnapshots.length > 0 && (() => {
+            const snaps = applicationSnapshots; // já vem ordenado por data crescente
+            const rows = snaps.map((s, i) => {
+                const prev = i > 0 ? snaps[i - 1] : null;
+                const diff = prev ? s.totalGeral - prev.totalGeral : 0;
+                const pct = prev && prev.totalGeral !== 0 ? (diff / prev.totalGeral) * 100 : 0;
+                return { ...s, diff, pct, isFirst: i === 0 };
+            });
+            const last = rows[rows.length - 1];
+            const first = rows[0];
+            const variacaoTotal = last.totalGeral - first.totalGeral;
+            const variacaoTotalPct = first.totalGeral !== 0 ? (variacaoTotal / first.totalGeral) * 100 : 0;
+            const chartData = rows.map(r => ({ label: r.label, saldo: r.totalGeral }));
+            const porEmpresa = Object.entries(last.porEmpresa)
+                .filter(([, v]) => v !== 0)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 6);
+
+            return (
+        <div className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-8 gap-6 border border-slate-800">
+            <header className="flex justify-between items-end pb-4 border-b border-slate-700 shrink-0">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-amber-600/20 rounded-lg">
+                        <svg className="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                    </div>
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-100">Aplicações Financeiras</h1>
+                        <p className="text-xs text-slate-400 uppercase tracking-widest">Posição em {last.label}</p>
+                    </div>
+                </div>
+                <p className="text-sm text-slate-400">{dateRange}</p>
+            </header>
+
+            <div className="grid grid-cols-3 gap-4 shrink-0">
+                <div className="bg-[#111827] border border-slate-700/50 rounded-xl p-4">
+                    <p className="text-xs text-slate-500 uppercase tracking-wide">Saldo atual</p>
+                    <p className="text-2xl font-bold text-slate-100 mt-1">{formatCurrency(last.totalGeral)}</p>
+                </div>
+                <div className="bg-[#111827] border border-slate-700/50 rounded-xl p-4">
+                    <p className="text-xs text-slate-500 uppercase tracking-wide">Variação vs. mês anterior</p>
+                    <p className={`text-2xl font-bold mt-1 flex items-center gap-2 ${last.diff > 0 ? 'text-emerald-400' : last.diff < 0 ? 'text-red-400' : 'text-slate-300'}`}>
+                        {last.isFirst ? '—' : (
+                            <>
+                                {last.diff > 0 ? <TrendingUp className="w-5 h-5" /> : last.diff < 0 ? <TrendingDown className="w-5 h-5" /> : <Minus className="w-5 h-5" />}
+                                {last.diff >= 0 ? '+' : ''}{formatCurrency(last.diff)}
+                            </>
+                        )}
+                    </p>
+                </div>
+                <div className="bg-[#111827] border border-slate-700/50 rounded-xl p-4">
+                    <p className="text-xs text-slate-500 uppercase tracking-wide">Variação do período ({first.label} → {last.label})</p>
+                    <p className={`text-2xl font-bold mt-1 ${variacaoTotal > 0 ? 'text-emerald-400' : variacaoTotal < 0 ? 'text-red-400' : 'text-slate-300'}`}>
+                        {variacaoTotalPct >= 0 ? '+' : ''}{variacaoTotalPct.toFixed(1)}%
+                    </p>
+                </div>
+            </div>
+
+            <div className="flex-1 grid grid-cols-3 gap-4 min-h-0">
+                <div className="col-span-2 bg-[#111827] border border-slate-700/50 rounded-xl p-4 flex flex-col min-h-0">
+                    <p className="text-sm font-bold text-slate-200 mb-1">Evolução do saldo</p>
+                    <p className="text-[10px] text-slate-500 mb-2">Variação bruta entre posições — inclui aportes, resgates e rendimento (a planilha já vem líquida disso).</p>
+                    <div className="flex-1 min-h-0">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                                <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                                <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => `${(v / 1_000_000).toFixed(0)}mi`} width={50} />
+                                <RechartsTooltip
+                                    contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }}
+                                    formatter={(v: number) => [formatCurrency(v), 'Saldo']}
+                                />
+                                <Line type="monotone" dataKey="saldo" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+                <div className="bg-[#111827] border border-slate-700/50 rounded-xl p-4 flex flex-col min-h-0">
+                    <p className="text-sm font-bold text-slate-200 mb-2">Por empresa (posição atual)</p>
+                    <div className="flex-1 overflow-hidden flex flex-col gap-2">
+                        {porEmpresa.map(([cc, v]) => {
+                            const name = COMPANIES.find(c => c.id === cc)?.name || cc;
+                            return (
+                                <div key={cc} className="flex justify-between items-center text-xs border-b border-slate-800 pb-1.5">
+                                    <span className="text-slate-400 truncate pr-2">{name}</span>
+                                    <span className="text-slate-200 font-medium whitespace-nowrap">{formatCurrency(v)}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+
+            <footer className="flex justify-between text-[10px] text-slate-600 border-t border-slate-700 pt-3 shrink-0">
+                <span>Confidencial — Uso Interno</span>
+                <span>Rede Gazeta</span>
+            </footer>
+        </div>
+            );
+        })()}
 
         {/* ESTRUTURA ALTERNATIVA PARA EXPORTAÇÃO PPT (OCULTA NA WEB) */}
         <PPTExportAlternative 
