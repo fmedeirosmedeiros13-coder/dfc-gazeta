@@ -20,6 +20,7 @@ import { reconcile, confidenceColor, formatCoverage, type MatchGroup, type Recon
 import { formatCurrency, formatCompact, parseDate } from '../utils/finance';
 import { VisaoEstrategicaRealizado } from './VisaoEstrategicaRealizado';
 import type { PrevistoSnapshot } from '../hooks/usePrevistoSnapshots';
+import type { RealizadoSnapshot } from '../hooks/useRealizadoSnapshots';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,8 @@ interface ReconciliationViewProps {
   onClearRealized?:    () => void;
   /** Snapshots do Previsto por período (cada importação = um período). */
   previstoSnapshots?:  PrevistoSnapshot[];
+  /** Snapshots do Realizado por período — seletor simétrico ao do Previsto. */
+  realizadoSnapshots?: RealizadoSnapshot[];
 }
 
 // ─── Confidence badge ─────────────────────────────────────────────────────────
@@ -192,32 +195,62 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
   onImportRealized,
   onClearRealized,
   previstoSnapshots = [],
+  realizadoSnapshots = [],
 }) => {
   const [tab, setTab] = useState<Tab>('overview');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Período selecionado: por padrão, o mais recente importado (se houver
-  // algum snapshot de previsto); "ALL" mantém o comportamento antigo
-  // (todo o previsto acumulado, sem filtro de período).
+  // Acha, entre os snapshots de realizado, um com EXATAMENTE o mesmo intervalo
+  // de datas do período de previsto informado — é o caso comum (você importa
+  // previsto e realizado da mesma semana/mês).
+  const findMatchingRealizado = (prevPeriod: PrevistoSnapshot | null): string => {
+    if (!prevPeriod) return realizadoSnapshots[0]?.id ?? 'ALL';
+    const match = realizadoSnapshots.find(r =>
+      r.period.start === prevPeriod.period.start && r.period.end === prevPeriod.period.end
+    );
+    return match ? match.id : (realizadoSnapshots[0]?.id ?? 'ALL');
+  };
+
+  // Período do Previsto selecionado: por padrão, o mais recente importado;
+  // "ALL" mantém o comportamento antigo (todo o previsto acumulado).
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>(
     previstoSnapshots[0]?.id ?? 'ALL'
   );
   const selectedPeriod = previstoSnapshots.find(s => s.id === selectedPeriodId) ?? null;
 
+  // Período do Realizado selecionado — simétrico ao do Previsto. Ao trocar o
+  // período do previsto, sugere automaticamente o realizado do MESMO
+  // intervalo (se existir), mas o usuário pode escolher outro livremente.
+  const [selectedRealizadoId, setSelectedRealizadoId] = useState<string>(
+    () => findMatchingRealizado(previstoSnapshots[0] ?? null)
+  );
+  const selectedRealizadoPeriod = realizadoSnapshots.find(s => s.id === selectedRealizadoId) ?? null;
+
+  const handlePeriodChange = (id: string) => {
+    setSelectedPeriodId(id);
+    const period = previstoSnapshots.find(s => s.id === id) ?? null;
+    setSelectedRealizadoId(findMatchingRealizado(period));
+  };
+
   // Previsto do período: usa a FOTO salva no snapshot (imune a importações
   // futuras de outros meses), não o `transactions` acumulado inteiro.
   const previstoFiltrado = selectedPeriod ? selectedPeriod.transactions : transactions;
 
-  // Realizado do MESMO período: filtra pela data, para não misturar meses.
+  // Realizado do período: usa a FOTO do snapshot escolhido. Se "ALL" e existir
+  // um período de previsto selecionado, cai no filtro por data (compatibilidade
+  // com dados importados antes deste recurso, sem snapshot de realizado ainda).
   const realizadoFiltrado = useMemo(() => {
-    if (!selectedPeriod) return realizedTransactions;
-    const start = parseDate(selectedPeriod.period.start.split('-').reverse().join('/'));
-    const end   = parseDate(selectedPeriod.period.end.split('-').reverse().join('/'));
-    return realizedTransactions.filter(t => {
-      const d = parseDate(t.date);
-      return d >= start && d <= end;
-    });
-  }, [realizedTransactions, selectedPeriod]);
+    if (selectedRealizadoPeriod) return selectedRealizadoPeriod.transactions;
+    if (selectedPeriod) {
+      const start = parseDate(selectedPeriod.period.start.split('-').reverse().join('/'));
+      const end   = parseDate(selectedPeriod.period.end.split('-').reverse().join('/'));
+      return realizedTransactions.filter(t => {
+        const d = parseDate(t.date);
+        return d >= start && d <= end;
+      });
+    }
+    return realizedTransactions;
+  }, [realizedTransactions, selectedPeriod, selectedRealizadoPeriod]);
 
   const result: ReconciliationResult = useMemo(
     () => reconcile(previstoFiltrado, realizadoFiltrado),
@@ -270,22 +303,39 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
         </div>
       </div>
 
-      {/* Seletor de período do Previsto */}
-      {previstoSnapshots.length > 0 && (
-        <div className="flex items-center gap-3 bg-slate-900/40 border border-slate-800/60 rounded-xl px-5 py-3">
-          <span className="text-xs text-slate-500 font-medium shrink-0">Período do previsto:</span>
-          <select
-            value={selectedPeriodId}
-            onChange={e => setSelectedPeriodId(e.target.value)}
-            className="px-2 py-1.5 rounded-md border border-slate-700 bg-slate-950 text-slate-200 text-xs"
-          >
-            {previstoSnapshots.map(s => (
-              <option key={s.id} value={s.id}>{s.label} ({s.transactions.length} título(s))</option>
-            ))}
-            <option value="ALL">Todos os períodos (comportamento antigo — pode misturar meses)</option>
-          </select>
-          <span className="text-[11px] text-slate-600">
-            {realizadoFiltrado.length} realizado(s) neste período
+      {/* Seletores de período: Previsto e Realizado, lado a lado */}
+      {(previstoSnapshots.length > 0 || realizadoSnapshots.length > 0) && (
+        <div className="flex flex-col sm:flex-row gap-3 bg-slate-900/40 border border-slate-800/60 rounded-xl px-5 py-3">
+          <div className="flex items-center gap-2 flex-1">
+            <span className="text-xs text-slate-500 font-medium shrink-0">Período do previsto:</span>
+            <select
+              value={selectedPeriodId}
+              onChange={e => handlePeriodChange(e.target.value)}
+              className="flex-1 px-2 py-1.5 rounded-md border border-slate-700 bg-slate-950 text-slate-200 text-xs"
+            >
+              {previstoSnapshots.map(s => (
+                <option key={s.id} value={s.id}>{s.label} ({s.transactions.length} título(s))</option>
+              ))}
+              <option value="ALL">Todos os períodos (comportamento antigo)</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2 flex-1">
+            <span className="text-xs text-slate-500 font-medium shrink-0">Período do realizado:</span>
+            <select
+              value={selectedRealizadoId}
+              onChange={e => setSelectedRealizadoId(e.target.value)}
+              className="flex-1 px-2 py-1.5 rounded-md border border-slate-700 bg-slate-950 text-slate-200 text-xs"
+            >
+              {realizadoSnapshots.map(s => (
+                <option key={s.id} value={s.id}>{s.label} ({s.transactions.length} pagamento(s))</option>
+              ))}
+              <option value="ALL">
+                {selectedPeriod ? 'Todos (filtra pela data do previsto)' : 'Todos os realizados importados'}
+              </option>
+            </select>
+          </div>
+          <span className="text-[11px] text-slate-600 self-center whitespace-nowrap">
+            {realizadoFiltrado.length} realizado(s) neste confronto
           </span>
         </div>
       )}

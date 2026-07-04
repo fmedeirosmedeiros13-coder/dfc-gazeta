@@ -9,6 +9,7 @@ import { parseDate, formatCurrency } from '../utils/finance';
 import { resolveFlowFromConta, FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS } from '../utils/flowDePara';
 import { resolveCompanyFromCCPadrao } from '../utils/ccPadraoDePara';
 import { COMPANIES } from '../utils/finance';
+import { ApplicationEvolutionPanel } from './ApplicationEvolutionPanel';
 
 interface GestaoLancamentosProps {
   transactions: Transaction[];
@@ -17,6 +18,8 @@ interface GestaoLancamentosProps {
   onDeleteTransaction: (id: string) => void;
   onClearTransactions: (type: TransactionType) => void;
   onUpdateTransaction?: (t: Transaction) => void;
+  /** Histórico de posições das Aplicações Financeiras (uma por importação/mês). */
+  applicationSnapshots?: import('../hooks/useApplicationSnapshots').ApplicationSnapshot[];
 }
 
 type TabType = 'PAGAMENTOS' | 'RECEBIMENTOS' | 'APLICACOES' | 'CALENDARIO' | 'TIPO_FLUXO';
@@ -29,7 +32,7 @@ const TAB_TO_TYPE: Record<TabType, TransactionType> = {
   'TIPO_FLUXO': TransactionType.FLOW_TYPE
 };
 
-export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactions, onAddTransaction, onImportTransactions, onDeleteTransaction, onClearTransactions, onUpdateTransaction }) => {
+export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactions, onAddTransaction, onImportTransactions, onDeleteTransaction, onClearTransactions, onUpdateTransaction, applicationSnapshots = [] }) => {
   // Estado do Formulário (Abas)
   const [activeTab, setActiveTab] = useState<TabType>('PAGAMENTOS');
   
@@ -1863,7 +1866,13 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               </button>
             </div>
           </div>
-          
+
+          {activeTab === 'APLICACOES' && applicationSnapshots.length > 0 && (
+            <div className="px-4 pb-4">
+              <ApplicationEvolutionPanel snapshots={applicationSnapshots} />
+            </div>
+          )}
+
           <div className="overflow-auto flex-1 w-full">
             <Lancamentos 
                 transactions={filteredTransactionsNew} 

@@ -1,60 +1,43 @@
 /**
- * hooks/usePrevistoSnapshots.ts
+ * hooks/useRealizadoSnapshots.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * Guarda cada importação de Previsto (contas a pagar/receber) como uma "foto"
- * do período, para poder confrontar depois com o Realizado do MESMO período.
+ * Mesmo mecanismo do usePrevistoSnapshots.ts, só que para o REALIZADO.
  *
- * PROBLEMA QUE RESOLVE:
- *   O Previsto é acumulativo (cada importação soma ao anterior, sem noção de
- *   período). Ao trazer o Realizado de um mês, a reconciliação comparava
- *   contra TODO o previsto acumulado (junho + julho + agosto...), misturando
- *   períodos. Isso guarda o previsto de cada importação separado por período,
- *   para a tela Previsto vs Realizado poder escolher "qual período conferir".
+ * Antes, o Realizado era só um blob acumulado sem noção de período — a tela
+ * Previsto vs Realizado filtrava o realizado por data derivada do período do
+ * Previsto escolhido. Isso guarda cada importação de Realizado como uma foto
+ * de período própria, para a tela poder escolher os dois períodos de forma
+ * explícita e simétrica (ex.: Previsto 29/06–06/07 vs Realizado 29/06–06/07).
  *
- * COMO O PERÍODO É IDENTIFICADO:
- *   Automaticamente, pelo intervalo de datas (menor e maior data de vencimento)
- *   dos lançamentos do próprio arquivo importado. Sem digitação manual.
- *
- * REIMPORTAÇÃO DO MESMO PERÍODO:
- *   Se o novo intervalo for exatamente igual a um já salvo, o snapshot anterior
- *   é substituído (evita duplicar o mesmo período duas vezes).
+ * O período é detectado automaticamente pelo intervalo de datas (menor/maior
+ * data) dos lançamentos do próprio arquivo importado — mesmo critério do
+ * Previsto, sem digitação manual.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Transaction, TransactionType } from '../types';
+import { Transaction } from '../types';
 import { parseDate } from '../utils/finance';
 
-// ─── Tipos ────────────────────────────────────────────────────────────────────
-
-export interface PrevistoSnapshot {
-  /** ID único = `${startISO}_${endISO}_${importedAt}`. */
+export interface RealizadoSnapshot {
   id:          string;
-  importedAt:  number;   // Unix ms — quando essa leva foi importada
-  period: {
-    start: string;  // ISO yyyy-mm-dd
-    end:   string;  // ISO yyyy-mm-dd
-  };
-  /** Rótulo automático para exibir, ex.: "01/06/2026 – 08/06/2026". */
-  label:        string;
-  /** Os lançamentos de Previsto (PAYABLE/RECEIVABLE) daquele período. */
+  importedAt:  number;
+  period: { start: string; end: string }; // ISO yyyy-mm-dd
+  label:        string;                    // ex.: "29/06/2026 – 06/07/2026"
   transactions: Transaction[];
 }
 
-export interface UsePrevistoSnapshotsResult {
-  snapshots:  PrevistoSnapshot[];   // mais recente primeiro
-  isLoading:  boolean;
-  /** Cria (ou substitui, se período idêntico) um snapshot a partir do lote importado. */
-  capture:    (imported: Transaction[]) => Promise<void>;
-  remove:     (id: string) => Promise<void>;
-  clear:      () => Promise<void>;
+export interface UseRealizadoSnapshotsResult {
+  snapshots: RealizadoSnapshot[]; // mais recente primeiro
+  isLoading: boolean;
+  capture:   (imported: Transaction[]) => Promise<void>;
+  remove:    (id: string) => Promise<void>;
+  clear:     () => Promise<void>;
 }
 
-// ─── IDB (mesmo banco do usePersistence/useSnapshots, nova store) ────────────
-
 const DB_NAME    = 'dfc-gazeta';
-const DB_VERSION = 5; // sincronizado com useApplicationSnapshots.ts // sincronizado com useRealizadoSnapshots.ts (mesmo banco, stores diferentes)
-const STORE      = 'previsto-periods';
+const DB_VERSION = 5; // sincronizado com useApplicationSnapshots.ts // bump para criar a store 'realizado-periods'
+const STORE      = 'realizado-periods';
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -65,9 +48,8 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains('realized'))         db.createObjectStore('realized');
       if (!db.objectStoreNames.contains('manual-values'))    db.createObjectStore('manual-values');
       if (!db.objectStoreNames.contains('snapshots'))        db.createObjectStore('snapshots', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('previsto-periods')) db.createObjectStore('previsto-periods', { keyPath: 'id' });
       if (!db.objectStoreNames.contains(STORE))              db.createObjectStore(STORE, { keyPath: 'id' });
-      if (!db.objectStoreNames.contains('application-positions')) db.createObjectStore('application-positions', { keyPath: 'id' });
-      if (!db.objectStoreNames.contains('realizado-periods')) db.createObjectStore('realizado-periods', { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror   = () => reject(req.error);
@@ -77,8 +59,7 @@ function openDB(): Promise<IDBDatabase> {
 async function dbGetAll<T>(storeName: string): Promise<T[]> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx  = db.transaction(storeName, 'readonly');
-    const req = tx.objectStore(storeName).getAll();
+    const req = db.transaction(storeName, 'readonly').objectStore(storeName).getAll();
     req.onsuccess = () => resolve(req.result as T[]);
     req.onerror   = () => reject(req.error);
   });
@@ -87,7 +68,7 @@ async function dbGetAll<T>(storeName: string): Promise<T[]> {
 async function dbPut(storeName: string, record: any): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx  = db.transaction(storeName, 'readwrite');
+    const tx = db.transaction(storeName, 'readwrite');
     tx.objectStore(storeName).put(record);
     tx.oncomplete = () => resolve();
     tx.onerror    = () => reject(tx.error);
@@ -97,7 +78,7 @@ async function dbPut(storeName: string, record: any): Promise<void> {
 async function dbDelete(storeName: string, key: string): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx  = db.transaction(storeName, 'readwrite');
+    const tx = db.transaction(storeName, 'readwrite');
     tx.objectStore(storeName).delete(key);
     tx.oncomplete = () => resolve();
     tx.onerror    = () => reject(tx.error);
@@ -107,65 +88,53 @@ async function dbDelete(storeName: string, key: string): Promise<void> {
 async function dbClear(storeName: string): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx  = db.transaction(storeName, 'readwrite');
+    const tx = db.transaction(storeName, 'readwrite');
     tx.objectStore(storeName).clear();
     tx.oncomplete = () => resolve();
     tx.onerror    = () => reject(tx.error);
   });
 }
 
-// ─── Helpers de data ──────────────────────────────────────────────────────────
-
 const toISO = (ms: number): string => {
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
-
 const toBR = (iso: string): string => {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
 };
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
-
-export function usePrevistoSnapshots(): UsePrevistoSnapshotsResult {
-  const [snapshots, setSnapshots] = useState<PrevistoSnapshot[]>([]);
+export function useRealizadoSnapshots(): UseRealizadoSnapshotsResult {
+  const [snapshots, setSnapshots] = useState<RealizadoSnapshot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let alive = true;
-    dbGetAll<PrevistoSnapshot>(STORE)
+    dbGetAll<RealizadoSnapshot>(STORE)
       .then(list => { if (alive) setSnapshots(list.sort((a, b) => b.importedAt - a.importedAt)); })
-      .catch(() => { /* IndexedDB indisponível — segue sem histórico de períodos */ })
+      .catch(() => {})
       .finally(() => { if (alive) setIsLoading(false); });
     return () => { alive = false; };
   }, []);
 
   const capture = useCallback(async (imported: Transaction[]) => {
-    // Só entra no snapshot o que é efetivamente Previsto (a pagar/receber).
-    const previsto = imported.filter(t =>
-      (t.type === TransactionType.PAYABLE || t.type === TransactionType.RECEIVABLE)
-      && (!t.status || t.status === 'PREVISTO')
-    );
-    if (previsto.length === 0) return;
-
-    const dates = previsto.map(t => parseDate(t.date)).filter(d => d > 0);
+    if (imported.length === 0) return;
+    const dates = imported.map(t => parseDate(t.date)).filter(d => d > 0);
     if (dates.length === 0) return;
 
     const startISO = toISO(Math.min(...dates));
     const endISO   = toISO(Math.max(...dates));
     const importedAt = Date.now();
 
-    // Reimportação do MESMO intervalo substitui o snapshot anterior daquele período.
     const existing = snapshots.find(s => s.period.start === startISO && s.period.end === endISO);
     const id = existing ? existing.id : `${startISO}_${endISO}_${importedAt}`;
 
-    const snap: PrevistoSnapshot = {
+    const snap: RealizadoSnapshot = {
       id,
       importedAt,
       period: { start: startISO, end: endISO },
       label: startISO === endISO ? toBR(startISO) : `${toBR(startISO)} – ${toBR(endISO)}`,
-      transactions: previsto,
+      transactions: imported,
     };
 
     await dbPut(STORE, snap);
