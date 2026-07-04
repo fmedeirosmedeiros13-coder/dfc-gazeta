@@ -754,8 +754,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
             const chartData = rows.map(r => ({ label: r.label, saldo: r.totalGeral }));
             const porEmpresa = Object.entries(last.porEmpresa)
                 .filter(([, v]) => v !== 0)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 6);
+                .sort((a, b) => b[1] - a[1]);
 
             return (
         <div className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-8 gap-6 border border-slate-800">
