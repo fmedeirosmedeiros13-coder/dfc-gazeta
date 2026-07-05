@@ -451,41 +451,17 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                  </div>
              </div>
 
-             {/* Resumo unificado da importação de extratos — agrupado por banco */}
+             {/* Confirmação da importação de extratos — sem repetir os saldos, que já
+                 aparecem direto na tabela (SD Inicial de cada banco). Mantém só os
+                 avisos que não têm outro lugar pra aparecer. */}
              {extratoResult && (
                  <div className="mx-2 mt-2 bg-slate-800/60 border border-slate-700 rounded-lg p-3 text-[11px]">
-                     <div className="flex justify-between items-start mb-2">
-                         <div>
-                             <p className="text-slate-200 font-bold">
-                                 {extratoResult.balances.length} conta(s) bancária(s) atualizada(s)
-                             </p>
-                             <p className="text-slate-500">
-                                 Já aplicado no SD Inicial da coluna {displayDates[0] || 'atual'} de cada banco, e o dia útil seguinte ao fechamento de cada extrato herda automaticamente.
-                             </p>
-                         </div>
-                         <button onClick={() => setExtratoResult(null)} className="text-slate-500 hover:text-slate-300">✕</button>
+                     <div className="flex justify-between items-start">
+                         <p className="text-slate-300">
+                             ✓ {extratoResult.balances.length} conta(s) bancária(s) atualizada(s) — já aplicado no SD Inicial da coluna {displayDates[0] || 'atual'} de cada banco.
+                         </p>
+                         <button onClick={() => setExtratoResult(null)} className="text-slate-500 hover:text-slate-300 shrink-0 ml-2">✕</button>
                      </div>
-
-                     {Object.entries(
-                         extratoResult.balances.reduce((acc: Record<string, typeof extratoResult.balances>, b) => {
-                             (acc[b.bankId] = acc[b.bankId] || []).push(b);
-                             return acc;
-                         }, {})
-                     ).map(([bankId, items]) => (
-                         <div key={bankId} className="mb-2 last:mb-0">
-                             <p className="text-slate-400 font-bold uppercase mb-1">
-                                 {bankId} — fechamento de {items[0].dateISO.split('-').reverse().join('/')}
-                             </p>
-                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                 {items.map(b => (
-                                     <div key={`${bankId}_${b.companyId}`} className="bg-slate-900/60 rounded px-2 py-1.5">
-                                         <p className="text-slate-500">{COMPANIES.find(c => c.id === b.companyId)?.name || b.companyId}</p>
-                                         <p className="text-slate-200 font-medium">{b.saldo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
-                                     </div>
-                                 ))}
-                             </div>
-                         </div>
-                     ))}
 
                      {extratoResult.skippedAccounts.length > 0 && (
                          <p className="text-slate-600 mt-2">
