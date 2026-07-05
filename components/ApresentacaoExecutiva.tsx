@@ -429,15 +429,14 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                                 { label: 'SD Final', value: netPeriodResult, kind: 'end' as const },
                             ];
 
-                            // Ponte das Aplicações Financeiras: usa a posição REAL do snapshot
-                            // anterior e do atual quando existem duas ou mais posições importadas
-                            // (evolução de verdade); com só uma posição, estima o início a partir
-                            // do fechamento menos o movimento do período, e avisa que é estimado.
-                            const hasHistory = applicationSnapshots.length >= 2;
-                            const latestSnap = applicationSnapshots[applicationSnapshots.length - 1];
-                            const prevSnap = hasHistory ? applicationSnapshots[applicationSnapshots.length - 2] : null;
-                            const appClosing = latestSnap ? latestSnap.totalGeral : (totalManualAplicacoes - totalManualResgates);
-                            const appOpening = prevSnap ? prevSnap.totalGeral : (appClosing - totalManualAplicacoes + totalManualResgates);
+                            // Ponte das Aplicações Financeiras: usa a última posição IMPORTADA como
+                            // SD Inicial (o ponto real mais recente que se conhece) e SOMA o
+                            // movimento do período (Resg Aplic do FC Diário) por cima — assim o
+                            // SD Final sempre reflete a conta, mesmo quando o movimento foi
+                            // digitado depois da última importação da planilha de Aplicações.
+                            const hasSnapshot = applicationSnapshots.length >= 1;
+                            const appOpening = hasSnapshot ? applicationSnapshots[applicationSnapshots.length - 1].totalGeral : 0;
+                            const appClosing = appOpening + totalManualAplicacoes - totalManualResgates;
                             const aplicSteps = [
                                 { label: 'SD Inicial', value: appOpening, kind: 'start' as const },
                                 { label: '(-) Resgates', value: -totalManualResgates, kind: 'sub' as const },
@@ -464,7 +463,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                                     </div>
                                     <div className="flex flex-col justify-center bg-slate-900/40 rounded-md px-4 py-2">
                                         <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-                                            Aplicações Financeiras {!hasHistory && <span className="normal-case font-normal text-slate-600">(início estimado)</span>}
+                                            Aplicações Financeiras {!hasSnapshot && <span className="normal-case font-normal text-slate-600">(sem posição importada ainda)</span>}
                                         </p>
                                         {aplicSteps.map((s, i) => <Row key={i} {...s} />)}
                                     </div>
