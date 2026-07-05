@@ -80,7 +80,16 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
               const result = parseBanestesExtrato(fullText);
               if (result.dateISO && result.balances.length > 0) {
                   result.balances.forEach(b => {
+                      // Grava certinho: fechamento do dia do extrato, pro dia útil
+                      // seguinte herdar sozinho (funciona quando as datas do
+                      // sistema batem com o extrato de verdade).
                       onManualValueChange(`sim_close_${b.companyId}_BANESTES_${result.dateISO}`, b.saldo);
+                      // Também escreve DIRETO no SD Inicial do primeiro dia visível
+                      // na tela agora — assim o valor aparece na hora, na linha do
+                      // banco, mesmo que a janela atual seja de outro período/teste.
+                      if (displayDates[0]) {
+                          onManualValueChange(`sim_sd_ini_${b.companyId}_BANESTES_${displayDates[0]}`, b.saldo);
+                      }
                   });
               }
               setBanestesResult(result);
@@ -363,7 +372,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                  Extrato Banestes — fechamento de {banestesResult.dateISO ? banestesResult.dateISO.split('-').reverse().join('/') : '(data não identificada)'}
                              </p>
                              <p className="text-slate-500">
-                                 {banestesResult.balances.length} conta(s) atualizada(s) — o próximo dia útil já herda esses saldos automaticamente.
+                                 {banestesResult.balances.length} conta(s) atualizada(s) — já aplicado no SD Inicial da coluna {displayDates[0] || 'atual'} de cada banco, e o dia útil seguinte ao fechamento do extrato herda automaticamente.
                              </p>
                          </div>
                          <button onClick={() => setBanestesResult(null)} className="text-slate-500 hover:text-slate-300">✕</button>
