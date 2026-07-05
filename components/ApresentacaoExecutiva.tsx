@@ -163,7 +163,20 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   const [isEditingSummary, setIsEditingSummary] = useState(false);
 
   const generateAutoSummary = () => {
-      const text = `No período analisado (${dateRange}), o saldo inicial consolidado foi de ${formatCurrency(initialBalance)}. As operações geraram um total de ${formatCurrency(summary.totalInflow)} em recebimentos e ${formatCurrency(summary.totalOutflow)} em pagamentos, resultando em um resultado operacional de ${formatCurrency(operatingResult)}. O fluxo líquido de aplicações e investimentos impactou o caixa em ${formatCurrency(cashFlowImpact)}, levando a um saldo final consolidado de ${formatCurrency(netPeriodResult)}.`;
+      const coberturaPct = summary.totalOutflow > 0 ? (summary.totalInflow / summary.totalOutflow) * 100 : 0;
+      const resultadoTexto = operatingResult >= 0
+          ? `resultado operacional positivo de ${formatCurrency(operatingResult)}, indicando que os recebimentos do período cobriram integralmente as saídas`
+          : `resultado operacional negativo de ${formatCurrency(Math.abs(operatingResult))}, com os recebimentos cobrindo ${coberturaPct.toFixed(0)}% dos pagamentos — a diferença foi suportada pelo saldo em caixa`;
+
+      const aplicacaoTexto = (summary.totalInvested > 0 || totalManualResgates > 0)
+          ? `As aplicações financeiras tiveram efeito líquido de ${formatCurrency(cashFlowImpact)} sobre o caixa (${formatCurrency(summary.totalInvested)} aplicados e ${formatCurrency(totalManualResgates)} resgatados).`
+          : `Não houve movimentação de aplicações financeiras no período.`;
+
+      const fechamentoTexto = netPeriodResult >= initialBalance
+          ? `A posição consolidada avançou de ${formatCurrency(initialBalance)} para ${formatCurrency(netPeriodResult)}, uma evolução favorável no período.`
+          : `A posição consolidada recuou de ${formatCurrency(initialBalance)} para ${formatCurrency(netPeriodResult)}. Recomenda-se acompanhar a tendência nos próximos períodos e avaliar a necessidade de reforço de caixa.`;
+
+      const text = `No período de ${dateRange}, a Rede Gazeta apresentou ${resultadoTexto}. ${aplicacaoTexto} ${fechamentoTexto}`;
       setBoardSummary(text);
   };
 
@@ -398,47 +411,100 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
 
                 {/* 45% - BLOCO ESTRATÉGICO */}
                 <div className="flex-[4.5] flex gap-6 shrink-0 min-h-0">
-                    {/* FLUXO DE APLICAÇÕES */}
-                    <div className="flex-[4] border border-slate-800 bg-slate-950/50 rounded-lg p-6 flex flex-col min-h-0">
-                        <h3 className="text-lg font-semibold text-slate-200 border-b border-slate-800 pb-3 mb-4 shrink-0">
-                            Fluxo de Aplicações e Investimentos
+                    {/* FLUXO DE APLICAÇÕES — ponte (bridge) Caixa + Aplicações, lado a lado */}
+                    <div className="flex-[5] border border-slate-800 bg-slate-950/50 rounded-lg p-5 flex flex-col min-h-0">
+                        <h3 className="text-lg font-semibold text-slate-200 border-b border-slate-800 pb-3 mb-3 shrink-0">
+                            Fluxo de Caixa e Aplicações
                         </h3>
-                        <div className="flex-1 flex flex-col justify-center gap-4">
-                            <div className="flex justify-between items-center border-b border-slate-800/50 pb-2">
-                                <span className="text-sm font-medium text-slate-400">(-) Aplicações / Saídas</span>
-                                <span className="text-lg font-semibold text-rose-400">({formatCurrency(summary.totalInvested)})</span>
-                            </div>
-                            <div className="flex justify-between items-center border-b border-slate-800/50 pb-2">
-                                <span className="text-sm font-medium text-slate-400">(+) Resgates / Entradas</span>
-                                <span className="text-lg font-semibold text-emerald-400">{formatCurrency(totalManualResgates)}</span>
-                            </div>
-                            <div className="flex justify-between items-center pt-2">
-                                <span className="text-sm font-semibold text-slate-200 uppercase tracking-wider">(=) Fluxo Líquido</span>
-                                <span className={`text-xl font-semibold ${cashFlowImpact >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                    {cashFlowImpact < 0 ? `(${formatCurrency(Math.abs(cashFlowImpact))})` : formatCurrency(cashFlowImpact)}
-                                </span>
-                            </div>
-                        </div>
+                        {(() => {
+                            // Ponte do Caixa: sai do saldo inicial e aplica cada movimento até o final.
+                            const caixaSteps = [
+                                { label: 'SD Inicial', value: initialBalance, kind: 'start' as const },
+                                { label: '(+) Recebimentos', value: summary.totalInflow, kind: 'add' as const },
+                                { label: '(-) Pagamentos', value: -summary.totalOutflow, kind: 'sub' as const },
+                                { label: '(-) Aplicações', value: -summary.totalInvested, kind: 'sub' as const },
+                                { label: '(+) Resgates', value: totalManualResgates, kind: 'add' as const },
+                                { label: 'SD Final', value: netPeriodResult, kind: 'end' as const },
+                            ];
+
+                            // Ponte das Aplicações Financeiras: usa a posição REAL do snapshot
+                            // anterior e do atual quando existem duas ou mais posições importadas
+                            // (evolução de verdade); com só uma posição, estima o início a partir
+                            // do fechamento menos o movimento do período, e avisa que é estimado.
+                            const hasHistory = applicationSnapshots.length >= 2;
+                            const latestSnap = applicationSnapshots[applicationSnapshots.length - 1];
+                            const prevSnap = hasHistory ? applicationSnapshots[applicationSnapshots.length - 2] : null;
+                            const appClosing = latestSnap ? latestSnap.totalGeral : (summary.totalInvested - totalManualResgates);
+                            const appOpening = prevSnap ? prevSnap.totalGeral : (appClosing - summary.totalInvested + totalManualResgates);
+                            const aplicSteps = [
+                                { label: 'SD Inicial', value: appOpening, kind: 'start' as const },
+                                { label: '(-) Resgates', value: -totalManualResgates, kind: 'sub' as const },
+                                { label: '(+) Aplicações', value: summary.totalInvested, kind: 'add' as const },
+                                { label: 'SD Final', value: appClosing, kind: 'end' as const },
+                            ];
+
+                            const Row = ({ label, value, kind }: { label: string; value: number; kind: 'start' | 'add' | 'sub' | 'end' }) => (
+                                <div className={`flex justify-between items-center py-1.5 ${kind === 'start' || kind === 'end' ? 'border-t border-slate-800 mt-1 pt-2' : ''}`}>
+                                    <span className={`text-[13px] ${kind === 'start' || kind === 'end' ? 'font-semibold text-slate-200' : 'text-slate-400'}`}>{label}</span>
+                                    <span className={`text-[13px] font-semibold tabular-nums ${
+                                        kind === 'add' ? 'text-emerald-400' : kind === 'sub' ? 'text-rose-400' : value < 0 ? 'text-rose-400' : 'text-slate-100'
+                                    }`}>
+                                        {kind === 'sub' && value < 0 ? '(' : ''}{formatCurrency(Math.abs(value))}{kind === 'sub' && value < 0 ? ')' : ''}
+                                    </span>
+                                </div>
+                            );
+
+                            return (
+                                <div className="flex-1 grid grid-cols-2 gap-5 min-h-0">
+                                    <div className="flex flex-col justify-center bg-slate-900/40 rounded-md px-4 py-2">
+                                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Caixa (Contas Correntes)</p>
+                                        {caixaSteps.map((s, i) => <Row key={i} {...s} />)}
+                                    </div>
+                                    <div className="flex flex-col justify-center bg-slate-900/40 rounded-md px-4 py-2">
+                                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                                            Aplicações Financeiras {!hasHistory && <span className="normal-case font-normal text-slate-600">(início estimado)</span>}
+                                        </p>
+                                        {aplicSteps.map((s, i) => <Row key={i} {...s} />)}
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     {/* RESUMO EXECUTIVO */}
                     <div className="flex-[6] border border-slate-800 bg-slate-950/50 rounded-lg p-6 flex flex-col min-h-0">
                         <h3 className="text-lg font-semibold text-slate-200 border-b border-slate-800 pb-3 mb-4 shrink-0">
-                            Resumo Executivo do Período
+                            Análise do Período
                         </h3>
-                        <div className="flex-1 flex flex-col justify-center gap-4 text-sm font-normal text-slate-300 leading-relaxed text-justify">
+                        <div className="flex-1 flex flex-col justify-center gap-3 text-sm font-normal text-slate-300 leading-relaxed text-justify">
                             <p>
-                                A Controladoria apura um Resultado Operacional de
+                                Os recebimentos do período ({formatCurrency(summary.totalInflow)}) cobriram
+                                <strong className="font-semibold text-slate-100 mx-1">
+                                    {summary.totalOutflow > 0 ? ((summary.totalInflow / summary.totalOutflow) * 100).toFixed(0) : '0'}%
+                                </strong>
+                                dos pagamentos realizados ({formatCurrency(summary.totalOutflow)}), resultando em um resultado operacional
                                 <strong className={`font-semibold ml-1 ${operatingResult >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{formatCurrency(operatingResult)}</strong>.
                             </p>
                             <p>
-                                O volume de pagamentos operacionais totalizou
-                                <strong className="font-semibold text-slate-100 ml-1">{formatCurrency(summary.totalOutflow)}</strong>, 
-                                impactando diretamente o fluxo de caixa do período.
+                                {summary.totalInvested > 0 || totalManualResgates > 0 ? (
+                                    <>
+                                        As movimentações de aplicações somaram
+                                        <strong className="font-semibold text-slate-100 mx-1">{formatCurrency(summary.totalInvested)}</strong>
+                                        em aportes e
+                                        <strong className="font-semibold text-slate-100 mx-1">{formatCurrency(totalManualResgates)}</strong>
+                                        em resgates, um efeito líquido de
+                                        <strong className={`font-semibold ml-1 ${cashFlowImpact >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{formatCurrency(cashFlowImpact)}</strong> sobre o caixa.
+                                    </>
+                                ) : (
+                                    <>Não houve movimentação de aplicações ou resgates registrada neste período.</>
+                                )}
                             </p>
                             <p>
-                                Após as movimentações de investimentos, a posição final consolidada encerra em
-                                <strong className="font-semibold text-white ml-1">{formatCurrency(netPeriodResult)}</strong>.
+                                A posição consolidada encerra o período em
+                                <strong className="font-semibold text-white ml-1">{formatCurrency(netPeriodResult)}</strong>,
+                                {netPeriodResult >= initialBalance
+                                    ? ' um avanço frente ao saldo inicial.'
+                                    : ' uma retração frente ao saldo inicial — vale acompanhar a tendência nos próximos períodos.'}
                             </p>
                         </div>
                     </div>
@@ -450,7 +516,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                     <div className="flex-[7] border border-slate-800 bg-slate-950/50 rounded-lg p-6 flex flex-col relative group min-h-0">
                         <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-4 shrink-0">
                             <h3 className="text-lg font-semibold text-slate-200">
-                                Parecer da Controladoria
+                                Parecer do Financeiro
                             </h3>
                             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">
                                 {isEditingSummary ? (
@@ -495,7 +561,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                             Anexos & Detalhamentos
                         </h3>
                         <div className="flex-1 flex flex-col justify-center gap-3">
-                            {['Resumo Financeiro', 'Fluxo de Caixa (DFC)', 'Contas a Pagar', 'Contas a Receber'].map((item, i) => (
+                            {['Resumo Financeiro', 'Fluxo de Caixa (DFC)', 'Contas a Pagar', 'Contas a Receber', 'Pontos Críticos & Alocação', 'Aplicações Financeiras'].map((item, i) => (
                                 <div key={i} className="flex items-center text-sm font-medium text-slate-400">
                                     <div className="w-1.5 h-1.5 bg-slate-600 rounded-full mr-3"></div>
                                     {item}
