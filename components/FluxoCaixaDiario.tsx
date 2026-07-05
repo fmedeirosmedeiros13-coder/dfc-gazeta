@@ -52,11 +52,10 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
       // Botão "ocultar dia anterior": quando ligado, mostra só o dia corrente
       // (hoje) em diante. O cálculo do saldo continua passando por todos os dias;
       // só a EXIBIÇÃO das colunas anteriores é escondida.
-      const [hidePast, setHidePast] = useState(false);
-      const todayStart = (() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime(); })();
-      const anyFuture = displayDates.some(d => parseDate(d) >= todayStart);
-      const effectiveHide = hidePast && anyFuture; // não esconde tudo se não houver dia >= hoje
-      const isVisibleIdx = (i: number) => !effectiveHide || parseDate(displayDates[i]) >= todayStart;
+      // Ocultar dias anteriores a uma data escolhida (dentre as do período
+      // importado/exibido) — não fica preso a "hoje", o usuário escolhe.
+      const [hideBeforeDate, setHideBeforeDate] = useState<string>('');
+      const isVisibleIdx = (i: number) => !hideBeforeDate || parseDate(displayDates[i]) >= parseDate(hideBeforeDate);
 
       // Importação do extrato Banestes: extrai o saldo de fechamento de cada
       // conta e grava como o fechamento daquele dia (mesma chave sim_close_
@@ -334,12 +333,12 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
       return (
          <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 overflow-hidden flex flex-col h-full animate-fadeIn">
              {/* Header Toolbar */}
-             <div className="p-2 bg-slate-800 border-b border-slate-700 flex justify-between items-center">
-                 <h2 className="text-xs font-bold uppercase pl-2 text-slate-200 flex items-center gap-2">
+             <div className="p-2 bg-slate-800 border-b border-slate-700 flex flex-wrap gap-3 items-center">
+                 <h2 className="text-xs font-bold uppercase pl-2 text-slate-200 flex items-center gap-2 shrink-0">
                      <Calculator className="w-4 h-4 text-indigo-400" />
                      Fluxo de Caixa - Simulação Diária
                  </h2>
-                 <div className="flex gap-2">
+                 <div className="flex flex-wrap gap-2">
                      <label className={`px-3 py-1 rounded text-[10px] font-bold uppercase transition-colors border cursor-pointer ${isImportingBanestes ? 'bg-slate-700 text-slate-500 border-slate-600 cursor-wait' : 'bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-700'}`}>
                          {isImportingBanestes ? 'Lendo extrato...' : 'Importar Extrato Banestes'}
                          <input
@@ -350,13 +349,20 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                              onChange={handleImportBanestesExtrato}
                          />
                      </label>
-                     <button
-                         onClick={() => setHidePast(v => !v)}
-                         className={`px-3 py-1 rounded text-[10px] font-bold uppercase transition-colors border ${hidePast ? 'bg-indigo-600 text-white border-indigo-500 hover:bg-indigo-700' : 'bg-slate-700 text-slate-300 border-slate-600 hover:bg-slate-600'}`}
-                         title="Mostra só o dia corrente em diante, ocultando os dias anteriores"
-                     >
-                         {hidePast ? 'Mostrar dias anteriores' : 'Ocultar dias anteriores'}
-                     </button>
+                     <div className="flex items-center gap-1.5">
+                         <label className="text-[10px] font-bold uppercase text-slate-400">Ocultar antes de:</label>
+                         <select
+                             value={hideBeforeDate}
+                             onChange={e => setHideBeforeDate(e.target.value)}
+                             className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors border ${hideBeforeDate ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-700 text-slate-300 border-slate-600'}`}
+                             title="Oculta as colunas de dias anteriores à data escolhida (dentre as do período importado)"
+                         >
+                             <option value="">Mostrar tudo</option>
+                             {displayDates.map(d => (
+                                 <option key={d} value={d}>{d}</option>
+                             ))}
+                         </select>
+                     </div>
                      <button className="px-3 py-1 bg-blue-600 text-white rounded text-[10px] font-bold uppercase hover:bg-blue-700">
                          Exportar Excel
                      </button>
@@ -393,7 +399,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                  </div>
              )}
 
-             <div className="flex-1 overflow-auto custom-scrollbar bg-slate-900 relative">
+             <div className="flex-1 min-w-0 overflow-auto custom-scrollbar bg-slate-900 relative">
                  <table className="border-collapse text-[10px] table-fixed">
                      <thead className="sticky top-0 z-20 shadow-lg">
                          <tr className="bg-slate-800">
@@ -456,25 +462,25 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                      </td>
                                      {group.days.map((day, i) => isVisibleIdx(i) && (
                                          <React.Fragment key={i}>
-                                             <td className="border border-slate-700 p-1 bg-slate-900/50 border-l-4 border-l-slate-700 text-right font-medium text-slate-300">
+                                             <td className="border border-slate-700 p-1 bg-slate-900/50 border-l-4 border-l-slate-700 text-center font-medium text-slate-300">
                                                  {day.sdInicial.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
                                              </td>
-                                             <td className="border border-slate-700 p-1 text-right text-red-400 font-medium">
+                                             <td className="border border-slate-700 p-1 text-center text-red-400 font-medium">
                                                  {day.pagtos.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
                                              </td>
-                                             <td className="border border-slate-700 p-1 text-right text-blue-400 font-medium bg-amber-900/10">
+                                             <td className="border border-slate-700 p-1 text-center text-blue-400 font-medium bg-amber-900/10">
                                                  {day.resg.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
                                              </td>
-                                             <td className="border border-slate-700 p-1 text-right text-purple-400 font-medium bg-amber-900/10">
+                                             <td className="border border-slate-700 p-1 text-center text-purple-400 font-medium bg-amber-900/10">
                                                  {day.transf.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
                                              </td>
-                                             <td className="border border-slate-600 p-1 text-right font-bold text-slate-200 bg-slate-800">
+                                             <td className="border border-slate-600 p-1 text-center font-bold text-slate-200 bg-slate-800">
                                                  {day.sdParcial.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
                                              </td>
-                                             <td className="border border-slate-700 p-1 text-right text-emerald-400 font-medium">
+                                             <td className="border border-slate-700 p-1 text-center text-emerald-400 font-medium">
                                                  {day.receb.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
                                              </td>
-                                             <td className={`border border-slate-600 p-1 text-right font-bold bg-slate-800 ${day.sdFinal < 0 ? 'text-red-400' : 'text-blue-400'}`}>
+                                             <td className={`border border-slate-600 p-1 text-center font-bold bg-slate-800 ${day.sdFinal < 0 ? 'text-red-400' : 'text-blue-400'}`}>
                                                  {day.sdFinal.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
                                              </td>
                                          </React.Fragment>
@@ -492,19 +498,19 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                                  <td className="border border-slate-800 p-0 bg-slate-900 border-l-4 border-l-slate-800">
                                                       <input 
                                                          type="number" 
-                                                         className="w-full h-full bg-transparent text-right px-1 text-slate-500 text-[10px] outline-none"
+                                                         className="w-full h-full bg-transparent text-center px-1 text-slate-500 text-[10px] outline-none"
                                                          value={day.sdInicial || ''}
                                                          onChange={(e) => onManualValueChange && onManualValueChange(day.keySdInicial, parseFloat(e.target.value))}
                                                          placeholder="-"
                                                      />
                                                  </td>
-                                                 <td className="border border-slate-800 p-1 text-right text-slate-500 text-[10px]">
+                                                 <td className="border border-slate-800 p-1 text-center text-slate-500 text-[10px]">
                                                      {day.pagtos !== 0 ? day.pagtos.toLocaleString('pt-BR', {minimumFractionDigits: 0}) : '-'}
                                                  </td>
                                                  <td className="border border-slate-800 p-0 bg-amber-900/5">
                                                      <input 
                                                          type="number" 
-                                                         className="w-full h-full bg-transparent text-right px-1 text-blue-500/70 text-[10px] outline-none"
+                                                         className="w-full h-full bg-transparent text-center px-1 text-blue-500/70 text-[10px] outline-none"
                                                          value={day.resg || ''}
                                                          onChange={(e) => onManualValueChange && onManualValueChange(day.keyResg, parseFloat(e.target.value))}
                                                      />
@@ -512,18 +518,18 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                                  <td className="border border-slate-800 p-0 bg-amber-900/5">
                                                       <input 
                                                          type="number" 
-                                                         className="w-full h-full bg-transparent text-right px-1 text-purple-500/70 text-[10px] outline-none"
+                                                         className="w-full h-full bg-transparent text-center px-1 text-purple-500/70 text-[10px] outline-none"
                                                          value={day.transf || ''}
                                                          onChange={(e) => onManualValueChange && onManualValueChange(day.keyTransf, parseFloat(e.target.value))}
                                                      />
                                                  </td>
-                                                 <td className="border border-slate-700 p-1 text-right font-medium text-slate-400 bg-slate-800/50 text-[10px]">
+                                                 <td className="border border-slate-700 p-1 text-center font-medium text-slate-400 bg-slate-800/50 text-[10px]">
                                                      {day.sdParcial.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
                                                  </td>
-                                                 <td className="border border-slate-800 p-1 text-right text-slate-500 text-[10px]">
+                                                 <td className="border border-slate-800 p-1 text-center text-slate-500 text-[10px]">
                                                      {day.receb !== 0 ? day.receb.toLocaleString('pt-BR', {minimumFractionDigits: 0}) : '-'}
                                                  </td>
-                                                 <td className={`border border-slate-700 p-1 text-right font-medium bg-slate-800/50 text-[10px] ${day.sdFinal < 0 ? 'text-red-500/70' : 'text-blue-500/70'}`}>
+                                                 <td className={`border border-slate-700 p-1 text-center font-medium bg-slate-800/50 text-[10px] ${day.sdFinal < 0 ? 'text-red-500/70' : 'text-blue-500/70'}`}>
                                                      {day.sdFinal.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
                                                  </td>
                                              </React.Fragment>
@@ -538,13 +544,13 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                              <td className="sticky left-0 z-30 bg-[#0f172a] border border-slate-700 p-2 text-center uppercase text-[11px]">TOTAL</td>
                              {companyTotals.map((t, i) => isVisibleIdx(i) && (
                                  <React.Fragment key={i}>
-                                     <td className="border border-slate-700 p-1 text-right bg-[#1e293b] border-l-4 border-l-slate-600">{t.sumInicial.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
-                                     <td className="border border-slate-700 p-1 text-right bg-[#1e293b] text-red-400">{t.sumPagtos.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
-                                     <td className="border border-slate-700 p-1 text-right bg-[#1e293b] text-blue-400">{t.sumResg.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
-                                     <td className="border border-slate-700 p-1 text-right bg-[#1e293b] text-purple-400">{t.sumTransf.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
-                                     <td className="border border-slate-700 p-1 text-right bg-[#0f172a]">{t.sumParcial.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
-                                     <td className="border border-slate-700 p-1 text-right bg-[#1e293b] text-emerald-400">{t.sumReceb.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
-                                     <td className={`border border-slate-700 p-1 text-right bg-[#0f172a] ${t.sumFinal < 0 ? 'text-red-400' : 'text-blue-400'}`}>{t.sumFinal.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
+                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] border-l-4 border-l-slate-600">{t.sumInicial.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
+                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] text-red-400">{t.sumPagtos.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
+                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] text-blue-400">{t.sumResg.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
+                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] text-purple-400">{t.sumTransf.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
+                                     <td className="border border-slate-700 p-1 text-center bg-[#0f172a]">{t.sumParcial.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
+                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] text-emerald-400">{t.sumReceb.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
+                                     <td className={`border border-slate-700 p-1 text-center bg-[#0f172a] ${t.sumFinal < 0 ? 'text-red-400' : 'text-blue-400'}`}>{t.sumFinal.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
                                  </React.Fragment>
                              ))}
                          </tr>
