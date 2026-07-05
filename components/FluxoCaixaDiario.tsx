@@ -41,6 +41,50 @@ interface FluxoCaixaDiarioProps {
   // parseDateGlobal e banksMapping removidos — importados de utils/finance.ts
 }
 
+// Campo de valor monetário editável: mostra formatado (1.234,56) quando não
+// está em foco — corrige o problema de <input type="number"> nunca conseguir
+// exibir separador de milhar (limitação do próprio HTML, não é bug de conta).
+// Ao focar, mostra um texto simples (vírgula decimal) fácil de editar; ao
+// sair do campo, reformata e envia o valor numérico pra cima.
+const CurrencyInput: React.FC<{
+  value: number | undefined;
+  onCommit: (v: number) => void;
+  className?: string;
+  placeholder?: string;
+}> = ({ value, onCommit, className, placeholder }) => {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState('');
+
+  const hasValue = value !== undefined && value !== null && !Number.isNaN(value);
+  const display = hasValue
+    ? value!.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : '';
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      className={className}
+      placeholder={placeholder}
+      value={editing ? text : display}
+      onFocus={(e) => {
+        setEditing(true);
+        setText(hasValue ? String(value).replace('.', ',') : '');
+        e.target.select();
+      }}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => {
+        setEditing(false);
+        const raw = text.trim();
+        if (raw === '') return; // campo deixado vazio: não altera o valor existente
+        const normalized = raw.replace(/\./g, '').replace(',', '.');
+        const parsed = parseFloat(normalized);
+        if (!Number.isNaN(parsed)) onCommit(parsed);
+      }}
+    />
+  );
+};
+
 export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
   transactions,
   dfcManualValues,
@@ -610,11 +654,10 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                          {bRow.days.map((day, i) => isVisibleIdx(i) && (
                                              <React.Fragment key={i}>
                                                  <td className="border border-slate-800 p-0 bg-slate-900 border-l-4 border-l-slate-800">
-                                                      <input 
-                                                         type="number" 
+                                                      <CurrencyInput
                                                          className="w-full h-full bg-transparent text-center px-1 text-slate-500 text-[10px] outline-none"
-                                                         value={day.sdInicial || ''}
-                                                         onChange={(e) => onManualValueChange && onManualValueChange(day.keySdInicial, parseFloat(e.target.value))}
+                                                         value={day.sdInicial}
+                                                         onCommit={(v) => onManualValueChange && onManualValueChange(day.keySdInicial, v)}
                                                          placeholder="-"
                                                      />
                                                  </td>
@@ -622,19 +665,17 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                                      {day.pagtos !== 0 ? day.pagtos.toLocaleString('pt-BR', {minimumFractionDigits: 0}) : '-'}
                                                  </td>
                                                  <td className="border border-slate-800 p-0 bg-amber-900/5">
-                                                     <input 
-                                                         type="number" 
+                                                     <CurrencyInput
                                                          className="w-full h-full bg-transparent text-center px-1 text-blue-500/70 text-[10px] outline-none"
-                                                         value={day.resg || ''}
-                                                         onChange={(e) => onManualValueChange && onManualValueChange(day.keyResg, parseFloat(e.target.value))}
+                                                         value={day.resg}
+                                                         onCommit={(v) => onManualValueChange && onManualValueChange(day.keyResg, v)}
                                                      />
                                                  </td>
                                                  <td className="border border-slate-800 p-0 bg-amber-900/5">
-                                                      <input 
-                                                         type="number" 
+                                                      <CurrencyInput
                                                          className="w-full h-full bg-transparent text-center px-1 text-purple-500/70 text-[10px] outline-none"
-                                                         value={day.transf || ''}
-                                                         onChange={(e) => onManualValueChange && onManualValueChange(day.keyTransf, parseFloat(e.target.value))}
+                                                         value={day.transf}
+                                                         onCommit={(v) => onManualValueChange && onManualValueChange(day.keyTransf, v)}
                                                      />
                                                  </td>
                                                  <td className="border border-slate-700 p-1 text-center font-medium text-slate-400 bg-slate-800/50 text-[10px]">
