@@ -2,11 +2,16 @@ import React, { useMemo, useEffect, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { parseBanestesExtrato, type BanestesExtratoParseResult } from '../engines/banestesExtratoParser';
+import { parseBBExtrato, type BBAccountBalance } from '../engines/bbExtratoParser';
+import { parseCEFExtrato } from '../engines/cefExtratoParser';
+import { parseItauExtrato } from '../engines/itauExtratoParser';
+import { parseSicoobExtrato } from '../engines/sicoobExtratoParser';
+import { detectBank } from '../engines/bankExtratoDetector';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 import { Transaction, TransactionType, ManualValues } from '../types';
 import { parseDate, BANKS_MAPPING, byDate, moveWeekendToMonday, COMPANIES } from '../utils/finance';
-import { Calculator } from 'lucide-react';
+import { Calculator, AlertTriangle } from 'lucide-react';
 
 // Data canônica em ISO (yyyy-mm-dd), independente do formato de exibição.
 // Usada como chave do fechamento persistido, para o seed funcionar mesmo
@@ -31,6 +36,8 @@ interface FluxoCaixaDiarioProps {
   transactions: Transaction[];
   dfcManualValues?: ManualValues;
   onManualValueChange?: (key: string, value: number) => void;
+  /** Posição mais recente das Aplicações — usada pra sugerir resgate quando há saldo negativo. */
+  applicationSnapshots?: import('../hooks/useApplicationSnapshots').ApplicationSnapshot[];
   // parseDateGlobal e banksMapping removidos — importados de utils/finance.ts
 }
 
@@ -38,6 +45,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
   transactions,
   dfcManualValues,
   onManualValueChange,
+  applicationSnapshots = [],
 }) => {
       // Mover transações de sábado/domingo para a segunda-feira seguinte
       const adjustedTransactions = transactions.map(t => ({
@@ -57,46 +65,92 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
       const [hideBeforeDate, setHideBeforeDate] = useState<string>('');
       const isVisibleIdx = (i: number) => !hideBeforeDate || parseDate(displayDates[i]) >= parseDate(hideBeforeDate);
 
-      // Importação do extrato Banestes: extrai o saldo de fechamento de cada
-      // conta e grava como o fechamento daquele dia (mesma chave sim_close_
-      // usada pelo encadeamento normal) — o dia útil seguinte já herda sozinho.
-      const [banestesResult, setBanestesResult] = useState<BanestesExtratoParseResult | null>(null);
-      const [isImportingBanestes, setIsImportingBanestes] = useState(false);
+      // Importação unificada de extratos bancários: aceita vários arquivos de
+      // QUALQUER banco de uma vez (misturados). Cada PDF é lido, identificado
+      // por assinatura de texto (engines/bankExtratoDetector.ts) e roteado pro
+      // parser certo. Pra adicionar um banco novo: só plugar o parser aqui —
+      // o botão e a tela não mudam.
+      type UnifiedBalance = { bankId: string; companyId: string; saldo: number; dateISO: string };
+      type UnifiedResult = {
+          balances: UnifiedBalance[];
+          skippedAccounts: string[];   // contas-caixa auxiliares (Banestes) ou fora do De-Para
+          unrecognizedFiles: string[]; // PDFs cujo banco não foi identificado
+          precisaExemplo: string[];    // contas com formato ainda não suportado (ex.: CEF com movimento)
+      };
+      const [extratoResult, setExtratoResult] = useState<UnifiedResult | null>(null);
+      const [isImportingExtratos, setIsImportingExtratos] = useState(false);
 
-      const handleImportBanestesExtrato = async (e: React.ChangeEvent<HTMLInputElement>) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          setIsImportingBanestes(true);
+      const handleImportExtratos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+          const files = Array.from(e.target.files || []);
+          if (files.length === 0) return;
+          setIsImportingExtratos(true);
           try {
-              const buf = await file.arrayBuffer();
-              const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
-              let fullText = '';
-              for (let i = 1; i <= doc.numPages; i++) {
-                  const page = await doc.getPage(i);
-                  const content = await page.getTextContent();
-                  fullText += content.items.map((it: any) => it.str).join('\n') + '\n';
-              }
-              const result = parseBanestesExtrato(fullText);
-              if (result.dateISO && result.balances.length > 0) {
-                  result.balances.forEach(b => {
-                      // Grava certinho: fechamento do dia do extrato, pro dia útil
-                      // seguinte herdar sozinho (funciona quando as datas do
-                      // sistema batem com o extrato de verdade).
-                      onManualValueChange(`sim_close_${b.companyId}_BANESTES_${result.dateISO}`, b.saldo);
-                      // Também escreve DIRETO no SD Inicial do primeiro dia visível
-                      // na tela agora — assim o valor aparece na hora, na linha do
-                      // banco, mesmo que a janela atual seja de outro período/teste.
-                      if (displayDates[0]) {
-                          onManualValueChange(`sim_sd_ini_${b.companyId}_BANESTES_${displayDates[0]}`, b.saldo);
+              const result: UnifiedResult = { balances: [], skippedAccounts: [], unrecognizedFiles: [], precisaExemplo: [] };
+
+              for (const file of files) {
+                  const buf = await file.arrayBuffer();
+                  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+                  let fullText = '';
+                  for (let i = 1; i <= doc.numPages; i++) {
+                      const page = await doc.getPage(i);
+                      const content = await page.getTextContent();
+                      fullText += content.items.map((it: any) => it.str).join('\n') + '\n';
+                  }
+
+                  const bank = detectBank(fullText);
+                  if (bank === 'BANESTES') {
+                      const r = parseBanestesExtrato(fullText);
+                      // Cada saldo herda a data DAQUELE extrato — bancos diferentes no
+                      // mesmo lote podem ter fechado em dias diferentes.
+                      if (r.dateISO) {
+                          r.balances.forEach(b => result.balances.push({ bankId: 'BANESTES', companyId: b.companyId, saldo: b.saldo, dateISO: r.dateISO! }));
                       }
-                  });
+                      result.skippedAccounts.push(...r.skippedAccounts);
+                  } else if (bank === 'BB') {
+                      const r = parseBBExtrato(fullText);
+                      if (r.dateISO && r.balance) {
+                          result.balances.push({ bankId: 'BB', companyId: r.balance.companyId, saldo: r.balance.saldo, dateISO: r.dateISO });
+                      }
+                      if (r.contaNaoMapeada) result.skippedAccounts.push(r.contaNaoMapeada);
+                  } else if (bank === 'CEF') {
+                      const r = parseCEFExtrato(fullText);
+                      if (r.dateISO && r.balance) {
+                          result.balances.push({ bankId: 'CEF', companyId: r.balance.companyId, saldo: r.balance.saldo, dateISO: r.dateISO });
+                      }
+                      if (r.cnpjNaoMapeado) result.skippedAccounts.push(r.cnpjNaoMapeado);
+                      if (r.precisaExemploComMovimento) result.precisaExemplo.push(`${file.name} (CEF com movimento — formato ainda não suportado)`);
+                  } else if (bank === 'ITAU') {
+                      const r = parseItauExtrato(fullText);
+                      if (r.dateISO && r.balance) {
+                          result.balances.push({ bankId: 'ITAU', companyId: r.balance.companyId, saldo: r.balance.saldo, dateISO: r.dateISO });
+                      }
+                      if (r.cnpjNaoMapeado) result.skippedAccounts.push(r.cnpjNaoMapeado);
+                  } else if (bank === 'SICOOB') {
+                      const r = parseSicoobExtrato(fullText);
+                      if (r.dateISO && r.balance) {
+                          result.balances.push({ bankId: 'SICOOB', companyId: r.balance.companyId, saldo: r.balance.saldo, dateISO: r.dateISO });
+                      }
+                      if (r.contaNaoMapeada) result.skippedAccounts.push(r.contaNaoMapeada);
+                  } else {
+                      result.unrecognizedFiles.push(file.name);
+                  }
               }
-              setBanestesResult(result);
+
+              result.balances.forEach(b => {
+                  // Fechamento do dia do extrato: o dia útil seguinte herda sozinho.
+                  onManualValueChange(`sim_close_${b.companyId}_${b.bankId}_${b.dateISO}`, b.saldo);
+                  // Escreve também direto no SD Inicial do primeiro dia visível na
+                  // tela agora, pra aparecer na hora na linha do banco.
+                  if (displayDates[0]) {
+                      onManualValueChange(`sim_sd_ini_${b.companyId}_${b.bankId}_${displayDates[0]}`, b.saldo);
+                  }
+              });
+              setExtratoResult(result);
           } catch (err) {
-              alert('Não foi possível ler o PDF do extrato. Confira se é o extrato consolidado Banestes.');
+              alert('Não foi possível ler um dos PDFs. Confira se são extratos bancários válidos.');
               console.error(err);
           } finally {
-              setIsImportingBanestes(false);
+              setIsImportingExtratos(false);
               e.target.value = '';
           }
       };
@@ -330,6 +384,32 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
           return calculateTotals(allCompanyRows);
       }, [displayDates, structuredData]);
 
+      // Avisos de saldo negativo: para cada empresa/dia visível com SD Final < 0,
+      // sugere resgate de aplicação (se a empresa tem saldo disponível) ou aporte
+      // (se não tem, ou o saldo em aplicações não cobre o déficit).
+      const latestApplicationSnapshot = applicationSnapshots[applicationSnapshots.length - 1] ?? null;
+      const negativeWarnings = useMemo(() => {
+          const warnings: { companyId: string; companyName: string; date: string; deficit: number; aplicacaoDisponivel: number; }[] = [];
+          structuredData.forEach(s => {
+              displayDates.forEach((date, i) => {
+                  if (!isVisibleIdx(i)) return;
+                  const sdFinal = s.days[i]?.sdFinal;
+                  if (typeof sdFinal === 'number' && sdFinal < 0) {
+                      const aplicacaoDisponivel = latestApplicationSnapshot?.porEmpresa[s.entity.id] || 0;
+                      warnings.push({
+                          companyId: s.entity.id,
+                          companyName: s.entity.name,
+                          date,
+                          deficit: Math.abs(sdFinal),
+                          aplicacaoDisponivel,
+                      });
+                  }
+              });
+          });
+          return warnings;
+          // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [structuredData, displayDates, hideBeforeDate, latestApplicationSnapshot]);
+
       return (
          <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 overflow-hidden flex flex-col h-full animate-fadeIn">
              {/* Header Toolbar */}
@@ -339,14 +419,16 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                      Fluxo de Caixa - Simulação Diária
                  </h2>
                  <div className="flex flex-wrap gap-2">
-                     <label className={`px-3 py-1 rounded text-[10px] font-bold uppercase transition-colors border cursor-pointer ${isImportingBanestes ? 'bg-slate-700 text-slate-500 border-slate-600 cursor-wait' : 'bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-700'}`}>
-                         {isImportingBanestes ? 'Lendo extrato...' : 'Importar Extrato Banestes'}
+                     <label className={`px-3 py-1 rounded text-[10px] font-bold uppercase transition-colors border cursor-pointer ${isImportingExtratos ? 'bg-slate-700 text-slate-500 border-slate-600 cursor-wait' : 'bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-700'}`}>
+                         {isImportingExtratos ? 'Lendo extratos...' : 'Importar Extratos Bancários'}
                          <input
                              type="file"
                              accept="application/pdf"
+                             multiple
                              className="hidden"
-                             disabled={isImportingBanestes}
-                             onChange={handleImportBanestesExtrato}
+                             disabled={isImportingExtratos}
+                             onChange={handleImportExtratos}
+                             title="Selecione os PDFs de qualquer banco (Banestes, BB...) — o sistema identifica sozinho de qual banco é cada um"
                          />
                      </label>
                      <div className="flex items-center gap-1.5">
@@ -369,33 +451,89 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                  </div>
              </div>
 
-             {/* Resumo da importação do extrato Banestes */}
-             {banestesResult && (
+             {/* Resumo unificado da importação de extratos — agrupado por banco */}
+             {extratoResult && (
                  <div className="mx-2 mt-2 bg-slate-800/60 border border-slate-700 rounded-lg p-3 text-[11px]">
                      <div className="flex justify-between items-start mb-2">
                          <div>
                              <p className="text-slate-200 font-bold">
-                                 Extrato Banestes — fechamento de {banestesResult.dateISO ? banestesResult.dateISO.split('-').reverse().join('/') : '(data não identificada)'}
+                                 {extratoResult.balances.length} conta(s) bancária(s) atualizada(s)
                              </p>
                              <p className="text-slate-500">
-                                 {banestesResult.balances.length} conta(s) atualizada(s) — já aplicado no SD Inicial da coluna {displayDates[0] || 'atual'} de cada banco, e o dia útil seguinte ao fechamento do extrato herda automaticamente.
+                                 Já aplicado no SD Inicial da coluna {displayDates[0] || 'atual'} de cada banco, e o dia útil seguinte ao fechamento de cada extrato herda automaticamente.
                              </p>
                          </div>
-                         <button onClick={() => setBanestesResult(null)} className="text-slate-500 hover:text-slate-300">✕</button>
+                         <button onClick={() => setExtratoResult(null)} className="text-slate-500 hover:text-slate-300">✕</button>
                      </div>
-                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                         {banestesResult.balances.map(b => (
-                             <div key={b.conta} className="bg-slate-900/60 rounded px-2 py-1.5">
-                                 <p className="text-slate-500">{COMPANIES.find(c => c.id === b.companyId)?.name || b.companyId}</p>
-                                 <p className="text-slate-200 font-medium">{b.saldo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+
+                     {Object.entries(
+                         extratoResult.balances.reduce((acc: Record<string, typeof extratoResult.balances>, b) => {
+                             (acc[b.bankId] = acc[b.bankId] || []).push(b);
+                             return acc;
+                         }, {})
+                     ).map(([bankId, items]) => (
+                         <div key={bankId} className="mb-2 last:mb-0">
+                             <p className="text-slate-400 font-bold uppercase mb-1">
+                                 {bankId} — fechamento de {items[0].dateISO.split('-').reverse().join('/')}
+                             </p>
+                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                 {items.map(b => (
+                                     <div key={`${bankId}_${b.companyId}`} className="bg-slate-900/60 rounded px-2 py-1.5">
+                                         <p className="text-slate-500">{COMPANIES.find(c => c.id === b.companyId)?.name || b.companyId}</p>
+                                         <p className="text-slate-200 font-medium">{b.saldo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                                     </div>
+                                 ))}
                              </div>
-                         ))}
-                     </div>
-                     {banestesResult.skippedAccounts.length > 0 && (
+                         </div>
+                     ))}
+
+                     {extratoResult.skippedAccounts.length > 0 && (
                          <p className="text-slate-600 mt-2">
-                             Contas-caixa auxiliares ignoradas: {banestesResult.skippedAccounts.join(', ')}
+                             Contas ignoradas (auxiliares ou fora do De-Para): {extratoResult.skippedAccounts.join(', ')}
                          </p>
                      )}
+                     {extratoResult.unrecognizedFiles.length > 0 && (
+                         <p className="text-amber-500 mt-2">
+                             Arquivo(s) não reconhecido(s) — nenhum banco identificado: {extratoResult.unrecognizedFiles.join(', ')}. Avise pra eu adicionar o layout desse banco.
+                         </p>
+                     )}
+                     {extratoResult.precisaExemplo.length > 0 && (
+                         <p className="text-orange-400 mt-2">
+                             Formato ainda não suportado (não gravado — evita chutar): {extratoResult.precisaExemplo.join(', ')}. Me manda um exemplo assim que eu completo o parser.
+                         </p>
+                     )}
+                 </div>
+             )}
+
+             {/* Avisos de saldo negativo: sugere resgate (se tem aplicação) ou aporte */}
+             {negativeWarnings.length > 0 && (
+                 <div className="mx-2 mt-2 bg-red-950/40 border border-red-800/60 rounded-lg p-3 text-[11px]">
+                     <p className="text-red-300 font-bold flex items-center gap-1.5 mb-2">
+                         <AlertTriangle className="w-3.5 h-3.5" />
+                         {negativeWarnings.length} situação(ões) de saldo negativo no período exibido
+                     </p>
+                     <div className="space-y-1.5">
+                         {negativeWarnings.map((w, i) => {
+                             const cobre = w.aplicacaoDisponivel >= w.deficit;
+                             return (
+                                 <div key={`${w.companyId}_${w.date}_${i}`} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 bg-slate-900/50 rounded px-2 py-1.5">
+                                     <span className="text-slate-300">
+                                         <span className="font-medium text-slate-100">{w.companyName}</span> em {w.date}:
+                                         {' '}saldo negativo de <span className="text-red-400 font-medium">{w.deficit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                                     </span>
+                                     {w.aplicacaoDisponivel > 0 ? (
+                                         <span className={cobre ? 'text-emerald-400' : 'text-amber-400'}>
+                                             {cobre
+                                                 ? `→ Resgate de aplicação cobre o déficit (disponível ${w.aplicacaoDisponivel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})`
+                                                 : `→ Resgate de aplicação cobre só parte (disponível ${w.aplicacaoDisponivel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}) — falta aporte de ${(w.deficit - w.aplicacaoDisponivel).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`}
+                                         </span>
+                                     ) : (
+                                         <span className="text-orange-400">→ Sem saldo em aplicações — aporte necessário</span>
+                                     )}
+                                 </div>
+                             );
+                         })}
+                     </div>
                  </div>
              )}
 
