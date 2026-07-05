@@ -66,6 +66,7 @@ interface ApresentacaoExecutivaProps {
   onManualValueChange?: (key: string, value: number) => void;
   initialBalance: number;
   totalManualResgates: number;
+  totalManualAplicacoes: number;
   applicationSnapshots?: import('../hooks/useApplicationSnapshots').ApplicationSnapshot[];
   onExit: () => void;
 }
@@ -80,6 +81,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   onManualValueChange = () => {},
   initialBalance, 
   totalManualResgates, 
+  totalManualAplicacoes,
   applicationSnapshots = [],
   onExit 
 }) => {
@@ -87,8 +89,8 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   // --- LÓGICA PRESERVADA & AJUSTADA ---
   const operatingResult = summary.totalInflow - summary.totalOutflow;
   const companyName = 'REDE GAZETA';
-  const netInvestmentMovement = summary.totalInvested - totalManualResgates;
-  const cashFlowImpact = totalManualResgates - summary.totalInvested;
+  const netInvestmentMovement = totalManualAplicacoes - totalManualResgates;
+  const cashFlowImpact = totalManualResgates - totalManualAplicacoes;
   const netPeriodResult = initialBalance + operatingResult - netInvestmentMovement;
 
   const plannedTransactions = useMemo(() => {
@@ -151,7 +153,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
     ? dateRange.split(' A ').map(s => s.trim())
     : [dateRange, ''];
   const coverIni = coverFim ? rollToBusinessDay(coverIniRaw) : coverIniRaw;
-  const coverNetFlow = summary.totalInflow - summary.totalOutflow - (summary.totalInvested || 0);
+  const coverNetFlow = summary.totalInflow - summary.totalOutflow - (totalManualAplicacoes || 0) + (totalManualResgates || 0);
   const fmtMi = (v: number): string => {
     const a = Math.abs(v);
     if (a >= 1e6) return 'R$ ' + (v / 1e6).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' mi';
@@ -168,8 +170,8 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
           ? `resultado operacional positivo de ${formatCurrency(operatingResult)}, indicando que os recebimentos do período cobriram integralmente as saídas`
           : `resultado operacional negativo de ${formatCurrency(Math.abs(operatingResult))}, com os recebimentos cobrindo ${coberturaPct.toFixed(0)}% dos pagamentos — a diferença foi suportada pelo saldo em caixa`;
 
-      const aplicacaoTexto = (summary.totalInvested > 0 || totalManualResgates > 0)
-          ? `As aplicações financeiras tiveram efeito líquido de ${formatCurrency(cashFlowImpact)} sobre o caixa (${formatCurrency(summary.totalInvested)} aplicados e ${formatCurrency(totalManualResgates)} resgatados).`
+      const aplicacaoTexto = (totalManualAplicacoes > 0 || totalManualResgates > 0)
+          ? `As aplicações financeiras tiveram efeito líquido de ${formatCurrency(cashFlowImpact)} sobre o caixa (${formatCurrency(totalManualAplicacoes)} aplicados e ${formatCurrency(totalManualResgates)} resgatados).`
           : `Não houve movimentação de aplicações financeiras no período.`;
 
       const fechamentoTexto = netPeriodResult >= initialBalance
@@ -422,7 +424,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                                 { label: 'SD Inicial', value: initialBalance, kind: 'start' as const },
                                 { label: '(+) Recebimentos', value: summary.totalInflow, kind: 'add' as const },
                                 { label: '(-) Pagamentos', value: -summary.totalOutflow, kind: 'sub' as const },
-                                { label: '(-) Aplicações', value: -summary.totalInvested, kind: 'sub' as const },
+                                { label: '(-) Aplicações', value: -totalManualAplicacoes, kind: 'sub' as const },
                                 { label: '(+) Resgates', value: totalManualResgates, kind: 'add' as const },
                                 { label: 'SD Final', value: netPeriodResult, kind: 'end' as const },
                             ];
@@ -434,12 +436,12 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                             const hasHistory = applicationSnapshots.length >= 2;
                             const latestSnap = applicationSnapshots[applicationSnapshots.length - 1];
                             const prevSnap = hasHistory ? applicationSnapshots[applicationSnapshots.length - 2] : null;
-                            const appClosing = latestSnap ? latestSnap.totalGeral : (summary.totalInvested - totalManualResgates);
-                            const appOpening = prevSnap ? prevSnap.totalGeral : (appClosing - summary.totalInvested + totalManualResgates);
+                            const appClosing = latestSnap ? latestSnap.totalGeral : (totalManualAplicacoes - totalManualResgates);
+                            const appOpening = prevSnap ? prevSnap.totalGeral : (appClosing - totalManualAplicacoes + totalManualResgates);
                             const aplicSteps = [
                                 { label: 'SD Inicial', value: appOpening, kind: 'start' as const },
                                 { label: '(-) Resgates', value: -totalManualResgates, kind: 'sub' as const },
-                                { label: '(+) Aplicações', value: summary.totalInvested, kind: 'add' as const },
+                                { label: '(+) Aplicações', value: totalManualAplicacoes, kind: 'add' as const },
                                 { label: 'SD Final', value: appClosing, kind: 'end' as const },
                             ];
 
@@ -486,10 +488,10 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                                 <strong className={`font-semibold ml-1 ${operatingResult >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{formatCurrency(operatingResult)}</strong>.
                             </p>
                             <p>
-                                {summary.totalInvested > 0 || totalManualResgates > 0 ? (
+                                {totalManualAplicacoes > 0 || totalManualResgates > 0 ? (
                                     <>
                                         As movimentações de aplicações somaram
-                                        <strong className="font-semibold text-slate-100 mx-1">{formatCurrency(summary.totalInvested)}</strong>
+                                        <strong className="font-semibold text-slate-100 mx-1">{formatCurrency(totalManualAplicacoes)}</strong>
                                         em aportes e
                                         <strong className="font-semibold text-slate-100 mx-1">{formatCurrency(totalManualResgates)}</strong>
                                         em resgates, um efeito líquido de

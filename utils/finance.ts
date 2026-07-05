@@ -288,6 +288,35 @@ export function calcResgAplicTotal(
   return total;
 }
 
+/**
+ * Separa o campo "Resg Aplic" (FC Diário Banco) em resgate e aplicação por
+ * sinal — valor positivo = resgate (dinheiro voltando pro caixa), valor
+ * negativo = aplicação (dinheiro saindo do caixa pra investimento).
+ *
+ * Usado no Demonstrativo Financeiro Consolidado pra mostrar o MOVIMENTO real
+ * do período (o que foi digitado no FC Diário ou lançado manualmente), e não
+ * a posição inteira já existente em Aplicações (que é importada, não é um
+ * evento do período).
+ */
+export function calcResgAplicSplit(
+  companyId: 'all' | string,
+  manualValues: Record<string, number>,
+): { resgates: number; aplicacoes: number } {
+  let resgates = 0;
+  let aplicacoes = 0;
+  for (const [key, val] of Object.entries(manualValues ?? {})) {
+    if (!key.startsWith('sim_resg_')) continue;
+    if (companyId !== 'all') {
+      const parts = key.split('_');
+      if (parts[2] !== companyId) continue;
+    }
+    const v = Number(val) || 0;
+    if (v > 0) resgates += v;
+    else aplicacoes += Math.abs(v);
+  }
+  return { resgates, aplicacoes };
+}
+
 // ─── 8. ORDENAÇÃO ─────────────────────────────────────────────────────────────
 
 /**

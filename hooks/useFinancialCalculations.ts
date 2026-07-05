@@ -17,6 +17,7 @@ import {
   parseDate,
   calcInitialBalance,
   calcResgAplicTotal,
+  calcResgAplicSplit,
   getStartDate,
   BANKS_MAPPING,
   normalizeCompanyId,
@@ -50,6 +51,7 @@ interface UseFinancialCalculationsResult {
    * Usado no FC Diário e na Apresentação Executiva.
    */
   totalManualResgates: number;
+  totalManualAplicacoes: number;
 }
 
 export function useFinancialCalculations({
@@ -138,17 +140,14 @@ export function useFinancialCalculations({
     }, 0);
   }, [filteredTransactions, selectedCompany, uniqueCompanies, manualValues]);
 
-  // ─── Total de resgates manuais ───────────────────────────────────────────
+  // ─── Total de resgates/aplicações manuais (Resg Aplic no FC Diário) ──────
+  // Separa por sinal: positivo = resgate (volta pro caixa), negativo =
+  // aplicação (sai do caixa). É o MOVIMENTO real do período, diferente da
+  // posição inteira já existente em Aplicações (que é importada).
 
-  const totalManualResgates = useMemo(() => {
-    // Quando uma empresa está selecionada, soma apenas os resgates dela.
-    // Quando 'all', soma de todas as empresas.
-    if (selectedCompany === 'all') {
-      return Object.entries(manualValues)
-        .filter(([key]) => key.startsWith('sim_resg_'))
-        .reduce((acc, [, val]) => acc + (Number(val) || 0), 0);
-    }
-    return calcResgAplicTotal(selectedCompany, manualValues);
+  const { totalManualResgates, totalManualAplicacoes } = useMemo(() => {
+    const { resgates, aplicacoes } = calcResgAplicSplit(selectedCompany, manualValues);
+    return { totalManualResgates: resgates, totalManualAplicacoes: aplicacoes };
   }, [manualValues, selectedCompany]);
 
   return {
@@ -158,5 +157,6 @@ export function useFinancialCalculations({
     summary,
     executiveInitialBalance,
     totalManualResgates,
+    totalManualAplicacoes,
   };
 }

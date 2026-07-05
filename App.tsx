@@ -123,6 +123,7 @@ export default function App() {
     summary,
     executiveInitialBalance,
     totalManualResgates,
+    totalManualAplicacoes,
   } = useFinancialCalculations({
     transactions,
     realizedTransactions,
@@ -339,6 +340,7 @@ export default function App() {
         onManualValueChange={handleManualValueChange}
         initialBalance={executiveInitialBalance}
         totalManualResgates={totalManualResgates}
+        totalManualAplicacoes={totalManualAplicacoes}
         applicationSnapshots={applicationSnapshots.snapshots}
         onExit={() => setViewMode(ViewMode.DASHBOARD_DAILY_GAZETA)}
       />
