@@ -816,13 +816,13 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                 </div>
                 <div className="bg-[#111827] border border-slate-700/50 rounded-xl p-4 flex flex-col min-h-0">
                     <p className="text-sm font-bold text-slate-200 mb-2">Por empresa (posição atual)</p>
-                    <div className="flex-1 overflow-hidden flex flex-col gap-2">
+                    <div className="flex-1 overflow-hidden grid grid-cols-2 gap-x-3 gap-y-1.5 content-start">
                         {porEmpresa.map(([cc, v]) => {
                             const name = COMPANIES.find(c => c.id === cc)?.name || cc;
                             return (
-                                <div key={cc} className="flex justify-between items-center text-xs border-b border-slate-800 pb-1.5">
-                                    <span className="text-slate-400 truncate pr-2">{name}</span>
-                                    <span className="text-slate-200 font-medium whitespace-nowrap">{formatCurrency(v)}</span>
+                                <div key={cc} className="flex flex-col text-xs border-b border-slate-800 pb-1">
+                                    <span className="text-slate-500 truncate text-[10px]">{name}</span>
+                                    <span className="text-slate-200 font-medium">{formatCurrency(v)}</span>
                                 </div>
                             );
                         })}

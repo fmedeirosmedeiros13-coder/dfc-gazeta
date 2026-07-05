@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { Target, TrendingUp, TrendingDown, AlertCircle, Calendar, ArrowUpRight, ArrowDownRight, Filter } from 'lucide-react';
 import { formatCurrency, parseDate } from '../utils/finance';
+import { reconcile } from '../engines/reconciliation';
 
 interface VisaoEstrategicaRealizadoProps {
   planned: Transaction[];
@@ -183,20 +184,38 @@ export const VisaoEstrategicaRealizado: React.FC<VisaoEstrategicaRealizadoProps>
         });
 
     // Category Data
+    // IMPORTANTE: o Realizado importado do CSV do TOTVS NÃO traz coluna de
+    // categoria (engines/csvParser.ts grava 'Realizado' fixo em todo mundo,
+    // só como placeholder). Por isso, a categoria do realizado é herdada do
+    // PREVISTO com quem ele casa na conciliação (fornecedor + título) — a
+    // mesma lógica já usada na tela Previsto vs Realizado — em vez de tentar
+    // usar o category do próprio realizado, que nunca vai bater com nada.
     const categoryData: Record<string, { planned: number; realized: number }> = {};
-    
+
     filteredPlanned.forEach(t => {
         const cat = t.category || 'OUTROS';
         if (!categoryData[cat]) categoryData[cat] = { planned: 0, realized: 0 };
         categoryData[cat].planned += (Number(t.value) || 0);
     });
 
-    filteredRealized.forEach(t => {
-        const cat = t.category || 'OUTROS';
-        const value = Number(t.value) || Number(t.originalTitleValue) || 0;
+    const reconciliation = reconcile(filteredPlanned, filteredRealized);
+
+    // Realizado casado: usa a categoria do(s) previsto(s) daquele grupo.
+    [...reconciliation.matched, ...reconciliation.reviewNeeded].forEach(group => {
+        const cat = group.prev[0]?.category || 'OUTROS';
+        const realTotal = group.real.reduce((s, r) => s + (Number(r.value) || Number(r.originalTitleValue) || 0), 0);
         if (!categoryData[cat]) categoryData[cat] = { planned: 0, realized: 0 };
-        categoryData[cat].realized += value;
+        categoryData[cat].realized += realTotal;
     });
+
+    // Realizado sem par no previsto: categoria desconhecida, fica visível
+    // como "Não conciliado" em vez de silenciosamente não contar em lugar
+    // nenhum (ou virar um "Realizado" fantasma que nunca bate com nada).
+    if (reconciliation.unexpected.length > 0) {
+        const naoConciliadoTotal = reconciliation.unexpected.reduce((s, r) => s + (Number(r.value) || Number(r.originalTitleValue) || 0), 0);
+        if (!categoryData['Não conciliado']) categoryData['Não conciliado'] = { planned: 0, realized: 0 };
+        categoryData['Não conciliado'].realized += naoConciliadoTotal;
+    }
 
     const tableData = Object.entries(categoryData)
         .map(([category, val]) => {

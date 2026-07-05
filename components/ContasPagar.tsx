@@ -223,7 +223,24 @@ export const ContasPagar: React.FC<ContasPagarProps> = ({
                          <ResponsiveContainer width="100%" height="100%">
                              <BarChart data={barChartData.slice(0, 10)} layout="vertical" margin={{top:5, right:50, left:10, bottom:5}}>
                                  <XAxis type="number" hide />
-                                 <YAxis dataKey="name" type="category" width={65} tick={{fontSize: barChartData.length > 8 ? 8 : 10, fill: '#94a3b8', fontWeight: 'bold'}} interval={0} />
+                                 <YAxis
+                                     dataKey="name"
+                                     type="category"
+                                     width={90}
+                                     interval={0}
+                                     tick={(props: any) => {
+                                         const { x, y, payload } = props;
+                                         const maxChars = 12;
+                                         const label = payload.value.length > maxChars
+                                             ? payload.value.slice(0, maxChars - 1) + '…'
+                                             : payload.value;
+                                         return (
+                                             <text x={x} y={y} dy={4} textAnchor="end" fontSize={barChartData.length > 8 ? 8 : 10} fontWeight="bold" fill="#94a3b8">
+                                                 {label}
+                                             </text>
+                                         );
+                                     }}
+                                 />
                                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc', borderRadius: '8px'}} itemStyle={{color: '#fb923c'}} formatter={(v: number) => `R$ ${Math.round(v).toLocaleString('pt-BR')}`} />
                                  <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={30}>
                                      {barChartData.slice(0, 10).map((entry, index) => (
