@@ -320,7 +320,7 @@ export const VisaoEstrategicaRealizado: React.FC<VisaoEstrategicaRealizadoProps>
                 </div>
                 <div className="relative z-10">
                     <p className={`text-slate-400 font-medium uppercase tracking-wider mb-1 ${isSlide ? 'text-[10px]' : 'text-sm'}`}>Custo Planejado</p>
-                    <h3 className={`font-semibold text-slate-100 tracking-tight leading-none ${isSlide ? 'text-xl' : 'text-3xl'}`}>
+                    <h3 className={`font-semibold text-sky-400 tracking-tight leading-none ${isSlide ? 'text-xl' : 'text-3xl'}`}>
                         {formatCurrency(data.totalPlanned)}
                     </h3>
                 </div>
@@ -328,38 +328,38 @@ export const VisaoEstrategicaRealizado: React.FC<VisaoEstrategicaRealizadoProps>
 
             {/* Custo Realizado */}
             <div className={`bg-slate-900/40 rounded-xl border border-slate-800/60 flex flex-col justify-between relative overflow-hidden group hover:border-slate-700/60 transition-all ${isSlide ? 'p-3' : 'p-6'}`}>
-                <div className={`absolute top-0 right-0 opacity-5 group-hover:opacity-10 transition-opacity text-blue-400 ${isSlide ? 'p-2' : 'p-4'}`}>
+                <div className={`absolute top-0 right-0 opacity-5 group-hover:opacity-10 transition-opacity text-emerald-400 ${isSlide ? 'p-2' : 'p-4'}`}>
                     <Calendar className={isSlide ? "w-10 h-10" : "w-16 h-16"} />
                 </div>
                 <div className="relative z-10">
                     <p className={`text-slate-400 font-medium uppercase tracking-wider mb-1 ${isSlide ? 'text-[10px]' : 'text-sm'}`}>Custo Realizado</p>
-                    <h3 className={`font-semibold text-blue-400 tracking-tight leading-none ${isSlide ? 'text-xl' : 'text-3xl'}`}>
+                    <h3 className={`font-semibold text-emerald-400 tracking-tight leading-none ${isSlide ? 'text-xl' : 'text-3xl'}`}>
                         {formatCurrency(data.totalRealized)}
                     </h3>
                 </div>
             </div>
 
-            {/* Desvio Absoluto */}
+            {/* Desvio Absoluto (= Diferença) — sempre laranja, é referência, não "bom"/"ruim" */}
             <div className={`bg-slate-900/40 rounded-xl border border-slate-800/60 flex flex-col justify-between relative overflow-hidden group hover:border-slate-700/60 transition-all ${isSlide ? 'p-3' : 'p-6'}`}>
-                <div className={`absolute top-0 right-0 opacity-5 group-hover:opacity-10 transition-opacity ${data.diff > 0 ? 'text-rose-400' : 'text-emerald-400'} ${isSlide ? 'p-2' : 'p-4'}`}>
+                <div className={`absolute top-0 right-0 opacity-5 group-hover:opacity-10 transition-opacity text-orange-400 ${isSlide ? 'p-2' : 'p-4'}`}>
                     <AlertCircle className={isSlide ? "w-10 h-10" : "w-16 h-16"} />
                 </div>
                 <div className="relative z-10">
                     <p className={`text-slate-400 font-medium uppercase tracking-wider mb-1 ${isSlide ? 'text-[10px]' : 'text-sm'}`}>Desvio (R$)</p>
-                    <h3 className={`font-semibold tracking-tight leading-none ${data.diff > 0 ? 'text-rose-400' : 'text-emerald-400'} ${isSlide ? 'text-xl' : 'text-3xl'}`}>
+                    <h3 className={`font-semibold tracking-tight leading-none text-orange-400 ${isSlide ? 'text-xl' : 'text-3xl'}`}>
                         {data.diff > 0 ? '+' : ''}{formatCurrency(data.diff)}
                     </h3>
                 </div>
             </div>
 
-            {/* Desvio Percentual */}
+            {/* Desvio Percentual — verde quando bate (perto de 0%), vermelho quando há diferença */}
             <div className={`bg-slate-900/40 rounded-xl border border-slate-800/60 flex flex-col justify-between relative overflow-hidden group hover:border-slate-700/60 transition-all ${isSlide ? 'p-3' : 'p-6'}`}>
-                <div className={`absolute top-0 right-0 opacity-5 group-hover:opacity-10 transition-opacity ${data.diffPercent > 0 ? 'text-rose-400' : 'text-emerald-400'} ${isSlide ? 'p-2' : 'p-4'}`}>
+                <div className={`absolute top-0 right-0 opacity-5 group-hover:opacity-10 transition-opacity ${Math.abs(data.diffPercent) < 0.05 ? 'text-emerald-400' : 'text-rose-400'} ${isSlide ? 'p-2' : 'p-4'}`}>
                     {data.diffPercent > 0 ? <TrendingUp className={isSlide ? "w-10 h-10" : "w-16 h-16"} /> : <TrendingDown className={isSlide ? "w-10 h-10" : "w-16 h-16"} />}
                 </div>
                 <div className="relative z-10">
                     <p className={`text-slate-400 font-medium uppercase tracking-wider mb-1 ${isSlide ? 'text-[10px]' : 'text-sm'}`}>Desvio (%)</p>
-                    <h3 className={`font-semibold tracking-tight leading-none ${data.diffPercent > 0 ? 'text-rose-400' : 'text-emerald-400'} ${isSlide ? 'text-xl' : 'text-3xl'}`}>
+                    <h3 className={`font-semibold tracking-tight leading-none ${Math.abs(data.diffPercent) < 0.05 ? 'text-emerald-400' : 'text-rose-400'} ${isSlide ? 'text-xl' : 'text-3xl'}`}>
                         {data.diffPercent > 0 ? '+' : ''}{data.diffPercent.toFixed(1)}%
                     </h3>
                 </div>
@@ -423,8 +423,8 @@ export const VisaoEstrategicaRealizado: React.FC<VisaoEstrategicaRealizadoProps>
                                 formatter={(value: number) => formatCurrency(value)}
                             />
                             <Legend verticalAlign="top" height={24} iconType="circle" iconSize={6} formatter={(val) => <span className="text-slate-400 text-[10px] font-medium ml-1">{val}</span>} />
-                            <Area type="monotone" dataKey="accPlanned" name="Planejado (Acum)" stroke="#64748b" fill="#64748b" fillOpacity={0.1} strokeWidth={3} activeDot={{ r: 6 }} dot={{ r: 4 }} />
-                            <Line type="monotone" dataKey="accRealized" name="Realizado (Acum)" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, strokeWidth: 0, fill: '#3b82f6' }} activeDot={{ r: 6 }} />
+                            <Area type="monotone" dataKey="accPlanned" name="Planejado (Acum)" stroke="#38bdf8" fill="#38bdf8" fillOpacity={0.1} strokeWidth={3} activeDot={{ r: 6 }} dot={{ r: 4 }} />
+                            <Line type="monotone" dataKey="accRealized" name="Realizado (Acum)" stroke="#10b981" strokeWidth={3} dot={{ r: 4, strokeWidth: 0, fill: '#10b981' }} activeDot={{ r: 6 }} />
                         </ComposedChart>
                     </ResponsiveContainer>
             </div>
@@ -452,12 +452,12 @@ export const VisaoEstrategicaRealizado: React.FC<VisaoEstrategicaRealizadoProps>
                         {data.tableData.map((row, i) => (
                             <tr key={i} className="hover:bg-slate-800/30 transition-colors">
                                 <td className={`font-medium text-slate-200 ${isSlide ? 'py-1 px-2' : 'py-3 px-3'}`}>{row.category}</td>
-                                <td className={`text-right text-slate-400 ${isSlide ? 'py-1 px-2' : 'py-3 px-3'}`}>{formatCurrency(row.planned)}</td>
-                                <td className={`text-right text-slate-200 ${isSlide ? 'py-1 px-2' : 'py-3 px-3'}`}>{formatCurrency(row.realized)}</td>
-                                <td className={`text-right font-medium ${isSlide ? 'py-1 px-2' : 'py-3 px-3'} ${row.diff > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                <td className={`text-right text-sky-400 ${isSlide ? 'py-1 px-2' : 'py-3 px-3'}`}>{formatCurrency(row.planned)}</td>
+                                <td className={`text-right text-emerald-400 ${isSlide ? 'py-1 px-2' : 'py-3 px-3'}`}>{formatCurrency(row.realized)}</td>
+                                <td className={`text-right font-medium text-orange-400 ${isSlide ? 'py-1 px-2' : 'py-3 px-3'}`}>
                                     {row.diff > 0 ? '+' : ''}{formatCurrency(row.diff)}
                                 </td>
-                                <td className={`text-right font-medium ${isSlide ? 'py-1 px-2' : 'py-3 px-3'} ${row.percent > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                <td className={`text-right font-medium ${isSlide ? 'py-1 px-2' : 'py-3 px-3'} ${Math.abs(row.percent) < 0.05 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                     {row.percent > 0 ? '+' : ''}{row.percent.toFixed(1)}%
                                 </td>
                             </tr>
