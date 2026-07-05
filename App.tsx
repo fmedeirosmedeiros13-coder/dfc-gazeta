@@ -362,7 +362,7 @@ export default function App() {
         alertCounts={counts}
       />
 
-      <main className="flex-1 ml-64 p-8">
+      <main className="flex-1 min-w-0 ml-64 p-8 overflow-x-hidden">
         {/* Header */}
         <header className="flex justify-between items-center mb-8 bg-slate-900/40 p-6 rounded-xl shadow-sm border border-slate-800/60">
           <div className="flex items-center gap-4">
@@ -510,6 +510,7 @@ export default function App() {
             snapshots={snapshots.snapshots}
             previstoSnapshots={previstoSnapshots.snapshots}
             realizadoSnapshots={realizadoSnapshots.snapshots}
+            applicationSnapshots={applicationSnapshots.snapshots}
             onClearRealized={() => {
               if (window.confirm('Limpar todos os lançamentos realizados?')) {
                 setRealizedTransactions([]);

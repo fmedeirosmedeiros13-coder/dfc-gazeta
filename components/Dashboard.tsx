@@ -74,6 +74,8 @@ interface DashboardProps {
   previstoSnapshots?: import('../hooks/usePrevistoSnapshots').PrevistoSnapshot[];
   /** Snapshots do Realizado por período — idem, para o seletor simétrico. */
   realizadoSnapshots?: import('../hooks/useRealizadoSnapshots').RealizadoSnapshot[];
+  /** Posição das Aplicações Financeiras — usada no aviso de saldo negativo do FC Diário. */
+  applicationSnapshots?: import('../hooks/useApplicationSnapshots').ApplicationSnapshot[];
 }
 
 // Internal Interface for Reconciliation Groups
@@ -97,7 +99,7 @@ const N3_DESC: Record<string, string> = (() => {
   return m;
 })();
 
-export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTransactions = [], summary, aiAnalysis, onGenerateAI, isGeneratingAI, viewType, dfcManualValues, onManualValueChange, onImportRealized, onClearRealized, isSlide = false, alerts = [], snapshots = [], previstoSnapshots = [], realizadoSnapshots = [] }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTransactions = [], summary, aiAnalysis, onGenerateAI, isGeneratingAI, viewType, dfcManualValues, onManualValueChange, onImportRealized, onClearRealized, isSlide = false, alerts = [], snapshots = [], previstoSnapshots = [], realizadoSnapshots = [], applicationSnapshots = [] }) => {
   
   const [activeConciliationTab, setActiveConciliationTab] = useState<'DEFAULT' | 'MATCHED' | 'PENDING' | 'UNEXPECTED' | 'STRATEGIC'>('DEFAULT');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -997,6 +999,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
               transactions={transactions}
               dfcManualValues={dfcManualValues}
               onManualValueChange={onManualValueChange}
+              applicationSnapshots={applicationSnapshots}
           />
       );
   }
