@@ -756,7 +756,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
              <div className="p-4 bg-slate-900/60 border-b border-slate-800/60 flex justify-between items-center">
                  <h2 className="text-sm font-medium uppercase pl-2 text-slate-100 flex items-center gap-2">
                      <LayoutGrid className="w-4 h-4 text-slate-400" />
-                     Base DFC - Nível 02
+                     DFC
                      <span className="hidden sm:inline text-[10px] normal-case text-slate-500 font-normal ml-1">· clique numa linha para ver o detalhe N3</span>
                  </h2>
                  <div className="flex gap-2">

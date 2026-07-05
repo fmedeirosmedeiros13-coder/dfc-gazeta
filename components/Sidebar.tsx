@@ -25,10 +25,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   alertCounts,
 }) => {
   const navItems = [
-    { mode: ViewMode.DASHBOARD_DAILY_GAZETA, label: 'Resumo', icon: CalendarRange },
+    { mode: ViewMode.DASHBOARD_DAILY_GAZETA, label: 'Resumo Diário', icon: CalendarRange },
     { mode: ViewMode.RESUMO_FINANCEIRO,      label: 'Resumo Financeiro', icon: PieChart },
     { mode: ViewMode.DASHBOARD_DFC,          label: 'DFC Consolidada', icon: Table2 },
-    { mode: ViewMode.DASHBOARD_BASE_DFC,     label: 'DFC N2', icon: LayoutGrid },
+    { mode: ViewMode.DASHBOARD_BASE_DFC,     label: 'DFC', icon: LayoutGrid },
     { mode: ViewMode.DASHBOARD_FC_DIARIO,    label: 'FC Diário Banco', icon: Calculator },
     { mode: ViewMode.DASHBOARD_BY_COMPANY,   label: 'Previsto vs Realizado', icon: Scale },
     { mode: ViewMode.DASHBOARD_PAYABLES,     label: 'Contas a Pagar', icon: ArrowDownCircle,

@@ -79,9 +79,9 @@ const INITIAL_DATA: Transaction[] = [
 // ─── Config de views ──────────────────────────────────────────────────────────
 
 const VIEW_CONFIG: Record<ViewMode, { icon: React.ElementType; title: string }> = {
-  [ViewMode.DASHBOARD_DAILY_GAZETA]: { icon: CalendarRange,   title: 'Modelo Oficial Controladoria'  },
+  [ViewMode.DASHBOARD_DAILY_GAZETA]: { icon: CalendarRange,   title: 'Resumo de Movimentação Diária'  },
   [ViewMode.RESUMO_FINANCEIRO]:      { icon: PieChart,        title: 'Resumo Financeiro Consolidado' },
-  [ViewMode.DASHBOARD_BASE_DFC]:     { icon: LayoutGrid,      title: 'Base DFC - Nível 02'           },
+  [ViewMode.DASHBOARD_BASE_DFC]:     { icon: LayoutGrid,      title: 'DFC'           },
   [ViewMode.DASHBOARD_FC_DIARIO]:    { icon: Calculator,      title: 'FC Diário Simulação'           },
   [ViewMode.DASHBOARD_BY_COMPANY]:   { icon: Scale,           title: 'Previsto vs Realizado'         },
   [ViewMode.DATA_ENTRY]:             { icon: FileSpreadsheet, title: 'Gestão de Lançamentos'         },
