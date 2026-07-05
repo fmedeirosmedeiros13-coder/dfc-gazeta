@@ -414,6 +414,44 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
       headers.forEach((h, i) => colMap[h] = i);
       console.log('COLUNAS IDENTIFICADAS', Object.fromEntries(Object.entries(colMap).filter(([k]) => k.length > 0)));
 
+      // Bloqueador: detecta pelo cabeçalho do arquivo qual aba ele realmente é
+      // (Pagamentos tem FORNECEDOR, Recebimentos tem CLIENTE, Aplicações tem
+      // BANCO+PRODUTO, Tipo de Fluxo tem CONTA TOTVS+FLUXO NIVEL sem
+      // fornecedor/cliente). Se bater com uma aba DIFERENTE da que está aberta,
+      // avisa antes de importar no lugar errado — em vez de importar calado.
+      const TAB_LABELS: Record<TabType, string> = {
+          PAGAMENTOS: 'Pagamentos', RECEBIMENTOS: 'Recebimentos', APLICACOES: 'Aplicações',
+          CALENDARIO: 'Calendário', TIPO_FLUXO: 'Tipo de Fluxo',
+      };
+      const detectFileTabType = (cols: Record<string, number>): TabType | null => {
+          const has = (k: string) => cols[k] !== undefined;
+          const hasBanco      = has('BANCO');
+          const hasProduto    = has('PRODUTO');
+          const hasCCPadrao   = has('C C PADRAO') || has('CC PADRAO');
+          const hasCliente    = has('CLIENTE') || has('NOME CLIENTE') || has('COD CLIENTE') || has('CLIENTE COD');
+          const hasFornecedor = has('FORNECEDOR') || has('NOME FORNECEDOR') || has('COD FORNECEDOR') || has('FORNEC');
+          const hasFluxoNivel = (has('FLUXO NIVEL 3') || has('FLUXO NIVEL 2')) && has('CONTA TOTVS');
+
+          if (hasBanco && hasProduto) return 'APLICACOES';
+          if (hasCCPadrao) return 'APLICACOES';
+          if (hasFluxoNivel && !hasFornecedor && !hasCliente) return 'TIPO_FLUXO';
+          if (hasCliente && !hasFornecedor) return 'RECEBIMENTOS';
+          if (hasFornecedor && !hasCliente) return 'PAGAMENTOS';
+          return null; // colunas ambíguas/insuficientes — não arrisca bloquear à toa
+      };
+      const detectedTab = detectFileTabType(colMap);
+      if (detectedTab && detectedTab !== activeTab) {
+          const prosseguir = window.confirm(
+              `⚠️ Este arquivo parece ser de "${TAB_LABELS[detectedTab]}", mas a aba aberta é "${TAB_LABELS[activeTab]}".\n\n` +
+              `Importar aqui pode gravar os dados no lugar errado.\n\n` +
+              `Clique em OK para importar mesmo assim, ou Cancelar para parar e trocar de aba primeiro.`
+          );
+          if (!prosseguir) {
+              if (fileInputRef.current) fileInputRef.current.value = '';
+              return;
+          }
+      }
+
       const newTransactions: Transaction[] = [];
       const type = TAB_TO_TYPE[activeTab];
 
