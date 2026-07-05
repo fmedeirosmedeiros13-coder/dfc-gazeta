@@ -4,8 +4,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   ComposedChart, Line, Area, LabelList
 } from 'recharts';
-import { Target, TrendingUp, TrendingDown, AlertCircle, Calendar, ArrowUpRight, ArrowDownRight, Filter } from 'lucide-react';
-import { formatCurrency, parseDate } from '../utils/finance';
+import { Target, TrendingUp, TrendingDown, AlertCircle, Calendar, ArrowUpRight, ArrowDownRight, Filter, ChevronRight, ChevronDown } from 'lucide-react';
+import { formatCurrency, parseDate, COMPANIES } from '../utils/finance';
 import { reconcile } from '../engines/reconciliation';
 
 interface VisaoEstrategicaRealizadoProps {
@@ -32,6 +32,17 @@ export const VisaoEstrategicaRealizado: React.FC<VisaoEstrategicaRealizadoProps>
   const [tipoFiltro, setTipoFiltro] = useState<'todos' | 'pagamentos' | 'recebimentos'>('todos');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
+  // Categorias com o detalhamento por fornecedor aberto (clique na linha).
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const toggleCategory = (cat: string) => setExpandedCategories(prev => {
+      const next = new Set(prev);
+      next.has(cat) ? next.delete(cat) : next.add(cat);
+      return next;
+  });
+
+  // Padroniza o código de empresa: "1" e "001" são a mesma empresa. Tira zero
+  // à esquerda e espaços — mesmo critério já usado na Reconciliação.
+  const normCompany = (c: unknown): string => String(c ?? '').trim().replace(/^0+(?=\d)/, '');
 
   // --- HELPERS ---
   // formatCurrency importado de utils/finance.ts
@@ -55,8 +66,8 @@ export const VisaoEstrategicaRealizado: React.FC<VisaoEstrategicaRealizadoProps>
 
   const uniqueCompanies = useMemo(() => {
     const companies = new Set<string>();
-    (planned || []).forEach(t => { if (t.companyCode) companies.add(String(t.companyCode)); });
-    (realized || []).forEach(t => { if (t.companyCode) companies.add(String(t.companyCode)); });
+    (planned || []).forEach(t => { if (t.companyCode) companies.add(normCompany(t.companyCode)); });
+    (realized || []).forEach(t => { if (t.companyCode) companies.add(normCompany(t.companyCode)); });
     return Array.from(companies).sort((a, b) => {
         const numA = parseInt(a);
         const numB = parseInt(b);
@@ -71,7 +82,7 @@ export const VisaoEstrategicaRealizado: React.FC<VisaoEstrategicaRealizadoProps>
     const date = parseDate(t.date);
     if (isNaN(date.getTime())) return false; // Exclui transações sem data válida
 
-    if (empresaFiltro !== 'all' && String(t.companyCode) !== empresaFiltro) return false;
+    if (empresaFiltro !== 'all' && normCompany(t.companyCode) !== empresaFiltro) return false;
     if (tipoFiltro === 'pagamentos' && t.type !== 'PAYABLE') return false;
     if (tipoFiltro === 'recebimentos' && t.type !== 'RECEIVABLE') return false;
     
@@ -191,21 +202,38 @@ export const VisaoEstrategicaRealizado: React.FC<VisaoEstrategicaRealizadoProps>
     // mesma lógica já usada na tela Previsto vs Realizado — em vez de tentar
     // usar o category do próprio realizado, que nunca vai bater com nada.
     const categoryData: Record<string, { planned: number; realized: number }> = {};
+    // Fornecedores por categoria — pra saber QUEM causou o desvio, não só
+    // "quanto". Mesmo critério de atribuição do category acima.
+    const supplierByCategory: Record<string, Record<string, { name: string; planned: number; realized: number }>> = {};
+    const addSupplier = (cat: string, key: string, name: string, field: 'planned' | 'realized', value: number) => {
+        if (!supplierByCategory[cat]) supplierByCategory[cat] = {};
+        if (!supplierByCategory[cat][key]) supplierByCategory[cat][key] = { name, planned: 0, realized: 0 };
+        supplierByCategory[cat][key][field] += value;
+    };
 
     filteredPlanned.forEach(t => {
         const cat = t.category || 'OUTROS';
         if (!categoryData[cat]) categoryData[cat] = { planned: 0, realized: 0 };
         categoryData[cat].planned += (Number(t.value) || 0);
+
+        const key = String(t.supplierCode || t.supplier || t.description || 'Desconhecido');
+        const name = t.supplier || t.description || 'Desconhecido';
+        addSupplier(cat, key, name, 'planned', Number(t.value) || 0);
     });
 
     const reconciliation = reconcile(filteredPlanned, filteredRealized);
 
-    // Realizado casado: usa a categoria do(s) previsto(s) daquele grupo.
+    // Realizado casado: usa a categoria E o fornecedor do(s) previsto(s) daquele grupo.
     [...reconciliation.matched, ...reconciliation.reviewNeeded].forEach(group => {
         const cat = group.prev[0]?.category || 'OUTROS';
         const realTotal = group.real.reduce((s, r) => s + (Number(r.value) || Number(r.originalTitleValue) || 0), 0);
         if (!categoryData[cat]) categoryData[cat] = { planned: 0, realized: 0 };
         categoryData[cat].realized += realTotal;
+
+        const p = group.prev[0];
+        const key = String(p?.supplierCode || p?.supplier || p?.description || 'Desconhecido');
+        const name = p?.supplier || p?.description || 'Desconhecido';
+        addSupplier(cat, key, name, 'realized', realTotal);
     });
 
     // Realizado sem par no previsto: categoria desconhecida, fica visível
@@ -215,13 +243,24 @@ export const VisaoEstrategicaRealizado: React.FC<VisaoEstrategicaRealizadoProps>
         const naoConciliadoTotal = reconciliation.unexpected.reduce((s, r) => s + (Number(r.value) || Number(r.originalTitleValue) || 0), 0);
         if (!categoryData['Não conciliado']) categoryData['Não conciliado'] = { planned: 0, realized: 0 };
         categoryData['Não conciliado'].realized += naoConciliadoTotal;
+
+        reconciliation.unexpected.forEach(r => {
+            const key = String(r.supplierCode || r.supplier || r.description || 'Desconhecido');
+            const name = r.supplier || r.description || 'Desconhecido';
+            addSupplier('Não conciliado', key, name, 'realized', Number(r.value) || Number(r.originalTitleValue) || 0);
+        });
     }
 
     const tableData = Object.entries(categoryData)
         .map(([category, val]) => {
             const diff = val.realized - val.planned;
             const percent = val.planned > 0 ? (diff / val.planned) * 100 : 0;
-            return { category, ...val, diff, percent };
+            // Fornecedores daquela categoria, ordenados pelo maior desvio absoluto
+            // primeiro — assim o principal responsável pela diferença aparece no topo.
+            const suppliers = Object.values(supplierByCategory[category] || {})
+                .map(s => ({ ...s, diff: s.realized - s.planned }))
+                .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+            return { category, ...val, diff, percent, suppliers };
         })
         .sort((a, b) => b.planned - a.planned); // Sort by highest planned cost
 
@@ -257,7 +296,7 @@ export const VisaoEstrategicaRealizado: React.FC<VisaoEstrategicaRealizadoProps>
                     >
                         <option value="all">Todas as Empresas</option>
                         {uniqueCompanies.map(c => (
-                            <option key={c} value={c}>Empresa {c}</option>
+                            <option key={c} value={c}>{COMPANIES.find(comp => comp.id === c)?.name || `Empresa ${c}`}</option>
                         ))}
                     </select>
                 </div>
@@ -449,9 +488,19 @@ export const VisaoEstrategicaRealizado: React.FC<VisaoEstrategicaRealizadoProps>
                         </tr>
                     </thead>
                     <tbody className={`text-slate-300 divide-y divide-slate-800/50 ${isSlide ? 'text-[10px]' : 'text-[14px]'}`}>
-                        {data.tableData.map((row, i) => (
-                            <tr key={i} className="hover:bg-slate-800/30 transition-colors">
-                                <td className={`font-medium text-slate-200 ${isSlide ? 'py-1 px-2' : 'py-3 px-3'}`}>{row.category}</td>
+                        {data.tableData.map((row, i) => {
+                            const isOpen = expandedCategories.has(row.category);
+                            const canExpand = !isSlide && row.suppliers.length > 0;
+                            return (
+                            <React.Fragment key={i}>
+                            <tr
+                                className={`hover:bg-slate-800/30 transition-colors ${canExpand ? 'cursor-pointer' : ''}`}
+                                onClick={canExpand ? () => toggleCategory(row.category) : undefined}
+                            >
+                                <td className={`font-medium text-slate-200 flex items-center gap-1.5 ${isSlide ? 'py-1 px-2' : 'py-3 px-3'}`}>
+                                    {canExpand && (isOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />)}
+                                    {row.category}
+                                </td>
                                 <td className={`text-right text-sky-400 ${isSlide ? 'py-1 px-2' : 'py-3 px-3'}`}>{formatCurrency(row.planned)}</td>
                                 <td className={`text-right text-emerald-400 ${isSlide ? 'py-1 px-2' : 'py-3 px-3'}`}>{formatCurrency(row.realized)}</td>
                                 <td className={`text-right font-medium text-orange-400 ${isSlide ? 'py-1 px-2' : 'py-3 px-3'}`}>
@@ -461,7 +510,20 @@ export const VisaoEstrategicaRealizado: React.FC<VisaoEstrategicaRealizadoProps>
                                     {row.percent > 0 ? '+' : ''}{row.percent.toFixed(1)}%
                                 </td>
                             </tr>
-                        ))}
+                            {isOpen && row.suppliers.map((s, si) => (
+                                <tr key={`${i}_${si}`} className="bg-slate-950/40 text-[12px]">
+                                    <td className="py-1.5 px-3 pl-8 text-slate-400 italic truncate max-w-[200px]">{s.name}</td>
+                                    <td className="text-right py-1.5 px-3 text-sky-500/70">{formatCurrency(s.planned)}</td>
+                                    <td className="text-right py-1.5 px-3 text-emerald-500/70">{formatCurrency(s.realized)}</td>
+                                    <td className="text-right py-1.5 px-3 font-medium text-orange-500/70">
+                                        {s.diff > 0 ? '+' : ''}{formatCurrency(s.diff)}
+                                    </td>
+                                    <td className="text-right py-1.5 px-3">—</td>
+                                </tr>
+                            ))}
+                            </React.Fragment>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
