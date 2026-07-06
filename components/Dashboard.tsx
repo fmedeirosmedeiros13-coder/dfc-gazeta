@@ -1219,7 +1219,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                         {renderRow('(-) Pessoal', 'DATA', { tType: TransactionType.PAYABLE, filter: ['Pessoal', 'Folha', 'Salário', 'Salario', 'Benefício', 'Beneficio', '201', '202'], textColor: 'text-red-400' })}
                         {renderRow('(-) Comissões', 'DATA', { tType: TransactionType.PAYABLE, filter: ['Comiss', 'Comissao', '218'], textColor: 'text-red-400' })}
                         {renderRow('(-) Impostos', 'DATA', { tType: TransactionType.PAYABLE, filter: ['Imposto', 'Tribut', '209', '215'], textColor: 'text-red-400' })}
-                        {renderRow('(-) Fornecedores / Outros', 'DATA', { tType: TransactionType.PAYABLE, filter: '', excludeFilters: ['Lucro', 'Dividendo', 'Pessoal', 'Folha', 'Salário', 'Salario', 'Benefício', 'Beneficio', 'Comiss', 'Comissao', 'Imposto', 'Tribut', 'Investimento', '201', '202', '209', '215', '218'], textColor: 'text-red-400' })}
+                        {renderRow('(-) Fornecedores / Outros', 'CALC', {
+                            textColor: 'text-red-400',
+                            // Residual: Saídas totais menos as categorias nomeadas acima.
+                            // Antes, essa linha tinha seu próprio filtro por palavra-chave
+                            // (exclusão), o que podia deixar lançamentos de fora ou fazer a
+                            // soma das categorias não bater com o total real de Saídas usado
+                            // no SLD de Caixa (a classificação por palavra-chave é imprecisa).
+                            // Calculando como residual, a soma das 5 linhas SEMPRE bate
+                            // exatamente com o total de Saídas, não importa a imprecisão da
+                            // classificação das outras categorias.
+                            customValueFn: (cId: string) => {
+                                const totalSaidas = getTotalBy(cId, TransactionType.PAYABLE);
+                                const distrLucro  = getTotalBy(cId, TransactionType.PAYABLE, ['Lucro', 'Dividendo']);
+                                const pessoal     = getTotalBy(cId, TransactionType.PAYABLE, ['Pessoal', 'Folha', 'Salário', 'Salario', 'Benefício', 'Beneficio', '201', '202']);
+                                const comissoes   = getTotalBy(cId, TransactionType.PAYABLE, ['Comiss', 'Comissao', '218']);
+                                const impostos    = getTotalBy(cId, TransactionType.PAYABLE, ['Imposto', 'Tribut', '209', '215']);
+                                return totalSaidas - distrLucro - pessoal - comissoes - impostos;
+                            },
+                        })}
 
                         <tr className={`bg-slate-800 text-indigo-300 font-bold ${isSlide ? 'text-[8px]' : 'text-[10px]'} border-b border-slate-700 mt-2`}>
                             <td className={`${isSlide ? 'p-0.5' : 'p-1'}`} colSpan={DFC_COLS.length + 2}>2 - ATIVIDADES DE INVESTIMENTO</td>

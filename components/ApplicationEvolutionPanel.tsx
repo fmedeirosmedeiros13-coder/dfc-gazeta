@@ -69,9 +69,9 @@ export const ApplicationEvolutionPanel: React.FC<Props> = ({ snapshots }) => {
         <>
           <div className="h-44 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+              <LineChart data={chartData} margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 10 }} padding={{ left: 24, right: 24 }} />
                 <YAxis
                   tick={{ fill: '#94a3b8', fontSize: 10 }}
                   tickFormatter={(v) => `R$ ${(v / 1_000_000).toFixed(1)}mi`}
