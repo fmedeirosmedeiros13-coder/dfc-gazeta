@@ -39,7 +39,7 @@ export const ApplicationEvolutionPanel: React.FC<Props> = ({ snapshots }) => {
   const variacaoTotalPct = first && first.totalGeral !== 0 ? (variacaoTotal / first.totalGeral) * 100 : 0;
 
   return (
-    <div className="bg-slate-900/40 border border-slate-800/60 rounded-xl p-4 space-y-4">
+    <div className="bg-slate-900/40 border border-slate-800/60 rounded-xl p-3 space-y-2">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h3 className="text-sm font-bold text-slate-200">Evolução das Aplicações</h3>
@@ -67,15 +67,15 @@ export const ApplicationEvolutionPanel: React.FC<Props> = ({ snapshots }) => {
         </p>
       ) : (
         <>
-          <div className="h-56 w-full">
+          <div className="h-32 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+              <LineChart data={chartData} margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 10 }} />
                 <YAxis
-                  tick={{ fill: '#94a3b8', fontSize: 11 }}
+                  tick={{ fill: '#94a3b8', fontSize: 10 }}
                   tickFormatter={(v) => `R$ ${(v / 1_000_000).toFixed(1)}mi`}
-                  width={70}
+                  width={62}
                 />
                 <Tooltip
                   contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }}
@@ -94,32 +94,35 @@ export const ApplicationEvolutionPanel: React.FC<Props> = ({ snapshots }) => {
             </span>
           </div>
 
-          <div className="overflow-auto max-h-64 rounded-lg border border-slate-800/60">
-            <table className="w-full text-xs">
-              <thead className="bg-slate-800/60 sticky top-0">
-                <tr>
-                  <th className="text-left px-3 py-2 text-slate-400 font-medium">Posição</th>
-                  <th className="text-right px-3 py-2 text-slate-400 font-medium">Saldo total</th>
-                  <th className="text-right px-3 py-2 text-slate-400 font-medium">Variação</th>
-                  <th className="text-right px-3 py-2 text-slate-400 font-medium">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...rows].reverse().map(r => (
-                  <tr key={r.id} className="border-t border-slate-800/60">
-                    <td className="px-3 py-2 text-slate-300">{r.label}</td>
-                    <td className="px-3 py-2 text-right text-slate-200 font-medium">{formatCurrency(r.totalGeral)}</td>
-                    <td className={`px-3 py-2 text-right font-medium ${r.isFirst ? 'text-slate-600' : r.diff > 0 ? 'text-emerald-400' : r.diff < 0 ? 'text-red-400' : 'text-slate-400'}`}>
-                      {r.isFirst ? '—' : `${r.diff >= 0 ? '+' : ''}${formatCurrency(r.diff)}`}
-                    </td>
-                    <td className={`px-3 py-2 text-right font-medium ${r.isFirst ? 'text-slate-600' : r.pct > 0 ? 'text-emerald-400' : r.pct < 0 ? 'text-red-400' : 'text-slate-400'}`}>
-                      {r.isFirst ? '—' : `${r.pct >= 0 ? '+' : ''}${r.pct.toFixed(1)}%`}
-                    </td>
+          <details className="text-[11px] text-slate-600">
+            <summary className="cursor-pointer hover:text-slate-400">Ver posições por importação ({rows.length})</summary>
+            <div className="overflow-auto max-h-48 rounded-lg border border-slate-800/60 mt-2">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-800/60 sticky top-0">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-slate-400 font-medium">Posição</th>
+                    <th className="text-right px-3 py-2 text-slate-400 font-medium">Saldo total</th>
+                    <th className="text-right px-3 py-2 text-slate-400 font-medium">Variação</th>
+                    <th className="text-right px-3 py-2 text-slate-400 font-medium">%</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {[...rows].reverse().map(r => (
+                    <tr key={r.id} className="border-t border-slate-800/60">
+                      <td className="px-3 py-2 text-slate-300">{r.label}</td>
+                      <td className="px-3 py-2 text-right text-slate-200 font-medium">{formatCurrency(r.totalGeral)}</td>
+                      <td className={`px-3 py-2 text-right font-medium ${r.isFirst ? 'text-slate-600' : r.diff > 0 ? 'text-emerald-400' : r.diff < 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                        {r.isFirst ? '—' : `${r.diff >= 0 ? '+' : ''}${formatCurrency(r.diff)}`}
+                      </td>
+                      <td className={`px-3 py-2 text-right font-medium ${r.isFirst ? 'text-slate-600' : r.pct > 0 ? 'text-emerald-400' : r.pct < 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                        {r.isFirst ? '—' : `${r.pct >= 0 ? '+' : ''}${r.pct.toFixed(1)}%`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
 
           <details className="text-[11px] text-slate-600">
             <summary className="cursor-pointer hover:text-slate-400">Por empresa (posição mais recente até {last.label})</summary>

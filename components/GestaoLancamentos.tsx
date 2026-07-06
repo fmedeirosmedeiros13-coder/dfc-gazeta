@@ -42,6 +42,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
     fornecedor: [] as string[],
     cliente: [] as string[],
     tipoFluxo: 'all',
+    produto: 'all',
     dataInicio: '',
     dataFim: ''
   });
@@ -1159,8 +1160,8 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               return false;
           }
 
-          // 2. Filtro de Fornecedor
-          if (filtros.fornecedor.length > 0) {
+          // 2. Filtro de Fornecedor (não se aplica a Aplicações — não tem fornecedor)
+          if (filtros.fornecedor.length > 0 && currentType !== TransactionType.APPLICATION) {
               if (currentType === TransactionType.PAYABLE) {
                   const supplierCode = t.supplierCode || '';
                   if (!filtros.fornecedor.includes(supplierCode)) return false;
@@ -1171,14 +1172,19 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               }
           }
 
+          // 2b. Filtro de Produto (Apenas Aplicações — CDB, FUNDOS...)
+          if (currentType === TransactionType.APPLICATION && filtros.produto !== 'all') {
+              if ((t.category || '') !== filtros.produto) return false;
+          }
+
           // 3. Filtro de Cliente (Apenas Recebimentos)
           if (currentType === TransactionType.RECEIVABLE && filtros.cliente.length > 0) {
               const customerCode = t.customerCode || '';
               if (!filtros.cliente.includes(customerCode)) return false;
           }
 
-          // 3. Filtro de Tipo de Fluxo
-          if (filtros.tipoFluxo !== 'all') {
+          // 3b. Filtro de Tipo de Fluxo (não se aplica a Aplicações)
+          if (filtros.tipoFluxo !== 'all' && currentType !== TransactionType.APPLICATION) {
               const flowCode = t.flowTypeCode || '';
               if (flowCode !== filtros.tipoFluxo) return false;
           }
@@ -1284,6 +1290,15 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
       });
       return Array.from(tipos).sort();
   }, [transactions, activeTab]);
+
+  // Lista única de produtos (Apenas Aplicações — CDB, FUNDOS...)
+  const uniqueProdutos = useMemo(() => {
+      const produtos = new Set<string>();
+      transactions.forEach(t => {
+          if (t.type === TransactionType.APPLICATION && t.category) produtos.add(t.category);
+      });
+      return Array.from(produtos).sort();
+  }, [transactions]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-140px)] gap-6 relative">
@@ -1806,8 +1821,8 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                   {uniqueCompanies.map(c => <option key={c} value={c}>Empresa {c}</option>)}
               </select>
 
-              {/* Select Fornecedor (Ocultar em Recebimentos) */}
-              {activeTab !== 'RECEBIMENTOS' && (
+              {/* Select Fornecedor (Ocultar em Recebimentos e Aplicações) */}
+              {activeTab !== 'RECEBIMENTOS' && activeTab !== 'APLICACOES' && (
                   <div className="w-[250px]">
                       <MultiSelect
                           options={uniqueFornecedores}
@@ -1816,6 +1831,18 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                           placeholder="Todos os Fornecedores"
                       />
                   </div>
+              )}
+
+              {/* Select Produto (Apenas Aplicações) */}
+              {activeTab === 'APLICACOES' && (
+                  <select
+                      value={filtros.produto}
+                      onChange={(e) => setFiltros(prev => ({ ...prev, produto: e.target.value }))}
+                      className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 outline-none focus:border-blue-500"
+                  >
+                      <option value="all">Todos os Produtos</option>
+                      {uniqueProdutos.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
               )}
 
               {/* Select Cliente (Apenas em Recebimentos) */}
@@ -1830,15 +1857,17 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                   </div>
               )}
 
-              {/* Select Tipo de Fluxo */}
-              <select 
-                  value={filtros.tipoFluxo} 
-                  onChange={(e) => setFiltros(prev => ({ ...prev, tipoFluxo: e.target.value }))}
-                  className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 outline-none focus:border-blue-500 max-w-[200px] truncate"
-              >
-                  <option value="all">Todos os Tipos de Fluxo</option>
-                  {uniqueTiposFluxo.map(tf => <option key={tf} value={tf}>{tf}</option>)}
-              </select>
+              {/* Select Tipo de Fluxo (não se aplica a Aplicações) */}
+              {activeTab !== 'APLICACOES' && (
+                  <select 
+                      value={filtros.tipoFluxo} 
+                      onChange={(e) => setFiltros(prev => ({ ...prev, tipoFluxo: e.target.value }))}
+                      className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 outline-none focus:border-blue-500 max-w-[200px] truncate"
+                  >
+                      <option value="all">Todos os Tipos de Fluxo</option>
+                      {uniqueTiposFluxo.map(tf => <option key={tf} value={tf}>{tf}</option>)}
+                  </select>
+              )}
 
               {/* Data Inicial */}
               <div className="flex items-center gap-2">
@@ -1893,9 +1922,11 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               <button onClick={handleInitiateClear} className="flex items-center gap-2 px-3 py-1 bg-slate-800 hover:bg-red-900/30 border border-red-900/30 text-red-400 rounded text-xs font-bold transition-colors shadow-sm">
                 <Trash2 className="w-3 h-3" /> Limpar
               </button>
-              <button onClick={handleDownloadTemplate} className="flex items-center gap-2 px-3 py-1 bg-slate-800 hover:bg-indigo-900/30 border border-indigo-900/30 text-indigo-400 rounded text-xs font-bold transition-colors shadow-sm" title="Baixar planilha modelo">
-                <FileDown className="w-3 h-3" /> Modelo
-              </button>
+              {activeTab !== 'APLICACOES' && (
+                  <button onClick={handleDownloadTemplate} className="flex items-center gap-2 px-3 py-1 bg-slate-800 hover:bg-indigo-900/30 border border-indigo-900/30 text-indigo-400 rounded text-xs font-bold transition-colors shadow-sm" title="Baixar planilha modelo">
+                    <FileDown className="w-3 h-3" /> Modelo
+                  </button>
+              )}
               <button onClick={() => setIsPasteModalOpen(true)} className={`flex items-center gap-2 px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded text-xs font-bold transition-colors shadow-sm`}>
                 <Upload className="w-3 h-3" /> Colar Planilha
               </button>

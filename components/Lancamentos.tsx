@@ -129,10 +129,27 @@ export const Lancamentos: React.FC<LancamentosProps> = ({ transactions, onEdit, 
                     </tr>
                   </thead>
             );
+        } else if (firstType === TransactionType.APPLICATION) {
+            return (
+                   <thead className="bg-blue-900/20 border-b border-blue-900/30 text-blue-300 font-bold uppercase sticky top-0 z-10">
+                    <tr>
+                      <th className="px-2 py-2 border-r border-blue-900/30">Operação</th>
+                      <th className="px-2 py-2 border-r border-blue-900/30">Data</th>
+                      <th className="px-2 py-2 border-r border-blue-900/30">Vencimento</th>
+                      <th className="px-2 py-2 border-r border-blue-900/30">Empresa</th>
+                      <th className="px-2 py-2 border-r border-blue-900/30">Banco</th>
+                      <th className="px-2 py-2 border-r border-blue-900/30 min-w-[130px]">C/C Padrão</th>
+                      <th className="px-2 py-2 border-r border-blue-900/30">Produto</th>
+                      <th className="px-2 py-2 border-r border-blue-900/30">Situação</th>
+                      <th className="px-2 py-2 text-right min-w-[100px]">Valor</th>
+                      <th className="px-2 py-2 text-center">Ação</th>
+                    </tr>
+                  </thead>
+            );
         }
     }
 
-    // Fallback para misto ou outros tipos (Aplicações ou Genérico)
+    // Fallback para misto ou outros tipos (genérico)
     return (
         <thead className="bg-slate-800/50 border-b border-slate-700 text-slate-400 uppercase sticky top-0 z-10">
             <tr>
@@ -238,8 +255,24 @@ export const Lancamentos: React.FC<LancamentosProps> = ({ transactions, onEdit, 
                </td>
              </>
           );
+      } else if (t.type === TransactionType.APPLICATION) {
+          return (
+            <>
+              <td className="px-2 py-2 border-r border-slate-800/50 font-mono text-slate-300">{t.documentNumber || '-'}</td>
+              <td className="px-2 py-2 border-r border-slate-800/50 text-slate-300">{t.emissionDate || '-'}</td>
+              <td className="px-2 py-2 border-r border-slate-800/50 text-slate-300">{t.dueDate || '-'}</td>
+              <td className="px-2 py-2 border-r border-slate-800/50 text-center text-slate-300">{t.companyCode || '-'}</td>
+              <td className="px-2 py-2 border-r border-slate-800/50 text-center font-mono text-slate-400">{t.accountCode || '-'}</td>
+              <td className="px-2 py-2 border-r border-slate-800/50 text-slate-300">{t.establishment || '-'}</td>
+              <td className="px-2 py-2 border-r border-slate-800/50"><span className="bg-slate-800 px-2 py-1 rounded text-[10px] text-slate-300">{t.category || '-'}</span></td>
+              <td className="px-2 py-2 border-r border-slate-800/50 text-slate-400">{t.species || '-'}</td>
+              <td className="px-2 py-2 text-right font-bold text-blue-400">
+                {t.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </td>
+            </>
+          );
       } else {
-          // Genérico (Aplicações ou Fallback)
+          // Genérico (Fallback)
           return (
             <>
                <td className="px-4 py-3 text-slate-300">{t.date}</td>
