@@ -67,7 +67,7 @@ export const ApplicationEvolutionPanel: React.FC<Props> = ({ snapshots }) => {
         </p>
       ) : (
         <>
-          <div className="h-32 w-full">
+          <div className="h-32 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />

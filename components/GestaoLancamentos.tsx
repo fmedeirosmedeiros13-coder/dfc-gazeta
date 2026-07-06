@@ -1802,7 +1802,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
         </div>
 
         {/* List Section com Filtros */}
-        <div className="lg:col-span-3 bg-slate-900/40 rounded-xl shadow-sm border border-slate-800/60 overflow-hidden flex flex-col">
+        <div className="lg:col-span-3 min-w-0 bg-slate-900/40 rounded-xl shadow-sm border border-slate-800/60 overflow-hidden flex flex-col">
           
           {/* BARRA DE FILTROS (NOVA) */}
           <div className="p-4 border-b border-slate-800/60 bg-slate-900/50 flex flex-wrap gap-4 items-center">
@@ -1937,7 +1937,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           </div>
 
           {activeTab === 'APLICACOES' && applicationSnapshots.length > 0 && (
-            <div className="px-4 pb-4">
+            <div className="px-4 pb-4 min-w-0">
               <ApplicationEvolutionPanel snapshots={applicationSnapshots} />
             </div>
           )}
