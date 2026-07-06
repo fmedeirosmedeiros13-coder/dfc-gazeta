@@ -432,11 +432,30 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
       // sugere resgate de aplicação (se a empresa tem saldo disponível) ou aporte
       // (se não tem, ou o saldo em aplicações não cobre o déficit).
       const latestApplicationSnapshot = applicationSnapshots[applicationSnapshots.length - 1] ?? null;
+
+      // Data do extrato importado mais recente (maior data entre todas as chaves
+      // sim_close_ gravadas por qualquer banco/empresa). Dias ANTERIORES a essa
+      // data são dado velho de teste/simulação manual — não fazem sentido pra
+      // alertar de saldo negativo, já que não vieram de extrato real nenhum.
+      const latestImportedDateISO = useMemo(() => {
+          let max: string | null = null;
+          Object.keys(dfcManualValues || {}).forEach(key => {
+              if (!key.startsWith('sim_close_')) return;
+              const dateISO = key.split('_').pop() || '';
+              if (/^\d{4}-\d{2}-\d{2}$/.test(dateISO) && (!max || dateISO > max)) max = dateISO;
+          });
+          return max;
+      }, [dfcManualValues]);
+
       const negativeWarnings = useMemo(() => {
           const warnings: { companyId: string; companyName: string; date: string; deficit: number; aplicacaoDisponivel: number; }[] = [];
+          const minTime = latestImportedDateISO
+              ? (() => { const [y, m, d] = latestImportedDateISO.split('-').map(Number); return new Date(y, m - 1, d).getTime(); })()
+              : null;
           structuredData.forEach(s => {
               displayDates.forEach((date, i) => {
                   if (!isVisibleIdx(i)) return;
+                  if (minTime !== null && parseDate(date) < minTime) return; // dia anterior ao último extrato importado — ignora
                   const sdFinal = s.days[i]?.sdFinal;
                   if (typeof sdFinal === 'number' && sdFinal < 0) {
                       const aplicacaoDisponivel = latestApplicationSnapshot?.porEmpresa[s.entity.id] || 0;
@@ -452,7 +471,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
           });
           return warnings;
           // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [structuredData, displayDates, hideBeforeDate, latestApplicationSnapshot]);
+      }, [structuredData, displayDates, hideBeforeDate, latestApplicationSnapshot, latestImportedDateISO]);
 
       return (
          <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 overflow-hidden flex flex-col h-full animate-fadeIn">

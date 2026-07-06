@@ -67,7 +67,7 @@ export const ApplicationEvolutionPanel: React.FC<Props> = ({ snapshots }) => {
         </p>
       ) : (
         <>
-          <div className="h-32 w-full min-w-0">
+          <div className="h-44 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -76,6 +76,7 @@ export const ApplicationEvolutionPanel: React.FC<Props> = ({ snapshots }) => {
                   tick={{ fill: '#94a3b8', fontSize: 10 }}
                   tickFormatter={(v) => `R$ ${(v / 1_000_000).toFixed(1)}mi`}
                   width={62}
+                  tickCount={4}
                 />
                 <Tooltip
                   contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }}

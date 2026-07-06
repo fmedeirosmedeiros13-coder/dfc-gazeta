@@ -1922,11 +1922,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               <button onClick={handleInitiateClear} className="flex items-center gap-2 px-3 py-1 bg-slate-800 hover:bg-red-900/30 border border-red-900/30 text-red-400 rounded text-xs font-bold transition-colors shadow-sm">
                 <Trash2 className="w-3 h-3" /> Limpar
               </button>
-              {activeTab !== 'APLICACOES' && (
-                  <button onClick={handleDownloadTemplate} className="flex items-center gap-2 px-3 py-1 bg-slate-800 hover:bg-indigo-900/30 border border-indigo-900/30 text-indigo-400 rounded text-xs font-bold transition-colors shadow-sm" title="Baixar planilha modelo">
-                    <FileDown className="w-3 h-3" /> Modelo
-                  </button>
-              )}
+              {/* Botão "Modelo" removido — quando precisar de um modelo, o usuário pede direto no chat. */}
               <button onClick={() => setIsPasteModalOpen(true)} className={`flex items-center gap-2 px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded text-xs font-bold transition-colors shadow-sm`}>
                 <Upload className="w-3 h-3" /> Colar Planilha
               </button>
