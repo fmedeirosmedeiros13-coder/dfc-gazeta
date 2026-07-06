@@ -333,6 +333,41 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                   header: 1, raw: false, defval: '' 
               });
               if (rows.length < 2) { alert('Planilha vazia ou sem dados.'); return; }
+
+              // Corrige colunas de DATA: o SheetJS (raw:false) formata a célula usando
+              // o formato numérico ORIGINAL dela no Excel — que pode ser um código
+              // genérico "Data Curta" interpretado pelo SheetJS como americano
+              // (ex.: célula mostra "31/01/2023" no Excel, mas o SheetJS devolve
+              // "1/31/2023"). Corrige pegando o valor BRUTO (serial do Excel) dessas
+              // colunas e convertendo com a mesma lógica confiável de parseDateExcel,
+              // em vez de confiar na string já formatada pelo SheetJS.
+              const dateColRegex = /^DT |DATA$|DATA |VENC|EMISS|LIQUID/i;
+              const headerRow = rows[0] || [];
+              const dateColIndexes = headerRow
+                  .map((h, idx) => ({ h: String(h ?? '').trim(), idx }))
+                  .filter(({ h }) => dateColRegex.test(h))
+                  .map(({ idx }) => idx);
+
+              if (dateColIndexes.length > 0) {
+                  const rowsRaw: any[][] = XLSX.utils.sheet_to_json(worksheet, {
+                      header: 1, raw: true, defval: ''
+                  });
+                  for (let i = 1; i < rows.length; i++) {
+                      const rawRowVals = rowsRaw[i];
+                      if (!rawRowVals) continue;
+                      dateColIndexes.forEach(idx => {
+                          const rawVal = rawRowVals[idx];
+                          // Serial Excel = número puro → converte na mão (confiável,
+                          // independente de locale). Texto já formatado → não mexe.
+                          if (typeof rawVal === 'number' && rawVal > 10000 && rawVal < 73000) {
+                              const excelBase = new Date(Date.UTC(1899, 11, 30));
+                              excelBase.setUTCDate(excelBase.getUTCDate() + rawVal);
+                              rows[i][idx] = `${String(excelBase.getUTCDate()).padStart(2, '0')}/${String(excelBase.getUTCMonth() + 1).padStart(2, '0')}/${excelBase.getUTCFullYear()}`;
+                          }
+                      });
+                  }
+              }
+
               // Monta texto semicolon-separated manualmente (sem passar por CSV)
               const csvText = rows.map(row => row.map(cell => String(cell ?? '')).join(';')).join('\n');
               console.log('XLSX HEADERS DIRETO:', rows[0]);
