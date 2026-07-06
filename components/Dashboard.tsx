@@ -1020,10 +1020,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           { id: '23', label: 'NGER' },
       ];
 
+      // Padroniza o código de empresa: "1" e "001" são a mesma empresa. Sem
+      // isso, um import com o código formatado diferente (zero à esquerda)
+      // faz a comparação exata falhar silenciosamente pra todo mundo — foi
+      // exatamente essa a causa de Entradas/Saídas/Aplicações aparecerem
+      // zeradas na DFC Consolidada mesmo com lançamentos existindo.
+      const normCompany = (c: unknown): string => String(c ?? '').trim().replace(/^0+(?=\d)/, '');
+
       const getTotalBy = (compId: string, type: TransactionType, catFilter?: string | string[], useInvestmentField?: boolean, excludeFilters?: string[]) => {
           // console.log("getTotalBy chamado", { compId, type, catFilter, useInvestmentField });
           return transactions.reduce((acc, t) => {
-             if (t.companyCode === compId && t.type === type) {
+             if (normCompany(t.companyCode) === normCompany(compId) && t.type === type) {
                  if (useInvestmentField) {
                      if (t.investmentDescription && t.investmentDescription.trim() !== '') {
                          return acc + (Number(t.value) || 0);
