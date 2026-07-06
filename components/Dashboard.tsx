@@ -1112,7 +1112,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           const opBalance = initial + inflows - outflows; 
           const prevResg = getSimulationResgAplicTotal(cId);
           const finalBalance = opBalance - investment + prevResg;
-          return { initial, inflows, outflows, investment, opBalance, prevResg, finalBalance };
+          // Total de Disponibilidades = caixa final + o que está em aplicações.
+          // O dinheiro não desaparece ao aplicar, só muda de lugar — então essa
+          // linha soma os dois de volta (antes, repetia o mesmo valor do SLD
+          // Final de Caixa, como se as aplicações não existissem).
+          const totalDisponibilidades = finalBalance + investment;
+          return { initial, inflows, outflows, investment, opBalance, prevResg, finalBalance, totalDisponibilidades };
       }
 
       const renderSummaryRow = (label: string, field: keyof ReturnType<typeof getColumnSummary>, bgColor: string, textColor: string) => {
@@ -1248,7 +1253,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
 
                         <tr className="h-4 bg-slate-900"></tr>
 
-                        {renderSummaryRow('TOTAL DE DISPONIBILIDADES', 'finalBalance', 'bg-[#0f172a]', 'text-white')}
+                        {renderSummaryRow('TOTAL DE DISPONIBILIDADES', 'totalDisponibilidades', 'bg-[#0f172a]', 'text-white')}
                     </tbody>
                 </table>
             </div>
