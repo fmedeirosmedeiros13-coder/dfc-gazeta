@@ -390,6 +390,12 @@ const FEDERAL_SUPPLIERS = ['61369', '62858'];           // 61369 = Receita Feder
 const ESTADUAL_SUPPLIERS = ['30228'];                   // 30228 = ICMS
 const MUNICIPAL_SUPPLIERS: string[] = [];               // Preencher conforme necessário
 
+// Código do Tipo de Fluxo (Conta TOTVS) já confirmado como ISS — pega o
+// lançamento na hora, mesmo que o nome do fornecedor não bata com nenhuma
+// palavra-chave abaixo. Acrescentar aqui outros códigos municipais conforme
+// forem aparecendo (alvará, TFF etc.).
+const MUNICIPAL_FLOW_CODES = ['21501'];                  // 21501 = ISS
+
 // ─── Palavras-chave (fallback, sem acentos — o texto é normalizado antes) ─────
 const FEDERAL_KEYWORDS = [
   'RECEITA FEDERAL', 'IRPJ', 'IRRF', 'PIS', 'COFINS', 'CSLL',
@@ -433,6 +439,11 @@ export function classifyTax(t: {
   if (code && FEDERAL_SUPPLIERS.includes(code)) return 'FEDERAL';
   if (code && ESTADUAL_SUPPLIERS.includes(code)) return 'ESTADUAL';
   if (code && MUNICIPAL_SUPPLIERS.includes(code)) return 'MUNICIPAL';
+
+  // ── 1b) Código do Tipo de Fluxo (Conta TOTVS) — mais preciso ainda que
+  // palavra-chave, cerca o caso mesmo se o nome do fornecedor vier diferente.
+  const flowCode = (t.flowTypeCode || '').trim();
+  if (MUNICIPAL_FLOW_CODES.includes(flowCode)) return 'MUNICIPAL';
 
   // ── 2) Keywords em texto (fallback) — sem acentos pra casar "MUNICÍPIO" com "MUNICIPIO" ──
   const text = stripAccents([

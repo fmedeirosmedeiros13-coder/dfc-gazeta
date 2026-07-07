@@ -88,10 +88,32 @@ export const ContasPagar: React.FC<ContasPagarProps> = ({
     .map(([name, value]) => ({ name, value }))
     .sort((a,b) => b.value - a.value);
 
+  // Agrupa por código de fornecedor normalmente (evita juntar fornecedores
+  // diferentes com nome parecido) — MAS impostos (ISS, etc.) são exceção:
+  // o mesmo imposto pode ter um código de fornecedor DIFERENTE em cada
+  // empresa no TOTVS (ex.: ISS apareceu com 5 códigos internos diferentes),
+  // então pra esses agrupa pelo NOME normalizado, senão vira uma linha por
+  // código em vez de consolidar num "ISS" só.
+  const groupKeyFor = (t: Transaction): string => {
+      const nivel = classifyTax(t);
+      if (nivel === 'MUNICIPAL') {
+          // ISS, Prefeitura, Município (com ou sem acento)... tudo é a mesma
+          // coisa na prática — usa um nome CANÔNICO fixo, não o nome literal
+          // de cada linha, senão "ISS" e "Prefeitura Municipal de X" viram
+          // duas linhas mesmo os dois sendo reconhecidos como imposto.
+          return 'TAX::ISS';
+      }
+      if (nivel !== null) {
+          const name = (t.supplier || t.description || 'Desconhecido').trim().toUpperCase();
+          return `TAX::${name}`;
+      }
+      return t.supplierCode || t.supplier || t.description || 'Desconhecido';
+  };
+
   const supplierData: Record<string, { id: string, name: string, value: number }> = {};
   allPayables.forEach(t => {
-      const key = t.supplierCode || t.supplier || t.description || 'Desconhecido';
-      const name = t.supplier || t.description || 'Desconhecido';
+      const key = groupKeyFor(t);
+      const name = classifyTax(t) === 'MUNICIPAL' ? 'ISS' : (t.supplier || t.description || 'Desconhecido');
       if (!supplierData[key]) {
           supplierData[key] = { id: key, name, value: 0 };
       }
@@ -191,9 +213,9 @@ export const ContasPagar: React.FC<ContasPagarProps> = ({
                  /* Col 3: Categorias Específicas (Investimento, Impostos, Comissões) - Empilhadas */
                  <div className="flex flex-col gap-4 h-full overflow-hidden">
                      {[
-                         { title: 'INVESTIMENTO', data: aggregatedPayables.filter(t => allPayables.find(p => (p.supplierCode || p.supplier || p.description || 'Desconhecido') === t.id)?.category?.includes('Investimento')), color: 'border-orange-500' },
-                         { title: 'IMPOSTOS', data: aggregatedPayables.filter(t => { const p = allPayables.find(pp => (pp.supplierCode || pp.supplier || pp.description || 'Desconhecido') === t.id); return p ? classifyTax(p) !== null : false; }), color: 'border-red-500' },
-                         { title: 'COMISSÕES', data: aggregatedPayables.filter(t => { const p = allPayables.find(pp => (pp.supplierCode || pp.supplier || pp.description || 'Desconhecido') === t.id); return p ? normalizeCategory(p.category).includes('COMISS') && classifyTax(p) === null : false; }), color: 'border-amber-500' }
+                         { title: 'INVESTIMENTO', data: aggregatedPayables.filter(t => allPayables.find(p => groupKeyFor(p) === t.id)?.category?.includes('Investimento')), color: 'border-orange-500' },
+                         { title: 'IMPOSTOS', data: aggregatedPayables.filter(t => { const p = allPayables.find(pp => groupKeyFor(pp) === t.id); return p ? classifyTax(p) !== null : false; }), color: 'border-red-500' },
+                         { title: 'COMISSÕES', data: aggregatedPayables.filter(t => { const p = allPayables.find(pp => groupKeyFor(pp) === t.id); return p ? normalizeCategory(p.category).includes('COMISS') && classifyTax(p) === null : false; }), color: 'border-amber-500' }
                      ].map((box, i) => (
                          <div key={i} className={`bg-slate-800 rounded-xl ${isSlide ? 'p-1.5' : 'p-2'} flex-1 flex flex-col border border-slate-700 shadow-md min-h-0`}>
                              <div className="text-center border-b border-slate-700 pb-1 mb-2 flex-shrink-0">

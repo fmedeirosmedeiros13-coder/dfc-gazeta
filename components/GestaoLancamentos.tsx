@@ -515,7 +515,30 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           if (!v) return 0;
           let valStr = v.trim().replace(/^R\$\s?/, '').replace(/\s/g, '');
           if (valStr.startsWith('(') && valStr.endsWith(')')) valStr = '-' + valStr.slice(1, -1);
-          if (valStr.includes(',')) valStr = valStr.replace(/\./g, '').replace(',', '.');
+
+          // Detecta o formato pelo separador que aparece POR ÚLTIMO — funciona
+          // mesmo com BR ("1.234,56") e US ("1,234.56") misturados no mesmo
+          // arquivo, que é exatamente o que acontece quando parte da planilha
+          // vem de export do TOTVS (BR) e parte foi digitada/colada à mão no
+          // Excel com o padrão numérico da célula em inglês (US). Sem isso,
+          // "115,000.00" (cento e quinze mil, formato US) virava "115,00"
+          // (cento e quinze reais) — erro de mil vezes no valor.
+          const lastComma = valStr.lastIndexOf(',');
+          const lastDot = valStr.lastIndexOf('.');
+          if (lastComma !== -1 && lastDot !== -1) {
+              if (lastComma > lastDot) {
+                  // BR: ponto é milhar, vírgula é decimal
+                  valStr = valStr.replace(/\./g, '').replace(',', '.');
+              } else {
+                  // US: vírgula é milhar, ponto é decimal
+                  valStr = valStr.replace(/,/g, '');
+              }
+          } else if (lastComma !== -1) {
+              // só vírgula presente -> formato BR, vírgula é decimal
+              valStr = valStr.replace(/\./g, '').replace(',', '.');
+          }
+          // só ponto ou nenhum separador -> já está no formato certo pro parseFloat
+
           return parseFloat(valStr) || 0;
       }
 
