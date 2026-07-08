@@ -46,7 +46,7 @@ interface FluxoCaixaDiarioProps {
 // exibir separador de milhar (limitação do próprio HTML, não é bug de conta).
 // Ao focar, mostra um texto simples (vírgula decimal) fácil de editar; ao
 // sair do campo, reformata e envia o valor numérico pra cima.
-const CurrencyInput: React.FC<{
+export const CurrencyInput: React.FC<{
   value: number | undefined;
   onCommit: (v: number) => void;
   className?: string;

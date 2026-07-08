@@ -4,7 +4,7 @@ import { parseDate, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell,
 import { FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS } from '../utils/flowDePara';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, PieChart, Pie, LabelList, AreaChart, Area, LineChart, Line } from 'recharts';
 import { TrendingUp, TrendingDown, Wallet, AlertCircle, RefreshCw, Briefcase, ChevronRight, ArrowUpCircle, BrainCircuit, ShieldCheck, Lightbulb, Table2, Scale, Upload, Trash2, AlertTriangle, CheckCircle2, FileX, Tag, ArrowLeft, Layers, CalendarRange, DollarSign, Calendar, ArrowDownRight, ArrowUpRight, Printer, Calculator, Target, LayoutGrid, ListFilter, Landmark } from 'lucide-react';
-import { FluxoCaixaDiario }      from './FluxoCaixaDiario';
+import { FluxoCaixaDiario, CurrencyInput }      from './FluxoCaixaDiario';
 import { ContasPagar }           from './ContasPagar';
 import { VisaoEstrategicaRealizado } from './VisaoEstrategicaRealizado';
 import { FinanceLayout }         from './FinanceLayout';
@@ -1031,6 +1031,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           // console.log("getTotalBy chamado", { compId, type, catFilter, useInvestmentField });
           return transactions.reduce((acc, t) => {
              if (normCompany(t.companyCode) === normCompany(compId) && t.type === type) {
+                 // Pagamentos: só conta os com status PREVISTO — mesmo critério
+                 // já usado em summary.totalOutflow (Demonstrativo Executivo).
+                 // Sem isso, um lançamento adicionado manualmente (que entra como
+                 // REALIZADO) aparecia na DFC Consolidada mas sumia de outras
+                 // telas que já filtravam por PREVISTO.
+                 if (type === TransactionType.PAYABLE && t.status !== 'PREVISTO') return acc;
+
                  if (useInvestmentField) {
                      if (t.investmentDescription && t.investmentDescription.trim() !== '') {
                          return acc + (Number(t.value) || 0);
@@ -1092,11 +1099,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                   {DFC_COLS.map((c, i) => (
                       <td key={c.id} className={`${isSlide ? 'p-0.5' : 'p-1'} border-r border-slate-700 text-right ${params?.textColor || 'text-slate-400'}`}>
                           {type === 'INPUT' ? (
-                             <input 
-                                type="number" 
-                                value={dfcManualValues?.[`${params?.manualKey}_${c.id}`] || ''}
-                                onChange={(e) => onManualValueChange && onManualValueChange(`${params?.manualKey}_${c.id}`, parseFloat(e.target.value))}
+                             <CurrencyInput
                                 className="w-full h-full bg-transparent text-right outline-none text-slate-200"
+                                value={dfcManualValues?.[`${params?.manualKey}_${c.id}`]}
+                                onCommit={(v) => onManualValueChange && onManualValueChange(`${params?.manualKey}_${c.id}`, v)}
                                 placeholder="-"
                              />
                           ) : (
@@ -1118,13 +1124,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           const investment = getTotalBy(cId, TransactionType.APPLICATION); 
           const opBalance = initial + inflows - outflows; 
           const prevResg = getSimulationResgAplicTotal(cId);
-          const finalBalance = opBalance - investment + prevResg;
-          // Total de Disponibilidades = caixa final + o que está em aplicações.
-          // O dinheiro não desaparece ao aplicar, só muda de lugar — então essa
-          // linha soma os dois de volta (antes, repetia o mesmo valor do SLD
-          // Final de Caixa, como se as aplicações não existissem).
-          const totalDisponibilidades = finalBalance + investment;
-          return { initial, inflows, outflows, investment, opBalance, prevResg, finalBalance, totalDisponibilidades };
+          // SLD Final de Caixa NÃO subtrai a posição inteira de Aplicações — isso
+          // tratava o saldo já existente em CDB/Fundos como se tivesse saído do
+          // caixa neste período (mesmo erro já corrigido no Demonstrativo
+          // Executivo). Usa só o movimento real do período: prevResg já é o
+          // líquido de aportes/resgates lançados no FC Diário (positivo = voltou
+          // pro caixa, negativo = saiu pro investimento).
+          const finalBalance = opBalance + prevResg;
+          // Saldo Após Aplic/Resg = Saldo Atual + a previsão manual digitada na
+          // linha logo acima. Antes, essa linha simplesmente repetia "Saldo
+          // Atual" — o campo de previsão existia na tela mas não afetava nada.
+          const prevAplic = dfcManualValues?.[`dfc_prev_aplic_${cId}`] || 0;
+          const saldoAposAplicResg = investment + prevAplic;
+          // Total de Disponibilidades = caixa final + posição em aplicações (já
+          // considerando a previsão manual de aplic/resg). O dinheiro não
+          // desaparece ao aplicar, só muda de lugar — então essa linha soma os
+          // dois de volta (antes, repetia o mesmo valor do SLD Final de Caixa,
+          // como se as aplicações não existissem).
+          const totalDisponibilidades = finalBalance + saldoAposAplicResg;
+          return { initial, inflows, outflows, investment, opBalance, prevResg, finalBalance, saldoAposAplicResg, totalDisponibilidades };
       }
 
       const renderSummaryRow = (label: string, field: keyof ReturnType<typeof getColumnSummary>, bgColor: string, textColor: string) => {
@@ -1214,7 +1232,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                         {renderRow('(+) Publicidade/Projetos', 'DATA', { tType: TransactionType.RECEIVABLE, filter: ['Publicidade', 'Projeto', 'Ative', '101', '102', '103', '104', '105', '106', '108', '109', '112'] })}
                         {renderRow('(+) Serviços', 'DATA', { tType: TransactionType.RECEIVABLE, filter: ['Serviço', 'Servico', 'Produção', 'Producao', 'Financeira', '110', '111', '113'] })}
                         {renderRow('(+) Assinaturas', 'DATA', { tType: TransactionType.RECEIVABLE, filter: ['Assinatura', '107'] })}
-                        {renderRow('(+) Outras Entradas', 'DATA', { tType: TransactionType.RECEIVABLE, filter: '', excludeFilters: ['Publicidade', 'Projeto', 'Ative', 'Serviço', 'Servico', 'Produção', 'Producao', 'Financeira', 'Assinatura', '101', '102', '103', '104', '105', '106', '107', '108', '109', '110', '111', '112', '113'] })}
+                        {renderRow('(+) Outras Entradas', 'CALC', {
+                            // Residual, mesmo critério do Fornecedores/Outros (Saídas): em vez
+                            // de excluir por palavra-chave (impreciso, pode deixar receita de
+                            // fora), calcula o que sobra do total de Entradas menos as 3
+                            // categorias nomeadas acima — garante que a soma sempre bate.
+                            customValueFn: (cId: string) => {
+                                const totalEntradas = getTotalBy(cId, TransactionType.RECEIVABLE);
+                                const publicidade   = getTotalBy(cId, TransactionType.RECEIVABLE, ['Publicidade', 'Projeto', 'Ative', '101', '102', '103', '104', '105', '106', '108', '109', '112']);
+                                const servicos       = getTotalBy(cId, TransactionType.RECEIVABLE, ['Serviço', 'Servico', 'Produção', 'Producao', 'Financeira', '110', '111', '113']);
+                                const assinaturas    = getTotalBy(cId, TransactionType.RECEIVABLE, ['Assinatura', '107']);
+                                return totalEntradas - publicidade - servicos - assinaturas;
+                            },
+                        })}
 
                         <tr className={`bg-slate-900 text-red-400 font-bold ${isSlide ? 'text-[8px]' : 'text-[10px]'}`}>
                             <td className={`${isSlide ? 'p-0.5 pl-2' : 'p-1 pl-4'}`} colSpan={DFC_COLS.length + 1}>Saídas</td>
@@ -1274,7 +1304,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
 
                         {renderSummaryRow('SALDO ATUAL', 'investment', 'bg-[#1e3a8a]', 'text-white')}
                         {renderRow('(+/-) Previsão de Aplic/Resg', 'INPUT', { manualKey: 'dfc_prev_aplic', bgColor: 'bg-amber-900/30', textColor: 'text-amber-200' })}
-                        {renderSummaryRow('SALDO APÓS APLIC/RESG', 'investment', 'bg-[#1e3a8a]', 'text-white')}
+                        {renderSummaryRow('SALDO APÓS APLIC/RESG', 'saldoAposAplicResg', 'bg-[#1e3a8a]', 'text-white')}
 
                         <tr className="h-4 bg-slate-900"></tr>
 
