@@ -365,7 +365,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
             {/* Barra de KPIs (dinâmica) */}
             <div className="absolute inset-x-[3%] bottom-[12%] rounded-xl border flex items-stretch" style={{ background: '#0a1320', borderColor: '#1e3a34' }}>
                 {[
-                    { l: 'SALDO PREVISTO', v: fmtMi(summary.balance),      s: 'no período',        c: '#fcd34d' },
+                    { l: 'SALDO PREVISTO', v: fmtMi(coverNetFlow),          s: 'no período',        c: '#fcd34d' },
                     { l: 'ENTRADAS',       v: fmtMi(summary.totalInflow),  s: 'Total previsto',    c: '#6ee7b7' },
                     { l: 'SAÍDAS',         v: fmtMi(summary.totalOutflow), s: 'Total previsto',    c: '#fda4af' },
                     { l: 'FLUXO LÍQUIDO',  v: fmtMi(coverNetFlow),         s: 'Resultado líquido', c: '#6ee7b7' },
