@@ -16,7 +16,7 @@ interface ResumoFinanceiroProps {
 
 export const ResumoFinanceiro: React.FC<ResumoFinanceiroProps> = ({ summary, transactions, isSlide = false, aiAnalysis, isGeneratingAI = false, onGenerateAI }) => {
   const [showAI, setShowAI] = React.useState(false);
-  const allPayables = transactions.filter(t => t.type === TransactionType.PAYABLE);
+  const allPayables = transactions.filter(t => t.type === TransactionType.PAYABLE && t.status === 'PREVISTO');
   const allReceivables = transactions.filter(t => t.type === TransactionType.RECEIVABLE);
   const totalOutflow = summary.totalOutflow;
   const totalInflow = summary.totalInflow;
@@ -246,7 +246,7 @@ export const ResumoFinanceiro: React.FC<ResumoFinanceiroProps> = ({ summary, tra
                   {/* Central Text */}
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
                       <span className={`text-xs text-slate-500 font-medium uppercase tracking-wider ${isSlide ? 'text-[10px]' : ''}`}>Total</span>
-                      <span className={`${isSlide ? 'text-sm' : 'text-lg'} font-bold text-slate-200`}>{formatCompact(totalInflow + totalOutflow)}</span>
+                      <span className={`${isSlide ? 'text-sm' : 'text-lg'} font-bold text-slate-200`}>{formatCompact(totalInflow + totalOutflow + totalInvested)}</span>
                   </div>
               </div>
           </div>
