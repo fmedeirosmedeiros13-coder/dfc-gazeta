@@ -29,6 +29,7 @@ interface ReconciliationViewProps {
   realizedTransactions: Transaction[];
   onImportRealized?:   (e: React.ChangeEvent<HTMLInputElement>) => void;
   onClearRealized?:    () => void;
+  onClearPlanned?:     () => void;
   /** Snapshots do Previsto por período (cada importação = um período). */
   previstoSnapshots?:  PrevistoSnapshot[];
   /** Snapshots do Realizado por período — seletor simétrico ao do Previsto. */
@@ -194,6 +195,7 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
   realizedTransactions,
   onImportRealized,
   onClearRealized,
+  onClearPlanned,
   previstoSnapshots = [],
   realizadoSnapshots = [],
 }) => {
@@ -291,13 +293,23 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
             <Upload size={13} />
             Importar Realizados
           </button>
+          {transactions.length > 0 && (
+            <button
+              onClick={onClearPlanned}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/50 text-slate-500 text-xs font-medium hover:text-rose-400 hover:border-rose-800/50 transition-colors"
+              title="Limpa os lançamentos Previstos (Pagamentos e Recebimentos) de todo o sistema"
+            >
+              <Trash2 size={13} />
+              Limpar Previsto
+            </button>
+          )}
           {realizedTransactions.length > 0 && (
             <button
               onClick={onClearRealized}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/50 text-slate-500 text-xs font-medium hover:text-rose-400 hover:border-rose-800/50 transition-colors"
             >
               <Trash2 size={13} />
-              Limpar
+              Limpar Realizado
             </button>
           )}
         </div>

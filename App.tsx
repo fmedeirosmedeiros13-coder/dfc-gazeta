@@ -519,6 +519,24 @@ export default function App() {
                 auditLog.record({ action: 'DATA_CLEAR', subject: 'realized-transactions' });
               }
             }}
+            onClearPlanned={() => {
+              if (window.confirm('Limpar todos os lançamentos previstos (Pagamentos e Recebimentos)? Isso afeta todas as telas do sistema, não só esta.')) {
+                setTransactions(prev => prev.filter(t => t.type !== TransactionType.PAYABLE && t.type !== TransactionType.RECEIVABLE));
+                auditLog.record({ action: 'DATA_CLEAR', subject: 'planned-transactions' });
+              }
+            }}
+            onClearBankExtracts={() => {
+              if (window.confirm('Limpar todos os extratos bancários importados? O saldo inicial de cada banco/empresa volta a ficar em branco. Valores digitados manualmente em "Resg Aplic" não são afetados.')) {
+                setManualValues(mv => {
+                  const next = { ...mv };
+                  Object.keys(next).forEach(k => {
+                    if (k.startsWith('sim_close_') || k.startsWith('sim_sd_ini_')) delete next[k];
+                  });
+                  return next;
+                });
+                auditLog.record({ action: 'DATA_CLEAR', subject: 'bank-extracts' });
+              }
+            }}
             dfcManualValues={manualValues}
             onManualValueChange={handleManualValueChange}
           />

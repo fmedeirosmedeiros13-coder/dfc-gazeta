@@ -11,7 +11,7 @@ import { detectBank } from '../engines/bankExtratoDetector';
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 import { Transaction, TransactionType, ManualValues } from '../types';
 import { parseDate, BANKS_MAPPING, byDate, moveWeekendToMonday, COMPANIES } from '../utils/finance';
-import { Calculator, AlertTriangle } from 'lucide-react';
+import { Calculator, AlertTriangle, Trash2 } from 'lucide-react';
 
 // Data canônica em ISO (yyyy-mm-dd), independente do formato de exibição.
 // Usada como chave do fechamento persistido, para o seed funcionar mesmo
@@ -38,6 +38,7 @@ interface FluxoCaixaDiarioProps {
   onManualValueChange?: (key: string, value: number) => void;
   /** Posição mais recente das Aplicações — usada pra sugerir resgate quando há saldo negativo. */
   applicationSnapshots?: import('../hooks/useApplicationSnapshots').ApplicationSnapshot[];
+  onClearBankExtracts?: () => void;
   // parseDateGlobal e banksMapping removidos — importados de utils/finance.ts
 }
 
@@ -90,6 +91,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
   dfcManualValues,
   onManualValueChange,
   applicationSnapshots = [],
+  onClearBankExtracts,
 }) => {
       // Mover transações de sábado/domingo para a segunda-feira seguinte
       const adjustedTransactions = transactions.map(t => ({
@@ -494,6 +496,16 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                              title="Selecione os PDFs de qualquer banco (Banestes, BB...) — o sistema identifica sozinho de qual banco é cada um"
                          />
                      </label>
+                     {onClearBankExtracts && Object.keys(dfcManualValues || {}).some(k => k.startsWith('sim_close_') || k.startsWith('sim_sd_ini_')) && (
+                         <button
+                             onClick={onClearBankExtracts}
+                             className="flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-bold uppercase border bg-slate-800 text-slate-400 border-slate-700 hover:text-rose-400 hover:border-rose-800/50 transition-colors"
+                             title="Limpa os saldos de extratos já importados (não afeta o Resg Aplic digitado manualmente)"
+                         >
+                             <Trash2 className="w-3 h-3" />
+                             Limpar Extratos
+                         </button>
+                     )}
                      <div className="flex items-center gap-1.5">
                          <label className="text-[10px] font-bold uppercase text-slate-400">Ocultar antes de:</label>
                          <select
