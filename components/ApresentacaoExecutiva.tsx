@@ -101,6 +101,34 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
       return transactions.filter(t => t.status === 'REALIZADO');
   }, [transactions]);
 
+  // Maior fornecedor e maior cliente individual do período — não por
+  // categoria, por NOME específico — pra dar uma leitura mais humana e
+  // acionável do que só "os recebimentos cobriram X% dos pagamentos".
+  const { topSupplier, topCustomer } = useMemo(() => {
+      const bySupplier: Record<string, number> = {};
+      transactions.forEach(t => {
+          if (t.type !== TransactionType.PAYABLE || t.status !== 'PREVISTO') return;
+          const name = (t.supplier || t.description || 'Desconhecido').trim();
+          bySupplier[name] = (bySupplier[name] || 0) + (Number(t.value) || 0);
+      });
+      const byCustomer: Record<string, number> = {};
+      transactions.forEach(t => {
+          if (t.type !== TransactionType.RECEIVABLE) return;
+          const name = (t.customer || t.description || 'Desconhecido').trim();
+          byCustomer[name] = (byCustomer[name] || 0) + (Number(t.value) || 0);
+      });
+      const topEntry = (obj: Record<string, number>) => {
+          const entries = Object.entries(obj).filter(([, v]) => v > 0);
+          if (entries.length === 0) return null;
+          const [name, value] = entries.reduce((a, b) => (b[1] > a[1] ? b : a));
+          return { name, value };
+      };
+      return {
+          topSupplier: topEntry(bySupplier),
+          topCustomer: topEntry(byCustomer),
+      };
+  }, [transactions]);
+
   const totalPlanned = summary.totalOutflow;
   const totalRealized = summary.totalRealizedOutflow || 0;
 
@@ -170,15 +198,23 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
           ? `resultado operacional positivo de ${formatCurrency(operatingResult)}, indicando que os recebimentos do período cobriram integralmente as saídas`
           : `resultado operacional negativo de ${formatCurrency(Math.abs(operatingResult))}, com os recebimentos cobrindo ${coberturaPct.toFixed(0)}% dos pagamentos — a diferença foi suportada pelo saldo em caixa`;
 
+      // Concentração no maior fornecedor: se ele sozinho responde por uma fatia
+      // grande das saídas, vale um alerta específico e acionável — não só o
+      // percentual genérico de cobertura.
+      const supplierSharePct = topSupplier && summary.totalOutflow > 0 ? (topSupplier.value / summary.totalOutflow) * 100 : 0;
+      const concentracaoTexto = (topSupplier && supplierSharePct >= 15)
+          ? ` Chama atenção a concentração em ${topSupplier.name} (${supplierSharePct.toFixed(1)}% das saídas) — recomenda-se negociar prazo ou parcelamento com esse fornecedor específico, já que ele sozinho pressiona o caixa do período.`
+          : (topSupplier ? ` O maior fornecedor do período foi ${topSupplier.name}, com ${formatCurrency(topSupplier.value)} (${supplierSharePct.toFixed(1)}% das saídas).` : '');
+
       const aplicacaoTexto = (totalManualAplicacoes > 0 || totalManualResgates > 0)
           ? `As aplicações financeiras tiveram efeito líquido de ${formatCurrency(cashFlowImpact)} sobre o caixa (${formatCurrency(totalManualAplicacoes)} aplicados e ${formatCurrency(totalManualResgates)} resgatados).`
-          : `Não houve movimentação de aplicações financeiras no período.`;
+          : `A posição em aplicações segue em ${formatCurrency(summary.totalInvested)}, funcionando como colchão de segurança caso o caixa operacional continue negativo.`;
 
       const fechamentoTexto = netPeriodResult >= initialBalance
           ? `A posição consolidada avançou de ${formatCurrency(initialBalance)} para ${formatCurrency(netPeriodResult)}, uma evolução favorável no período.`
           : `A posição consolidada recuou de ${formatCurrency(initialBalance)} para ${formatCurrency(netPeriodResult)}. Recomenda-se acompanhar a tendência nos próximos períodos e avaliar a necessidade de reforço de caixa.`;
 
-      const text = `No período de ${dateRange}, a Rede Gazeta apresentou ${resultadoTexto}. ${aplicacaoTexto} ${fechamentoTexto}`;
+      const text = `No período de ${dateRange}, a Rede Gazeta apresentou ${resultadoTexto}.${concentracaoTexto} ${aplicacaoTexto} ${fechamentoTexto}`;
       setBoardSummary(text);
   };
 
@@ -486,6 +522,28 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                                 dos pagamentos realizados ({formatCurrency(summary.totalOutflow)}), resultando em um resultado operacional
                                 <strong className={`font-semibold ml-1 ${operatingResult >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{formatCurrency(operatingResult)}</strong>.
                             </p>
+                            {(topSupplier || topCustomer) && (
+                                <p>
+                                    {topSupplier && summary.totalOutflow > 0 && (
+                                        <>
+                                            O maior desembolso individual foi para
+                                            <strong className="font-semibold text-slate-100 mx-1">{topSupplier.name}</strong>,
+                                            <strong className="font-semibold text-rose-400 mx-1">{formatCurrency(topSupplier.value)}</strong>
+                                            — sozinho, {((topSupplier.value / summary.totalOutflow) * 100).toFixed(1)}% de tudo que foi pago no período.{' '}
+                                        </>
+                                    )}
+                                    {topCustomer && summary.totalInflow > 0 && (
+                                        <>
+                                            Do lado das entradas,
+                                            <strong className="font-semibold text-slate-100 mx-1">{topCustomer.name}</strong>
+                                            foi a maior fonte de receita,
+                                            <strong className="font-semibold text-emerald-400 mx-1">{formatCurrency(topCustomer.value)}</strong>
+                                            ({((topCustomer.value / summary.totalInflow) * 100).toFixed(1)}% do recebido)
+                                            {(topCustomer.value / summary.totalInflow) > 0.3 ? ' — uma concentração alta, vale ficar de olho se esse cliente atrasar.' : '.'}
+                                        </>
+                                    )}
+                                </p>
+                            )}
                             <p>
                                 {totalManualAplicacoes > 0 || totalManualResgates > 0 ? (
                                     <>
