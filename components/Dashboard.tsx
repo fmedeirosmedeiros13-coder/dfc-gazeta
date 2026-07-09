@@ -151,15 +151,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
       const aggregatedReceivables = Object.values(customerData);
 
       // Helper function to filter by portfolio codes OR fallback terms
-      const filterByGovType = (codes: string[], terms: string[]) => {
+      const filterByGovType = (codes: string[], terms: string[], jaClassificados: Set<string> = new Set()) => {
           const filtered = allReceivables.filter(t => {
+              const key = t.customerCode || t.customer || t.description || 'Desconhecido';
+              // Já contou pra uma categoria de prioridade maior (Federal > Estadual
+              // > Municipal) — não conta de novo, senão o mesmo cliente/valor
+              // aparece duplicado em duas categorias (bug encontrado no relatório).
+              if (jaClassificados.has(key)) return false;
+
               const portfolio = (t.portfolio || '').toUpperCase();
               // Priority 1: Check specific codes in portfolio (GFE, GES, GMU)
               const hasCode = codes.some(c => portfolio.includes(c));
               if (hasCode) return true;
 
-              // Priority 2: Fallback to text terms if no code found
-              const text = (t.customer || '' + t.description || '' + t.category || '').toUpperCase();
+              // Priority 2: Fallback to text terms if no code found.
+              // Parênteses explícitos aqui — sem eles, "a || '' + b" é avaliado
+              // como "a || ('' + b)" (o + tem precedência maior que o ||), então
+              // se t.customer já for uma string não-vazia, description e
+              // category eram IGNORADOS por completo nessa comparação.
+              const text = ((t.customer || '') + (t.description || '') + (t.category || '')).toUpperCase();
               return terms.some(term => text.includes(term));
           });
           
@@ -176,10 +186,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           return Object.values(govData).sort((a,b) => b.value - a.value);
       };
 
-      // Government Lists (Mapped to GFE, GES, GMU)
+      // Government Lists (Mapped to GFE, GES, GMU) — cada nível exclui quem já
+      // caiu num nível de prioridade maior, garantindo que o mesmo cliente não
+      // apareça em duas categorias ao mesmo tempo.
       const listGovFed = filterByGovType(['GFE'], ['FEDERAL', 'UNIAO', 'MINISTERIO']);
-      const listGovEst = filterByGovType(['GES'], ['ESTADO', 'ESTADUAL', 'GOVERNO DO', 'SECOM']);
-      const listGovMun = filterByGovType(['GMU'], ['PREFEITURA', 'MUNICIPAL', 'MUNICIPIO']);
+      const keysGovFed = new Set(listGovFed.map(g => g.id));
+      const listGovEst = filterByGovType(['GES'], ['ESTADO', 'ESTADUAL', 'GOVERNO DO', 'SECOM'], keysGovFed);
+      const keysGovFedEst = new Set([...keysGovFed, ...listGovEst.map(g => g.id)]);
+      const listGovMun = filterByGovType(['GMU'], ['PREFEITURA', 'MUNICIPAL', 'MUNICIPIO'], keysGovFedEst);
       
       // Sums (Full value of all matching items)
       const valGovFed = listGovFed.reduce((acc, t) => acc + (Number(t.value) || 0), 0);
