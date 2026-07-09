@@ -67,6 +67,7 @@ interface DashboardProps {
   onClearRealized?: () => void;
   onClearPlanned?: () => void;
   onClearBankExtracts?: () => void;
+  onTestWipeAll?: () => void;
   isSlide?: boolean;
   /** Alertas ativos — para a view ALERTS (Fase 5). */
   alerts?: import('../engines/alerts').Alert[];
@@ -101,7 +102,7 @@ const N3_DESC: Record<string, string> = (() => {
   return m;
 })();
 
-export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTransactions = [], summary, aiAnalysis, onGenerateAI, isGeneratingAI, viewType, dfcManualValues, onManualValueChange, onImportRealized, onClearRealized, onClearPlanned, onClearBankExtracts, isSlide = false, alerts = [], snapshots = [], previstoSnapshots = [], realizadoSnapshots = [], applicationSnapshots = [] }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTransactions = [], summary, aiAnalysis, onGenerateAI, isGeneratingAI, viewType, dfcManualValues, onManualValueChange, onImportRealized, onClearRealized, onClearPlanned, onClearBankExtracts, onTestWipeAll, isSlide = false, alerts = [], snapshots = [], previstoSnapshots = [], realizadoSnapshots = [], applicationSnapshots = [] }) => {
   
   const [activeConciliationTab, setActiveConciliationTab] = useState<'DEFAULT' | 'MATCHED' | 'PENDING' | 'UNEXPECTED' | 'STRATEGIC'>('DEFAULT');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -492,6 +493,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
         onImportRealized={onImportRealized}
         onClearRealized={onClearRealized}
         onClearPlanned={onClearPlanned}
+        onTestWipeAll={onTestWipeAll}
         previstoSnapshots={previstoSnapshots}
         realizadoSnapshots={realizadoSnapshots}
       />
@@ -1004,6 +1006,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
               onManualValueChange={onManualValueChange}
               applicationSnapshots={applicationSnapshots}
               onClearBankExtracts={onClearBankExtracts}
+              onTestWipeAll={onTestWipeAll}
           />
       );
   }

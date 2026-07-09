@@ -39,6 +39,7 @@ interface FluxoCaixaDiarioProps {
   /** Posição mais recente das Aplicações — usada pra sugerir resgate quando há saldo negativo. */
   applicationSnapshots?: import('../hooks/useApplicationSnapshots').ApplicationSnapshot[];
   onClearBankExtracts?: () => void;
+  onTestWipeAll?: () => void;
   // parseDateGlobal e banksMapping removidos — importados de utils/finance.ts
 }
 
@@ -92,6 +93,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
   onManualValueChange,
   applicationSnapshots = [],
   onClearBankExtracts,
+  onTestWipeAll,
 }) => {
       // Mover transações de sábado/domingo para a segunda-feira seguinte
       const adjustedTransactions = transactions.map(t => ({
@@ -559,6 +561,17 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                          >
                              <Trash2 className="w-3 h-3" />
                              Limpar Extratos
+                         </button>
+                     )}
+                     {/* TESTE — remover antes de produção (pedido do usuário). */}
+                     {onTestWipeAll && (
+                         <button
+                             onClick={onTestWipeAll}
+                             className="flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-bold uppercase border bg-amber-950/60 text-amber-400 border-amber-700/60 hover:bg-amber-900/60 transition-colors"
+                             title="[TESTE] Apaga tudo direto no banco local (IndexedDB), sem esperar o salvamento automático"
+                         >
+                             <Trash2 className="w-3 h-3" />
+                             🧪 TESTE: Limpar Tudo
                          </button>
                      )}
                      <div className="flex items-center gap-1.5">

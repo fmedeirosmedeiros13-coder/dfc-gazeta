@@ -132,7 +132,7 @@ export default function App() {
   });
 
   // ── 3. Persistência IndexedDB ─────────────────────────────────────────────
-  const { isReady, lastSaved, isSaving } = usePersistence({
+  const { isReady, lastSaved, isSaving, clearAll } = usePersistence({
     transactions,
     realizedTransactions,
     manualValues,
@@ -547,6 +547,17 @@ export default function App() {
                 });
                 auditLog.record({ action: 'DATA_CLEAR', subject: 'bank-extracts' });
                 alert(`✓ ${chaves.length} saldo(s) de extrato removido(s).`);
+              }
+            }}
+            // TESTE — remover antes de produção. Zera TUDO (transactions,
+            // realizedTransactions, manualValues) direto no IndexedDB, sem
+            // esperar o debounce de 1,5s do salvamento automático — serve pra
+            // testar se o problema de "dado antigo volta" é uma corrida entre
+            // o clique e o save assíncrono.
+            onTestWipeAll={async () => {
+              if (window.confirm('[TESTE] Apagar TUDO (lançamentos, realizados e extratos) direto no banco local? Ação irreversível.')) {
+                await clearAll();
+                alert('[TESTE] Tudo apagado direto no IndexedDB. Recarregue a página (F5) pra confirmar que não voltou.');
               }
             }}
             dfcManualValues={manualValues}

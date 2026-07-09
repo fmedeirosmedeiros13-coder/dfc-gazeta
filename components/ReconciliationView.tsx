@@ -30,6 +30,7 @@ interface ReconciliationViewProps {
   onImportRealized?:   (e: React.ChangeEvent<HTMLInputElement>) => void;
   onClearRealized?:    () => void;
   onClearPlanned?:     () => void;
+  onTestWipeAll?:      () => void;
   /** Snapshots do Previsto por período (cada importação = um período). */
   previstoSnapshots?:  PrevistoSnapshot[];
   /** Snapshots do Realizado por período — seletor simétrico ao do Previsto. */
@@ -196,6 +197,7 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
   onImportRealized,
   onClearRealized,
   onClearPlanned,
+  onTestWipeAll,
   previstoSnapshots = [],
   realizadoSnapshots = [],
 }) => {
@@ -310,6 +312,17 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
             >
               <Trash2 size={13} />
               Limpar Realizado
+            </button>
+          )}
+          {/* TESTE — remover antes de produção (pedido do usuário). */}
+          {onTestWipeAll && (
+            <button
+              onClick={onTestWipeAll}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-950/60 border border-amber-700/60 text-amber-400 text-xs font-bold hover:bg-amber-900/60 transition-colors"
+              title="[TESTE] Apaga tudo direto no banco local (IndexedDB), sem esperar o salvamento automático"
+            >
+              <Trash2 size={13} />
+              🧪 TESTE: Limpar Tudo
             </button>
           )}
         </div>
