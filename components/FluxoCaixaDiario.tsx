@@ -125,10 +125,21 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
       };
       const [extratoResult, setExtratoResult] = useState<UnifiedResult | null>(null);
       const [isImportingExtratos, setIsImportingExtratos] = useState(false);
+      // Data que o usuário informa ANTES de importar — o sistema confere contra
+      // a data real de cada extrato (lida de dentro do PDF) e bloqueia com
+      // confirmação se não bater, evitando importar o dia errado por engano.
+      const [dataEsperadaExtrato, setDataEsperadaExtrato] = useState('');
 
       const handleImportExtratos = async (e: React.ChangeEvent<HTMLInputElement>) => {
           const files = Array.from(e.target.files || []);
           if (files.length === 0) return;
+
+          if (!dataEsperadaExtrato) {
+              alert('Informe a data do extrato antes de importar (campo "Data do extrato" ao lado do botão).');
+              e.target.value = '';
+              return;
+          }
+
           setIsImportingExtratos(true);
           try {
               const result: UnifiedResult = { balances: [], skippedAccounts: [], unrecognizedFiles: [], precisaExemplo: [] };
@@ -182,14 +193,41 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                   }
               }
 
-              result.balances.forEach(b => {
-                  // Fechamento do dia do extrato: o dia útil seguinte herda sozinho.
-                  onManualValueChange(`sim_close_${b.companyId}_${b.bankId}_${b.dateISO}`, b.saldo);
-                  // Escreve também direto no SD Inicial do primeiro dia visível na
-                  // tela agora, pra aparecer na hora na linha do banco.
-                  if (displayDates[0]) {
-                      onManualValueChange(`sim_sd_ini_${b.companyId}_${b.bankId}_${displayDates[0]}`, b.saldo);
+              // Confere a data real de cada extrato (lida do PDF) contra a data
+              // que o usuário informou. Se não bater em algum, bloqueia e
+              // pergunta — "Não" cancela tudo (nenhum saldo é gravado, volta
+              // pra corrigir a data); "Sim" segue normalmente.
+              const bankLabels: Record<string, string> = { BANESTES: 'Banestes', BB: 'BB', CEF: 'CEF', ITAU: 'Itaú', SICOOB: 'Sicoob' };
+              const datasDivergentes = Array.from(new Set(
+                  result.balances.filter(b => b.dateISO !== dataEsperadaExtrato).map(b => `${bankLabels[b.bankId] || b.bankId}: ${b.dateISO}`)
+              ));
+              if (datasDivergentes.length > 0) {
+                  const prosseguir = window.confirm(
+                      `⚠️ A data informada foi ${dataEsperadaExtrato}, mas o(s) extrato(s) abaixo é/são de outra data:\n\n` +
+                      datasDivergentes.join('\n') +
+                      `\n\nClique OK para importar mesmo assim, ou Cancelar para corrigir a data antes.`
+                  );
+                  if (!prosseguir) {
+                      setIsImportingExtratos(false);
+                      e.target.value = '';
+                      return;
                   }
+              }
+
+              // A data ESCOLHIDA pelo usuário é quem manda em qual dia o saldo
+              // entra como SD Inicial — não necessariamente o primeiro dia
+              // visível na tela, e não a data lida do PDF (essa só serve pra
+              // conferência/aviso, já feita acima). Dali pra frente, a própria
+              // simulação do FC Diário já encadeia o saldo dia a dia sozinha.
+              const [ano, mes, dia] = dataEsperadaExtrato.split('-');
+              const dataEscolhidaDisplay = `${dia}/${mes}/${ano}`;
+
+              result.balances.forEach(b => {
+                  // Fechamento do dia escolhido: o dia útil seguinte herda sozinho.
+                  onManualValueChange(`sim_close_${b.companyId}_${b.bankId}_${dataEsperadaExtrato}`, b.saldo);
+                  // Escreve também direto no SD Inicial do dia escolhido, pra
+                  // aparecer na hora na linha do banco, sem precisar recarregar.
+                  onManualValueChange(`sim_sd_ini_${b.companyId}_${b.bankId}_${dataEscolhidaDisplay}`, b.saldo);
               });
               setExtratoResult(result);
           } catch (err) {
@@ -484,14 +522,31 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                      Fluxo de Caixa - Simulação Diária
                  </h2>
                  <div className="flex flex-wrap gap-2">
-                     <label className={`px-3 py-1 rounded text-[10px] font-bold uppercase transition-colors border cursor-pointer ${isImportingExtratos ? 'bg-slate-700 text-slate-500 border-slate-600 cursor-wait' : 'bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-700'}`}>
+                     <div className="flex items-center gap-1.5">
+                         <label className="text-[10px] font-bold uppercase text-slate-400">Data do extrato:</label>
+                         <input
+                             type="date"
+                             value={dataEsperadaExtrato}
+                             onChange={(e) => setDataEsperadaExtrato(e.target.value)}
+                             className="bg-slate-900 border border-slate-700 text-slate-200 text-[11px] rounded px-2 py-1 outline-none focus:border-indigo-500"
+                             title="Data dos extratos que você vai importar — o sistema confere contra a data de dentro do PDF"
+                         />
+                     </div>
+                     <label
+                         className={`px-3 py-1 rounded text-[10px] font-bold uppercase transition-colors border ${
+                             isImportingExtratos ? 'bg-slate-700 text-slate-500 border-slate-600 cursor-wait'
+                             : !dataEsperadaExtrato ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
+                             : 'bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-700 cursor-pointer'
+                         }`}
+                         title={!dataEsperadaExtrato ? 'Informe a data do extrato primeiro' : undefined}
+                     >
                          {isImportingExtratos ? 'Lendo extratos...' : 'Importar Extratos Bancários'}
                          <input
                              type="file"
                              accept="application/pdf"
                              multiple
                              className="hidden"
-                             disabled={isImportingExtratos}
+                             disabled={isImportingExtratos || !dataEsperadaExtrato}
                              onChange={handleImportExtratos}
                              title="Selecione os PDFs de qualquer banco (Banestes, BB...) — o sistema identifica sozinho de qual banco é cada um"
                          />
