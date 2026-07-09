@@ -513,22 +513,39 @@ export default function App() {
             previstoSnapshots={previstoSnapshots.snapshots}
             realizadoSnapshots={realizadoSnapshots.snapshots}
             applicationSnapshots={applicationSnapshots.snapshots}
-            onClearRealized={() => {
-              if (window.confirm('Limpar todos os lançamentos realizados?')) {
+            onClearRealized={async () => {
+              const qtdAntes = realizedTransactions.length;
+              const qtdSnapshots = realizadoSnapshots.snapshots.length;
+              if (qtdAntes === 0 && qtdSnapshots === 0) {
+                alert('Não há lançamentos Realizados para limpar.');
+                return;
+              }
+              if (window.confirm(`Limpar ${qtdAntes} lançamento(s) realizado(s) e ${qtdSnapshots} período(s) salvos?`)) {
                 setRealizedTransactions([]);
+                // Mesmo caso do Previsto: o histórico de snapshots é separado
+                // da lista viva de lançamentos — sem isso, períodos antigos
+                // continuavam no dropdown mesmo depois de "limpar".
+                await realizadoSnapshots.clear();
                 auditLog.record({ action: 'DATA_CLEAR', subject: 'realized-transactions' });
+                alert(`✓ ${qtdAntes} lançamento(s) e ${qtdSnapshots} período(s) removido(s).`);
               }
             }}
-            onClearPlanned={() => {
+            onClearPlanned={async () => {
               const qtdAntes = transactions.filter(t => t.type === TransactionType.PAYABLE || t.type === TransactionType.RECEIVABLE).length;
-              if (qtdAntes === 0) {
+              const qtdSnapshots = previstoSnapshots.snapshots.length;
+              if (qtdAntes === 0 && qtdSnapshots === 0) {
                 alert('Não há lançamentos Previstos (Pagamentos/Recebimentos) para limpar.');
                 return;
               }
-              if (window.confirm(`Limpar ${qtdAntes} lançamento(s) previsto(s) (Pagamentos e Recebimentos)? Isso afeta todas as telas do sistema, não só esta.`)) {
+              if (window.confirm(`Limpar ${qtdAntes} lançamento(s) previsto(s) e ${qtdSnapshots} período(s) salvos (dropdown de Previsto vs Realizado)? Isso afeta todas as telas do sistema, não só esta.`)) {
                 setTransactions(prev => prev.filter(t => t.type !== TransactionType.PAYABLE && t.type !== TransactionType.RECEIVABLE));
+                // O dropdown "Período do previsto" (Previsto vs Realizado) usa um
+                // histórico SEPARADO (previstoSnapshots) — uma "foto" por
+                // importação. Sem limpar isso também, os períodos antigos
+                // continuavam aparecendo mesmo depois de limpar os lançamentos.
+                await previstoSnapshots.clear();
                 auditLog.record({ action: 'DATA_CLEAR', subject: 'planned-transactions' });
-                alert(`✓ ${qtdAntes} lançamento(s) previsto(s) removido(s).`);
+                alert(`✓ ${qtdAntes} lançamento(s) e ${qtdSnapshots} período(s) removido(s).`);
               }
             }}
             onClearBankExtracts={() => {
