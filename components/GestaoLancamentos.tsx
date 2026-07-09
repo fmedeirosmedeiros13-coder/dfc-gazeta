@@ -1374,6 +1374,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                         <h3 className="text-xl font-bold text-slate-100">Confirmar Exclusão Total?</h3>
                         <p className="text-sm text-slate-400 mt-2">
                             Você está prestes a excluir <strong>TODOS</strong> os {lancamentosFiltrados.length} registros de <span className="font-bold text-slate-300">{activeTab}</span>.
+                            {activeTab === 'APLICACOES' && <><br/>O histórico de posições (gráfico "Evolução das Aplicações") também será apagado.</>}
                             <br/>Esta ação não pode ser desfeita.
                         </p>
                     </div>

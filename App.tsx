@@ -491,7 +491,17 @@ export default function App() {
                   previstoSnapshots.capture(ts);
                 }
             }}
-            onClearTransactions={type => { setTransactions(p => p.filter(t => t.type !== type)); auditLog.record({ action: 'DATA_CLEAR', subject: `type:${type}` }); }}
+            onClearTransactions={async type => {
+              setTransactions(p => p.filter(t => t.type !== type));
+              // Mesmo caso do Previsto/Realizado: Aplicações tem um histórico de
+              // posições separado (usado no gráfico "Evolução das Aplicações"),
+              // que "Limpar" nunca tocava — por isso o gráfico continuava com
+              // dados mesmo depois de zerar os lançamentos.
+              if (type === TransactionType.APPLICATION) {
+                await applicationSnapshots.clear();
+              }
+              auditLog.record({ action: 'DATA_CLEAR', subject: `type:${type}` });
+            }}
             onUpdateTransaction={handleUpdateTransaction}
             applicationSnapshots={applicationSnapshots.snapshots}
           />
