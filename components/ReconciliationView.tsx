@@ -15,7 +15,7 @@ import {
   FileX, ArrowLeft, ChevronDown, ChevronRight, GitMerge,
   ShieldCheck, Eye,
 } from 'lucide-react';
-import { Transaction } from '../types';
+import { Transaction, TransactionType } from '../types';
 import { reconcile, confidenceColor, formatCoverage, type MatchGroup, type ReconciliationResult } from '../engines/reconciliation';
 import { formatCurrency, formatCompact, parseDate } from '../utils/finance';
 import { VisaoEstrategicaRealizado } from './VisaoEstrategicaRealizado';
@@ -293,7 +293,7 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
             <Upload size={13} />
             Importar Realizados
           </button>
-          {transactions.length > 0 && (
+          {transactions.some(t => t.type === TransactionType.PAYABLE || t.type === TransactionType.RECEIVABLE) && (
             <button
               onClick={onClearPlanned}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/50 text-slate-500 text-xs font-medium hover:text-rose-400 hover:border-rose-800/50 transition-colors"

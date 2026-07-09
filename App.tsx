@@ -520,12 +520,23 @@ export default function App() {
               }
             }}
             onClearPlanned={() => {
-              if (window.confirm('Limpar todos os lançamentos previstos (Pagamentos e Recebimentos)? Isso afeta todas as telas do sistema, não só esta.')) {
+              const qtdAntes = transactions.filter(t => t.type === TransactionType.PAYABLE || t.type === TransactionType.RECEIVABLE).length;
+              if (qtdAntes === 0) {
+                alert('Não há lançamentos Previstos (Pagamentos/Recebimentos) para limpar.');
+                return;
+              }
+              if (window.confirm(`Limpar ${qtdAntes} lançamento(s) previsto(s) (Pagamentos e Recebimentos)? Isso afeta todas as telas do sistema, não só esta.`)) {
                 setTransactions(prev => prev.filter(t => t.type !== TransactionType.PAYABLE && t.type !== TransactionType.RECEIVABLE));
                 auditLog.record({ action: 'DATA_CLEAR', subject: 'planned-transactions' });
+                alert(`✓ ${qtdAntes} lançamento(s) previsto(s) removido(s).`);
               }
             }}
             onClearBankExtracts={() => {
+              const chaves = Object.keys(manualValues).filter(k => k.startsWith('sim_close_') || k.startsWith('sim_sd_ini_'));
+              if (chaves.length === 0) {
+                alert('Não há extratos bancários importados para limpar.');
+                return;
+              }
               if (window.confirm('Limpar todos os extratos bancários importados? O saldo inicial de cada banco/empresa volta a ficar em branco. Valores digitados manualmente em "Resg Aplic" não são afetados.')) {
                 setManualValues(mv => {
                   const next = { ...mv };
@@ -535,6 +546,7 @@ export default function App() {
                   return next;
                 });
                 auditLog.record({ action: 'DATA_CLEAR', subject: 'bank-extracts' });
+                alert(`✓ ${chaves.length} saldo(s) de extrato removido(s).`);
               }
             }}
             dfcManualValues={manualValues}
