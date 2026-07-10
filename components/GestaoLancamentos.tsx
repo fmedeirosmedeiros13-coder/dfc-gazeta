@@ -1157,30 +1157,62 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           realPayables.filter(p => hasKey(p)).map(calendarMatchKey)
       );
 
-      // O Calendário guarda só o DIA. A data completa da linha gerada vem do PREVISTO
-      // importado: mês+ano mais frequentes entre os pagamentos reais. (Opção A.)
+      // Uma data é "completa" quando está no formato dd/mm/aaaa.
+      const isFullDate = (d?: string) => /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(d || '').trim());
+      // dd/mm/aaaa -> número comparável aaaammdd (NaN se não for data completa).
+      const toNum = (d?: string) => {
+          const p = String(d || '').trim().split('/');
+          return (p.length === 3 && p[2].length === 4)
+              ? Number(p[2]) * 10000 + Number(p[1]) * 100 + Number(p[0])
+              : NaN;
+      };
+
+      // Janela = intervalo de datas do PREVISTO importado (min/max dos pagamentos reais).
+      // A geração fica RESTRITA a essa janela: só gera recorrentes cujo dia cai nela.
+      const realDateNums = realPayables.map(p => toNum(p.date)).filter(n => !Number.isNaN(n));
+      const hasWindow = realDateNums.length > 0;
+      const minN = hasWindow ? Math.min(...realDateNums) : 0;
+      const maxN = hasWindow ? Math.max(...realDateNums) : 0;
+
+      // Mês/ano de referência (fallback quando não há janela de datas, ex. dados sem data completa).
       const refCounts = new Map<string, number>();
       realPayables.forEach(p => {
           const parts = String(p.date || '').split('/');
           if (parts.length === 3 && parts[2].length === 4) {
-              const key = parts[1].padStart(2, '0') + '/' + parts[2];
-              refCounts.set(key, (refCounts.get(key) || 0) + 1);
+              const k = parts[1].padStart(2, '0') + '/' + parts[2];
+              refCounts.set(k, (refCounts.get(k) || 0) + 1);
           }
       });
       let refMM = '', refYYYY = '', best = -1;
       refCounts.forEach((n, k) => { if (n > best) { best = n; const [mm, yy] = k.split('/'); refMM = mm; refYYYY = yy; } });
       if (!refMM) { const now = new Date(); refMM = String(now.getMonth() + 1).padStart(2, '0'); refYYYY = String(now.getFullYear()); }
 
-      // Monta dd/mm/aaaa a partir do dia do calendário + mês/ano de referência.
-      // Se o calendário já tiver data completa, respeita. Dia é limitado ao último dia do mês.
-      const buildFullDate = (calDate: string): string => {
+      // Data da linha a gerar (dd/mm/aaaa) a partir do dia do calendário:
+      // - com janela: procura a ocorrência do dia DENTRO do intervalo importado; se não cair, retorna null (não gera);
+      // - sem janela: completa com o mês/ano de referência.
+      const occurrenceInWindow = (calDate: string): string | null => {
           const raw = String(calDate || '').trim();
           const parts = raw.split('/');
-          if (parts.length === 3 && parts[2].length === 4) return raw;  // já completa
+          if (parts.length === 3 && parts[2].length === 4) {
+              if (!hasWindow) return raw;
+              const n = toNum(raw);
+              return (n >= minN && n <= maxN) ? raw : null;
+          }
           const dayNum = parseInt(parts[0] || '1', 10) || 1;
-          const lastDay = new Date(Number(refYYYY), Number(refMM), 0).getDate();
-          const day = String(Math.min(dayNum, lastDay)).padStart(2, '0');
-          return `${day}/${refMM}/${refYYYY}`;
+          if (!hasWindow) {
+              const last = new Date(Number(refYYYY), Number(refMM), 0).getDate();
+              return `${String(Math.min(dayNum, last)).padStart(2, '0')}/${refMM}/${refYYYY}`;
+          }
+          let y = Math.floor(minN / 10000), m = Math.floor((minN % 10000) / 100);
+          const ey = Math.floor(maxN / 10000), em = Math.floor((maxN % 10000) / 100);
+          while (y < ey || (y === ey && m <= em)) {
+              const last = new Date(y, m, 0).getDate();
+              const day = Math.min(dayNum, last);
+              const cand = y * 10000 + m * 100 + day;
+              if (cand >= minN && cand <= maxN) return `${String(day).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
+              m++; if (m > 12) { m = 1; y++; }
+          }
+          return null;
       };
 
       const updates: Transaction[]   = [];   // obrigações com status alterado
@@ -1191,28 +1223,36 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           if (!hasKey(cal)) return;  // sem fornecedor + tipo de fluxo não há como casar
           const key = calendarMatchKey(cal);
           const linkedGenerated = payables.filter(p => p.generatedFromCalendarId === cal.id);
+          const staleLinked = linkedGenerated.filter(g => !isFullDate(g.date));  // data incompleta (lixo)
+          const validLinked = linkedGenerated.filter(g => isFullDate(g.date));
 
           if (realKeys.has(key)) {
               // Pagamento real chegou: marca OK e reconcilia (remove o gerado, se houver).
               if (cal.calendarStatus !== 'OK') updates.push({ ...cal, calendarStatus: 'OK' });
               linkedGenerated.forEach(g => deletions.push(g.id));
-          } else if (linkedGenerated.length === 0) {
-              // Não veio na importação e ainda não foi gerado: gera o pagamento.
+              return;
+          }
+
+          // Fora do match real: sempre limpa linhas obsoletas (dia solto).
+          staleLinked.forEach(g => deletions.push(g.id));
+
+          const occ = occurrenceInWindow(cal.date);
+          if (!occ) return;  // recorrente não cai na janela do previsto importado -> não gera
+
+          const already = validLinked.some(g => g.date === occ);
+          if (!already) {
               additions.push({
                   ...cal,
                   id: crypto.randomUUID(),
                   type: TransactionType.PAYABLE,
-                  date: buildFullDate(cal.date),   // dia do calendário + mês/ano do previsto importado
+                  date: occ,   // data dentro da janela do previsto importado
                   status: 'PREVISTO',
                   category: 'Obrigação Recorrente',
                   calendarStatus: undefined,
                   generatedFromCalendarId: cal.id,
               });
-              if (cal.calendarStatus !== 'GERADO') updates.push({ ...cal, calendarStatus: 'GERADO' });
-          } else {
-              // Já gerado anteriormente e o real ainda não veio: mantém.
-              if (cal.calendarStatus !== 'GERADO') updates.push({ ...cal, calendarStatus: 'GERADO' });
           }
+          if (cal.calendarStatus !== 'GERADO') updates.push({ ...cal, calendarStatus: 'GERADO' });
       });
       return { updates, additions, deletions };
   };
