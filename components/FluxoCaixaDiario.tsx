@@ -95,11 +95,17 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
   onClearBankExtracts,
   onTestWipeAll,
 }) => {
-      // Mover transações de sábado/domingo para a segunda-feira seguinte
-      const adjustedTransactions = transactions.map(t => ({
-          ...t,
-          date: moveWeekendToMonday(t.date),
-      }));
+      // Mover transações de sábado/domingo para a segunda-feira seguinte.
+      // Considera apenas fluxo de caixa REAL (Pagamentos/Recebimentos) com data
+      // completa (dd/mm/aaaa). Itens do Calendário (data só com o dia), Tipos de
+      // Fluxo e qualquer data incompleta não entram — senão poluem as colunas.
+      const isFullDate = (d?: string) => /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(d || '').trim());
+      const adjustedTransactions = transactions
+          .filter(t => (t.type === TransactionType.PAYABLE || t.type === TransactionType.RECEIVABLE) && isFullDate(t.date))
+          .map(t => ({
+              ...t,
+              date: moveWeekendToMonday(t.date),
+          }));
 
       const allDates = (Array.from(new Set(adjustedTransactions.map(t => t.date))) as string[]).sort(byDate);
       
