@@ -293,7 +293,11 @@ export const Lancamentos: React.FC<LancamentosProps> = ({ transactions, onEdit, 
       {renderHeader()}
       <tbody className="divide-y divide-slate-800/50">
         {transactions.map((t) => (
-          <tr key={t.id} className={`hover:bg-slate-800/40 transition-colors`}>
+          <tr
+            key={t.id}
+            title={t.generatedFromCalendarId ? 'Gerado pelo Calendário (criado após a importação do previsto)' : undefined}
+            className={`transition-colors ${t.generatedFromCalendarId ? 'bg-violet-500/10 hover:bg-violet-500/20 border-l-2 border-violet-400/50' : 'hover:bg-slate-800/40'}`}
+          >
             {renderRow(t)}
             <td className="px-2 py-2 text-center min-w-[60px]">
               <div className="flex items-center justify-center gap-2">
