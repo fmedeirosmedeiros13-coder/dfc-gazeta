@@ -171,6 +171,26 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady]); // Só na primeira vez que os dados ficam prontos
 
+  // ── 5b. Limpeza automática única ──────────────────────────────────────────
+  // Remove pagamentos gerados pelo Calendário que ficaram com data incompleta
+  // (dia solto, ex. "25") de versões anteriores. Roda uma vez quando os dados
+  // ficam prontos — evita ter que clicar em "Verificar & Gerar" para limpar.
+  useEffect(() => {
+    if (!isReady) return;
+    const isFullDate = (d?: string) => /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(d || '').trim());
+    setTransactions(prev => {
+      const staleCount = prev.filter(
+        t => t.type === TransactionType.PAYABLE && t.generatedFromCalendarId && !isFullDate(t.date)
+      ).length;
+      if (staleCount === 0) return prev;
+      auditLog.record({ action: 'TRANSACTION_DELETE', subject: `cleanup: ${staleCount} recorrente(s) com dia solto` });
+      return prev.filter(
+        t => !(t.type === TransactionType.PAYABLE && t.generatedFromCalendarId && !isFullDate(t.date))
+      );
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady]);
+
   // ── 6. Detecção de alertas ────────────────────────────────────────────────
   useEffect(() => {
     if (!isReady) return;
