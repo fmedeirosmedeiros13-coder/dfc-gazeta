@@ -1152,9 +1152,36 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
   // - Sem pagamento real mas já gerado                      -> mantém como está.
   const runCalendarGeneration = (calendarItems: Transaction[], payables: Transaction[]) => {
       // Só pagamentos REAIS (não os que o próprio Calendário gerou) contam como "já presente".
+      const realPayables = payables.filter(p => !p.generatedFromCalendarId);
       const realKeys = new Set(
-          payables.filter(p => !p.generatedFromCalendarId && hasKey(p)).map(calendarMatchKey)
+          realPayables.filter(p => hasKey(p)).map(calendarMatchKey)
       );
+
+      // O Calendário guarda só o DIA. A data completa da linha gerada vem do PREVISTO
+      // importado: mês+ano mais frequentes entre os pagamentos reais. (Opção A.)
+      const refCounts = new Map<string, number>();
+      realPayables.forEach(p => {
+          const parts = String(p.date || '').split('/');
+          if (parts.length === 3 && parts[2].length === 4) {
+              const key = parts[1].padStart(2, '0') + '/' + parts[2];
+              refCounts.set(key, (refCounts.get(key) || 0) + 1);
+          }
+      });
+      let refMM = '', refYYYY = '', best = -1;
+      refCounts.forEach((n, k) => { if (n > best) { best = n; const [mm, yy] = k.split('/'); refMM = mm; refYYYY = yy; } });
+      if (!refMM) { const now = new Date(); refMM = String(now.getMonth() + 1).padStart(2, '0'); refYYYY = String(now.getFullYear()); }
+
+      // Monta dd/mm/aaaa a partir do dia do calendário + mês/ano de referência.
+      // Se o calendário já tiver data completa, respeita. Dia é limitado ao último dia do mês.
+      const buildFullDate = (calDate: string): string => {
+          const raw = String(calDate || '').trim();
+          const parts = raw.split('/');
+          if (parts.length === 3 && parts[2].length === 4) return raw;  // já completa
+          const dayNum = parseInt(parts[0] || '1', 10) || 1;
+          const lastDay = new Date(Number(refYYYY), Number(refMM), 0).getDate();
+          const day = String(Math.min(dayNum, lastDay)).padStart(2, '0');
+          return `${day}/${refMM}/${refYYYY}`;
+      };
 
       const updates: Transaction[]   = [];   // obrigações com status alterado
       const additions: Transaction[] = [];   // novos pagamentos gerados
@@ -1175,6 +1202,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                   ...cal,
                   id: crypto.randomUUID(),
                   type: TransactionType.PAYABLE,
+                  date: buildFullDate(cal.date),   // dia do calendário + mês/ano do previsto importado
                   status: 'PREVISTO',
                   category: 'Obrigação Recorrente',
                   calendarStatus: undefined,
