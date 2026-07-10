@@ -995,11 +995,15 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
       commitImport(newTransactions, missingColsWarning + appSkipWarning);
   };
 
-  // Conclui a importação: gera recorrentes do calendário, grava e avisa.
+  // Conclui a importação: grava e (quando fizer sentido) gera os recorrentes.
   // Chamado direto (sem fluxo faltante) ou após o modal de "informar fluxo".
+  //
+  // O Calendário é um CADASTRO FIXO: importado uma vez, persiste no IndexedDB
+  // e não precisa ser reimportado. A geração/reconciliação Calendário × Pagamentos
+  // acontece quando os PAGAMENTOS são importados (ou pelo botão "Verificar & Gerar").
+  // GUARDA: importar o Calendário sem nenhum Pagamento REAL no sistema apenas SALVA
+  // as obrigações — não gera previsões (senão geraria tudo, sem ter contra o que casar).
   const commitImport = (newTransactions: Transaction[], missingColsWarning: string) => {
-      // Verificação automática Calendário × Pagamentos:
-      // gera o que faltar e marca 'OK' o que já veio na importação.
       const importPayables = [
           ...transactions.filter(t => t.type === TransactionType.PAYABLE),
           ...newTransactions.filter(t => t.type === TransactionType.PAYABLE),
@@ -1008,20 +1012,32 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           ...transactions.filter(t => t.type === TransactionType.CALENDAR),
           ...newTransactions.filter(t => t.type === TransactionType.CALENDAR),
       ];
-      const { updates: calUpdates, additions: calAdditions, deletions: calDeletions } = runCalendarGeneration(importCalendar, importPayables);
-      newTransactions.push(...calAdditions);
+
+      // Pagamento REAL = não foi gerado pelo próprio Calendário.
+      const hasRealPayables = importPayables.some(p => !p.generatedFromCalendarId);
+      const skipGeneration = activeTab === 'CALENDARIO' && !hasRealPayables;
+
+      let calAdditions: Transaction[] = [];
+      let calDeletions: string[] = [];
       const existingCalUpdates: Transaction[] = [];
-      calUpdates.forEach(u => {
-          const idx = newTransactions.findIndex(t => t.id === u.id);
-          if (idx >= 0) newTransactions[idx] = u;          // obrigação ainda no lote -> atualiza em memória
-          else existingCalUpdates.push(u);                 // obrigação já no estado -> via callback
-      });
+      if (!skipGeneration) {
+          const { updates: calUpdates, additions, deletions } = runCalendarGeneration(importCalendar, importPayables);
+          calAdditions = additions;
+          calDeletions = deletions;
+          newTransactions.push(...calAdditions);
+          calUpdates.forEach(u => {
+              const idx = newTransactions.findIndex(t => t.id === u.id);
+              if (idx >= 0) newTransactions[idx] = u;          // obrigação ainda no lote -> atualiza em memória
+              else existingCalUpdates.push(u);                 // obrigação já no estado -> via callback
+          });
+      }
 
       if (newTransactions.length > 0) {
           onImportTransactions(newTransactions);
           existingCalUpdates.forEach(u => onUpdateTransaction && onUpdateTransaction(u));
           calDeletions.forEach(id => onDeleteTransaction(id));   // reconciliação: remove gerados cujo real chegou
           const partes: string[] = [];
+          if (skipGeneration) partes.push(`Calendário salvo (cadastro fixo). Importe os Pagamentos ou use "Verificar & Gerar" para gerar as previsões.`);
           if (calAdditions.length > 0) partes.push(`${calAdditions.length} pagamento(s) recorrente(s) gerado(s) automaticamente (faltavam).`);
           if (calDeletions.length > 0) partes.push(`${calDeletions.length} pagamento(s) gerado(s) removido(s) por reconciliação (o real chegou).`);
           const extra = partes.length > 0 ? `\n\n` + partes.join('\n') : '';
