@@ -629,16 +629,30 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           // DT PREV PAGT primeiro (data de previsão de pagamento)
           // NÃO incluir DT PREVISAO LIQUIDACAO aqui (é a data de liquidação prevista, geralmente 31/12/9999)
           const dtPrevRaw = getVal(['DT PREV PAGT', 'DT PREV REC', 'DT PREVISAO LIQUIDACAO', 'DT PREVISAO', 'DT VENCIMENTO', 'DATA', 'DT VENCTO', 'DIA']);
-          // Se a data é far-future (ano > 2030), provavelmente é placeholder TOTVS — descarta
+          // Valida se o texto tem CARA de data usável: dd/mm/aaaa (com ano de 2 ou
+          // 4 dígitos), aaaa-mm-dd, ou serial Excel (número grande, >10000).
+          // Um valor solto como "20" ou "6" (fragmento de dia, sem mês/ano) NÃO
+          // é uma data válida — antes passava batido e virava a data da linha.
           const isValidDate = (d: string) => {
               if (!d) return false;
-              const parts = d.split('/');
-              if (parts.length >= 3) {
+              const s = d.trim();
+              // Serial Excel: número grande o suficiente pra ser uma data real.
+              if (/^\d+$/.test(s)) {
+                  const n = parseInt(s, 10);
+                  return n > 10000 && n < 73000;
+              }
+              // dd/mm/aaaa ou dd/mm/aa
+              const parts = s.split('/');
+              if (parts.length === 3) {
                   let y = Number(parts[2]);
                   if (y < 100) y = y < 50 ? 2000 + y : 1900 + y;  // 26 → 2026
-                  if (y > 2030) return false;  // 31/12/9999 e similares
+                  if (y > 2030) return false;  // 31/12/9999 e similares (placeholder TOTVS)
+                  return !!(Number(parts[0]) && Number(parts[1]));
               }
-              return true;
+              // aaaa-mm-dd
+              const isoParts = s.split('-');
+              if (isoParts.length === 3 && isoParts[0].length === 4) return true;
+              return false;  // qualquer outra coisa (ex.: "20", "6") não é data completa
           };
           const dtPrev = isValidDate(dtPrevRaw) ? dtPrevRaw : '';
           
@@ -891,8 +905,12 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               let flowCode = getVal(['TIPO DE FLUXO', 'COD TIPO FLUXO', 'TP FLUXO']);
               let flowLevel2 = getVal(['FLUXO N2', 'FLUXO NIVEL 2', 'NIVEL 2', 'COD NIVEL 2']);
               let categoryVal = getVal(['NOME TIPO DE FLUXO', 'DESC TIPO FLUXO', 'CATEGORIA', 'NOME TIPO FLUXO', 'NOME TP FLUXO', 'NOME DO TIPO DE FLUXO', 'TIPO DE FLUXO NOME', 'DESCRICAO TIPO DE FLUXO', 'DESCRIÇÃO TIPO DE FLUXO']) || '';
-              // Se não veio o nome do tipo de fluxo na planilha, busca no cadastro
-              if (!categoryVal && flowCode) {
+              // O TOTVS às vezes repete o próprio código na coluna do "nome" (ex.:
+              // "20520"). Nesse caso o cadastro de Tipo de Fluxo (se tiver o nome
+              // de verdade) é preferido — senão a coluna "Nome Tipo de Fluxo" só
+              // mostraria o código de novo, sem servir pra nada.
+              const looksLikeCode = (v: string) => !v || /^\d+$/.test(v.trim()) || v.trim() === String(flowCode).trim();
+              if (looksLikeCode(categoryVal) && flowCode) {
                   const descCadastro = flowTypeMap.get(String(flowCode).trim());
                   if (descCadastro) categoryVal = descCadastro;
               }
