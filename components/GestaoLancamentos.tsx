@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { Lancamentos } from './Lancamentos';
 import { MultiSelect } from './MultiSelect';
 import { useTransactionFilters } from '../hooks/useTransactionFilters';
-import { parseDate, formatCurrency } from '../utils/finance';
+import { parseDate, formatCurrency, moveToNextBusinessDay } from '../utils/finance';
 import { resolveFlowFromConta, FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS } from '../utils/flowDePara';
 import { resolveCompanyFromCCPadrao } from '../utils/ccPadraoDePara';
 import { COMPANIES } from '../utils/finance';
@@ -792,7 +792,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                if (dtPrev || titulo) {
                    tr = {
                        id: crypto.randomUUID(),
-                       date: parseDateExcel(dtPrev),
+                       date: moveToNextBusinessDay(parseDateExcel(dtPrev)),  // dia útil: cai em fim de semana/feriado, migra pro próximo
                        companyCode: empresa,
                        establishment: estab,
                        customerCode: clienteCod,
@@ -952,9 +952,15 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               }
 
               if (finalValue || dateToUse) {
+                  const parsedDate = parseDateExcel(dateToUse);
+                  // Dia útil: só desloca PREVISTO (agenda futura). REALIZADO é
+                  // fato histórico — a data em que o pagamento de fato ocorreu
+                  // não deve ser alterada, mesmo que caia num fim de semana
+                  // (débitos automáticos e algumas liquidações acontecem).
+                  const finalDate = statusToUse === 'PREVISTO' ? moveToNextBusinessDay(parsedDate) : parsedDate;
                   tr = {
                       id: crypto.randomUUID(),
-                      date: parseDateExcel(dateToUse),
+                      date: finalDate,
                       value: finalValue,
                       type: type,
                       status: statusToUse,
@@ -1157,11 +1163,36 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
       setPendingWarningApp('');
   };
 
-  // Chave de match: Fornecedor (código) + Tipo de Fluxo (ambos preenchidos).
-  const calendarMatchKey = (t: Transaction) =>
-      `${(t.supplierCode || '').trim()}|${(t.flowTypeCode || '').trim()}`;
-  const hasKey = (t: Transaction) =>
-      !!(t.supplierCode || '').trim() && !!(t.flowTypeCode || '').trim();
+  // Chave de match: prioriza Fornecedor (código) + Tipo de Fluxo.
+  //  • Comissão (Espécie "CO"): casa por Empresa + Tipo de Fluxo — há muitas
+  //    pessoas/fornecedores distintos recebendo comissão, então o fornecedor
+  //    específico não serve de âncora; a comparação é agregada (soma).
+  //  • Sem fornecedor (ex.: "Folha de Pagamento", sem código formal no
+  //    TOTVS): cai para Empresa + Tipo de Fluxo — sem esse fallback, uma
+  //    obrigação sem fornecedor nunca é verificada (falha silenciosa).
+  //  • Caso normal: Fornecedor + Tipo de Fluxo.
+  const isComissao = (t: Transaction) => String(t.species || '').trim().toUpperCase() === 'CO';
+  const calendarMatchKey = (t: Transaction) => {
+      const flow = (t.flowTypeCode || '').trim();
+      const company = (t.companyCode || '').trim();
+      if (isComissao(t)) return `ESP|${company}|${flow}`;
+      const supplier = (t.supplierCode || '').trim();
+      if (supplier) return `SUP|${supplier}|${flow}`;
+      return `EMP|${company}|${flow}`;
+  };
+  const hasKey = (t: Transaction) => {
+      const flow = (t.flowTypeCode || '').trim();
+      if (!flow) return false;
+      if (isComissao(t)) return !!(t.companyCode || '').trim();
+      return !!(t.supplierCode || '').trim() || !!(t.companyCode || '').trim();
+  };
+  // Diverge se o valor real (soma, no caso de Comissão) se afasta da média
+  // do calendário em mais de 30% — sinaliza, mas não impede o match "OK".
+  const VALUE_DIVERGENCE_TOLERANCE = 0.30;
+  const valueDiverges = (real: number, expected: number) => {
+      if (!expected) return false;
+      return Math.abs(real - expected) / Math.abs(expected) > VALUE_DIVERGENCE_TOLERANCE;
+  };
 
   // Núcleo da verificação + reconciliação.
   // - Pagamento REAL presente (não-gerado) com mesma chave  -> obrigação 'OK';
@@ -1171,9 +1202,25 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
   const runCalendarGeneration = (calendarItems: Transaction[], payables: Transaction[]) => {
       // Só pagamentos REAIS (não os que o próprio Calendário gerou) contam como "já presente".
       const realPayables = payables.filter(p => !p.generatedFromCalendarId);
-      const realKeys = new Set(
-          realPayables.filter(p => hasKey(p)).map(calendarMatchKey)
-      );
+      // Cada pagamento real registra TODAS as chaves possíveis (fornecedor+fluxo,
+      // empresa+fluxo, e espécie-Comissão+fluxo) — assim uma obrigação do
+      // Calendário sem fornecedor (Folha) ou de Comissão (por espécie) casa
+      // com o pagamento real correspondente, mesmo sem bater fornecedor exato.
+      // realValueByKey soma os valores por chave — para Comissão isso agrega
+      // automaticamente todos os fornecedores/pessoas distintos daquele mês.
+      const realKeys = new Set<string>();
+      const realValueByKey = new Map<string, number>();
+      const addValue = (k: string, v: number) => realValueByKey.set(k, (realValueByKey.get(k) || 0) + v);
+      realPayables.forEach(p => {
+          const flow = (p.flowTypeCode || '').trim();
+          if (!flow) return;
+          const company = (p.companyCode || '').trim();
+          const supplier = (p.supplierCode || '').trim();
+          const val = Number(p.value) || 0;
+          if (supplier) { const k = `SUP|${supplier}|${flow}`; realKeys.add(k); addValue(k, val); }
+          if (company)  { const k = `EMP|${company}|${flow}`;  realKeys.add(k); addValue(k, val); }
+          if (company && isComissao(p)) { const k = `ESP|${company}|${flow}`; realKeys.add(k); addValue(k, val); }
+      });
 
       // Uma data é "completa" quando está no formato dd/mm/aaaa.
       const isFullDate = (d?: string) => /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(d || '').trim());
@@ -1246,7 +1293,14 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
 
           if (realKeys.has(key)) {
               // Pagamento real chegou: marca OK e reconcilia (remove o gerado, se houver).
-              if (cal.calendarStatus !== 'OK') updates.push({ ...cal, calendarStatus: 'OK' });
+              // Compara o valor real (soma, agregado no caso de Comissão) contra
+              // a média do calendário — diverge muito? sinaliza, mas o match
+              // continua valendo como OK (o pagamento aconteceu de fato).
+              const realSum = realValueByKey.get(key) || 0;
+              const diverges = valueDiverges(realSum, Number(cal.value) || 0);
+              if (cal.calendarStatus !== 'OK' || !!cal.calendarValueDivergence !== diverges) {
+                  updates.push({ ...cal, calendarStatus: 'OK', calendarValueDivergence: diverges });
+              }
               linkedGenerated.forEach(g => deletions.push(g.id));
               return;
           }
@@ -1270,7 +1324,9 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                   generatedFromCalendarId: cal.id,
               });
           }
-          if (cal.calendarStatus !== 'GERADO') updates.push({ ...cal, calendarStatus: 'GERADO' });
+          if (cal.calendarStatus !== 'GERADO' || cal.calendarValueDivergence) {
+              updates.push({ ...cal, calendarStatus: 'GERADO', calendarValueDivergence: false });
+          }
       });
       return { updates, additions, deletions };
   };
