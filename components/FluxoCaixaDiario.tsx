@@ -10,7 +10,7 @@ import { detectBank } from '../engines/bankExtratoDetector';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 import { Transaction, TransactionType, ManualValues } from '../types';
-import { parseDate, BANKS_MAPPING, byDate, moveWeekendToMonday, COMPANIES } from '../utils/finance';
+import { parseDate, BANKS_MAPPING, byDate, moveToNextBusinessDay, COMPANIES } from '../utils/finance';
 import { Calculator, AlertTriangle, Trash2 } from 'lucide-react';
 
 // Data canônica em ISO (yyyy-mm-dd), independente do formato de exibição.
@@ -104,7 +104,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
           .filter(t => (t.type === TransactionType.PAYABLE || t.type === TransactionType.RECEIVABLE) && isFullDate(t.date))
           .map(t => ({
               ...t,
-              date: moveWeekendToMonday(t.date),
+              date: moveToNextBusinessDay(t.date),
           }));
 
       const allDates = (Array.from(new Set(adjustedTransactions.map(t => t.date))) as string[]).sort(byDate);
