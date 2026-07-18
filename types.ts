@@ -113,6 +113,10 @@ export interface Transaction {
   // Status de verificação do Calendário (obrigações recorrentes):
   // 'OK' = já presente nos pagamentos importados; 'GERADO' = pagamento gerado pelo sistema.
   calendarStatus?: 'OK' | 'GERADO';
+  // Quando calendarStatus === 'OK': o valor real (ou soma, no caso de
+  // Comissão) se afasta da média do calendário em mais de 30%. Sinaliza
+  // pra revisão, sem invalidar o match.
+  calendarValueDivergence?: boolean;
 
   // Em um PAYABLE gerado pelo Calendário: id da obrigação recorrente que o originou.
   // Usado para reconciliar (remover o gerado quando o pagamento real é importado).
