@@ -1,6 +1,6 @@
 import React, { useRef, useState, useMemo } from 'react';
 import { Transaction, TransactionType, FinancialSummary, AIAnalysisResult, DashboardViewType, ManualValues } from '../types';
-import { parseDate, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell, calcInitialBalance, calcResgAplicTotal, getStartDate } from '../utils/finance';
+import { parseDate, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell, calcInitialBalance, calcResgAplicTotal, getStartDate, getLatestExtractDate } from '../utils/finance';
 import { FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS } from '../utils/flowDePara';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, PieChart, Pie, LabelList, AreaChart, Area, LineChart, Line } from 'recharts';
 import { TrendingUp, TrendingDown, Wallet, AlertCircle, RefreshCw, Briefcase, ChevronRight, ArrowUpCircle, BrainCircuit, ShieldCheck, Lightbulb, Table2, Scale, Upload, Trash2, AlertTriangle, CheckCircle2, FileX, Tag, ArrowLeft, Layers, CalendarRange, DollarSign, Calendar, ArrowDownRight, ArrowUpRight, Printer, Calculator, Target, LayoutGrid, ListFilter, Landmark } from 'lucide-react';
@@ -122,10 +122,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
 
   // Helper function to calculate Initial Balance based on FC_DIARIO inputs
   // Delegam para utils/finance.ts — sem lógica duplicada aqui
+  //
+  // Referência do Saldo Inicial: o EXTRATO MAIS RECENTE importado para a
+  // empresa (rolante — atualiza a cada extrato, ex.: segunda usa o saldo de
+  // sexta). Só cai para a data mais antiga das transações se a empresa ainda
+  // não teve nenhum extrato importado (sistema novo, sem referência real).
   const getSimulationInitialBalance = (compId: string): number => {
-    const startDate = getStartDate(transactions);
-    if (!startDate) return 0;
-    return calcInitialBalance(compId, startDate, dfcManualValues ?? {});
+    const refDate = getLatestExtractDate(compId, dfcManualValues ?? {}) ?? getStartDate(transactions);
+    if (!refDate) return 0;
+    return calcInitialBalance(compId, refDate, dfcManualValues ?? {});
   };
 
   const getSimulationResgAplicTotal = (compId: string): number => {
@@ -631,17 +636,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           // 4. Classificação Operacional (Inflow/Outflow)
           else if (t.type === TransactionType.RECEIVABLE) {
               prefix = 'IN';
+              const n2 = String(t.flowTypeLevel2 || '').trim();
               const match = INFLOW_ROWS.find(r => {
+                  // 1ª prioridade: código de GRUPO (N2) do cadastro de Tipo de
+                  // Fluxo — é o nível certo pra esta classificação.
+                  if (n2 && n2 === r.code) return true;
+                  // 2ª: código exato do item (N3) coincidindo com o do grupo
+                  // (raro, mas possível em cadastros mais simples).
                   if (t.flowTypeCode === r.code) return true;
-                  return r.keywords.some(k => text.includes(k.toUpperCase()));
+                  // 3ª (só se as duas acima não resolveram): palavra-chave —
+                  // fallback impreciso, mantido só para dados sem N2 cadastrado.
+                  return !n2 && r.keywords.some(k => text.includes(k.toUpperCase()));
               });
               categoryCode = match ? match.code : '999'; // Fallback para Outros
           } 
           else if (t.type === TransactionType.PAYABLE) {
               prefix = 'OUT';
+              const n2 = String(t.flowTypeLevel2 || '').trim();
               const match = OUTFLOW_ROWS.find(r => {
+                  if (n2 && n2 === r.code) return true;
                   if (t.flowTypeCode === r.code) return true;
-                  return r.keywords.some(k => text.includes(k.toUpperCase()));
+                  return !n2 && r.keywords.some(k => text.includes(k.toUpperCase()));
               });
               categoryCode = match ? match.code : '299'; // Fallback para Outros
           }
