@@ -19,6 +19,7 @@ import {
   calcResgAplicTotal,
   calcResgAplicSplit,
   getStartDate,
+  getLatestExtractDate,
   BANKS_MAPPING,
   normalizeCompanyId,
   byDate,
@@ -129,14 +130,21 @@ export function useFinancialCalculations({
 
   // ─── Saldo inicial executivo ─────────────────────────────────────────────
 
+  // ─── Saldo inicial executivo ─────────────────────────────────────────────
+  // Referência ROLANTE: o extrato mais recente importado de cada empresa
+  // (fluxo semanal — segunda usa o saldo de sexta, hoje usa o de hoje).
+  // Só cai para a data mais antiga das transações se a empresa ainda não
+  // teve nenhum extrato importado.
+
   const executiveInitialBalance = useMemo(() => {
-    const startDate = getStartDate(filteredTransactions);
-    if (!startDate) return 0;
+    const fallbackDate = getStartDate(filteredTransactions);
 
     const companiesToSum = selectedCompany === 'all' ? uniqueCompanies : [selectedCompany];
 
     return companiesToSum.reduce((acc, compId) => {
-      return acc + calcInitialBalance(compId, startDate, manualValues);
+      const refDate = getLatestExtractDate(compId, manualValues) ?? fallbackDate;
+      if (!refDate) return acc;
+      return acc + calcInitialBalance(compId, refDate, manualValues);
     }, 0);
   }, [filteredTransactions, selectedCompany, uniqueCompanies, manualValues]);
 
