@@ -235,8 +235,13 @@ export const Lancamentos: React.FC<LancamentosProps> = ({ transactions, onEdit, 
                <td className="px-2 py-2 border-r border-slate-800/50 text-center text-slate-300">{t.flowTypeCode}</td>
                <td className="px-2 py-2 bg-yellow-900/20 text-right font-bold border-r border-slate-800/50 text-slate-200">{t.value > 0 ? t.value.toLocaleString('pt-BR', {minimumFractionDigits: 2}) : '-'}</td>
                <td className="px-2 py-2 border-r border-slate-800/50 text-center bg-yellow-900/10 font-mono text-slate-400">{t.flowTypeLevel2}</td>
-               <td className={`px-2 py-2 text-center border-r border-slate-800/50 font-bold ${t.calendarStatus === 'GERADO' ? 'text-blue-400' : t.calendarStatus === 'OK' ? 'bg-green-900/20 text-green-400' : 'text-slate-500'}`}>
-                   {t.calendarStatus === 'OK' ? <span className="flex items-center gap-1 justify-center"><Check className="w-3 h-3"/> OK</span> : (t.calendarStatus || '-')}
+               <td className={`px-2 py-2 text-center border-r border-slate-800/50 font-bold ${t.calendarStatus === 'GERADO' ? 'text-blue-400' : t.calendarStatus === 'OK' ? (t.calendarValueDivergence ? 'bg-amber-900/20 text-amber-400' : 'bg-green-900/20 text-green-400') : 'text-slate-500'}`}
+                   title={t.calendarValueDivergence ? 'Pagamento real encontrado, mas o valor diverge da média do calendário em mais de 30%' : undefined}>
+                   {t.calendarStatus === 'OK'
+                       ? <span className="flex items-center gap-1 justify-center">
+                             <Check className="w-3 h-3"/> OK{t.calendarValueDivergence ? ' ⚠️ valor diverge' : ''}
+                         </span>
+                       : (t.calendarStatus || '-')}
                </td>
             </>
           );
