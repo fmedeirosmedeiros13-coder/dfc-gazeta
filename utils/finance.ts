@@ -256,6 +256,42 @@ export function calcInitialBalance(
 }
 
 /**
+ * Encontra a data do EXTRATO BANCÁRIO MAIS RECENTE já importado para uma
+ * empresa (olhando todas as chaves sim_sd_ini_{empresa}_... salvas em
+ * dfcManualValues, empresa e por banco).
+ *
+ * O Saldo Inicial da DFC/DFC Consolidada é ROLANTE: o fluxo é feito toda
+ * segunda-feira usando o saldo de sexta; se importado hoje, o saldo inicial
+ * de hoje é o de hoje. Ou seja, a referência certa é sempre o dia do último
+ * extrato conhecido — NUNCA a data mais antiga do histórico de transações
+ * (isso buscava o saldo de janeiro, quando na prática o extrato mais
+ * recente já tinha sido importado para uma data bem mais próxima de hoje).
+ *
+ * Retorna undefined se nenhum extrato foi importado ainda para a empresa.
+ */
+export function getLatestExtractDate(
+  companyId: string,
+  manualValues: Record<string, number>,
+): string | undefined {
+  const prefix = `sim_sd_ini_${companyId}_`;
+  let latest: string | undefined;
+  let latestNum = -Infinity;
+  for (const key of Object.keys(manualValues ?? {})) {
+    if (!key.startsWith(prefix)) continue;
+    // A data é sempre o último segmento (dd/mm/aaaa), tanto para o formato
+    // da empresa (sim_sd_ini_{emp}_{data}) quanto do banco
+    // (sim_sd_ini_{emp}_{banco}_{data}).
+    const rest = key.slice(prefix.length);
+    const parts = rest.split('_');
+    const dateStr = parts[parts.length - 1];
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) continue;
+    const n = parseDate(dateStr);
+    if (n > latestNum) { latestNum = n; latest = dateStr; }
+  }
+  return latest;
+}
+
+/**
  * Extrai a data mais antiga de um conjunto de transações.
  * Retorna undefined se o array for vazio.
  */
@@ -349,10 +385,92 @@ export function normalizeCompanyId(raw: string | undefined | null): string {
 }
 
 /**
- * Move datas de sábado → próxima segunda (+2 dias), domingo → próxima segunda (+1 dia).
- * Formato esperado: dd/mm/yyyy. Retorna a data ajustada no mesmo formato.
+ * Domingo de Páscoa de um ano (algoritmo de Meeus/Jones/Butcher).
+ * Base para os feriados móveis (Carnaval, Sexta-feira Santa, Corpus Christi).
  */
-export function moveWeekendToMonday(dateStr: string): string {
+function getEasterSunday(year: number): Date {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31); // 3=março, 4=abril
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+}
+
+/**
+ * Feriados nacionais brasileiros de um ano: fixos + móveis (calculados a
+ * partir da Páscoa). Não inclui feriados estaduais/municipais (variam por
+ * cidade — Vitória, Cachoeiro, etc. têm datas próprias não cobertas aqui).
+ * Retorna um Set de timestamps (meia-noite local) para lookup O(1).
+ */
+const holidayCache = new Map<number, Set<number>>();
+function getNationalHolidays(year: number): Set<number> {
+  const cached = holidayCache.get(year);
+  if (cached) return cached;
+
+  const set = new Set<number>();
+  const add = (m: number, d: number) => set.add(new Date(year, m - 1, d).getTime());
+
+  // Fixos
+  add(1, 1);   // Confraternização Universal
+  add(4, 21);  // Tiradentes
+  add(5, 1);   // Dia do Trabalho
+  add(9, 7);   // Independência
+  add(10, 12); // Nossa Senhora Aparecida
+  add(11, 2);  // Finados
+  add(11, 15); // Proclamação da República
+  add(11, 20); // Dia Nacional de Zumbi e da Consciência Negra (Lei 14.759/2023)
+  add(12, 25); // Natal
+
+  // Móveis (relativos à Páscoa)
+  const easter = getEasterSunday(year);
+  const offset = (days: number) => {
+    const dt = new Date(easter);
+    dt.setDate(dt.getDate() + days);
+    set.add(dt.getTime());
+  };
+  offset(-48); // Segunda-feira de Carnaval
+  offset(-47); // Terça-feira de Carnaval
+  offset(-2);  // Sexta-feira Santa
+  offset(60);  // Corpus Christi
+
+  holidayCache.set(year, set);
+  return set;
+}
+
+/** Feriado nacional? Aceita Date ou dd/mm/aaaa. */
+export function isNationalHoliday(dateOrStr: Date | string): boolean {
+  let dt: Date;
+  if (typeof dateOrStr === 'string') {
+    const parts = dateOrStr.split('/');
+    if (parts.length < 2) return false;
+    const d = Number(parts[0]);
+    const m = Number(parts[1]) - 1;
+    const y = parts.length === 3 ? Number(parts[2]) : new Date().getFullYear();
+    dt = new Date(y, m, d);
+  } else {
+    dt = dateOrStr;
+  }
+  if (isNaN(dt.getTime())) return false;
+  return getNationalHolidays(dt.getFullYear()).has(dt.getTime());
+}
+
+/**
+ * Move uma data (dd/mm/aaaa) para o próximo DIA ÚTIL, pulando sábado,
+ * domingo e feriados nacionais — de forma iterativa, então uma sequência
+ * (ex.: feriado emendado com fim de semana) é tratada corretamente.
+ * Substitui moveWeekendToMonday (mantida abaixo como alias de compatibilidade).
+ */
+export function moveToNextBusinessDay(dateStr: string): string {
   if (!dateStr) return dateStr;
   const parts = dateStr.split('/');
   if (parts.length < 2) return dateStr;
@@ -361,17 +479,30 @@ export function moveWeekendToMonday(dateStr: string): string {
   const m = Number(parts[1]) - 1;
   const y = parts.length === 3 ? Number(parts[2]) : new Date().getFullYear();
   const dt = new Date(y, m, d);
-
   if (isNaN(dt.getTime())) return dateStr;
 
-  const dow = dt.getDay(); // 0=DOM, 6=SAB
-  if (dow === 6) dt.setDate(dt.getDate() + 2);       // SAB → SEG
-  else if (dow === 0) dt.setDate(dt.getDate() + 1);   // DOM → SEG
+  // Empurra dia a dia enquanto cair em fim de semana ou feriado nacional.
+  // Um teto de 10 iterações evita loop infinito em qualquer cenário bizarro.
+  for (let guard = 0; guard < 10; guard++) {
+    const dow = dt.getDay(); // 0=DOM, 6=SAB
+    const isWeekend = dow === 0 || dow === 6;
+    if (!isWeekend && !getNationalHolidays(dt.getFullYear()).has(dt.getTime())) break;
+    dt.setDate(dt.getDate() + 1);
+  }
 
   const dd = String(dt.getDate()).padStart(2, '0');
   const mm = String(dt.getMonth() + 1).padStart(2, '0');
   const yyyy = dt.getFullYear();
   return `${dd}/${mm}/${yyyy}`;
+}
+
+/**
+ * Move datas de sábado → próxima segunda (+2 dias), domingo → próxima segunda (+1 dia).
+ * Formato esperado: dd/mm/yyyy. Retorna a data ajustada no mesmo formato.
+ * @deprecated Use moveToNextBusinessDay (também trata feriados nacionais).
+ */
+export function moveWeekendToMonday(dateStr: string): string {
+  return moveToNextBusinessDay(dateStr);
 }
 
 /**
