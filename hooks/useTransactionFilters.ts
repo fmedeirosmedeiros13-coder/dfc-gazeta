@@ -77,6 +77,17 @@ export function useTransactionFilters(
       }
 
       return true;
+    })
+    // Calendário: ordena por DT PREV PAGT crescente (o campo é só o dia,
+    // ex. "15", "20" — comparação numérica simples resolve certo).
+    .sort((a, b) => {
+      if (activeType !== TransactionType.CALENDAR) return 0;
+      const da = parseInt(String(a.date || '').trim(), 10);
+      const db = parseInt(String(b.date || '').trim(), 10);
+      if (Number.isNaN(da) && Number.isNaN(db)) return 0;
+      if (Number.isNaN(da)) return 1;
+      if (Number.isNaN(db)) return -1;
+      return da - db;
     });
   }, [transactions, filtros, activeType]);
 }
