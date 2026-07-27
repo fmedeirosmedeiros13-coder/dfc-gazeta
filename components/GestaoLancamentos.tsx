@@ -182,12 +182,12 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           setTitulo(t.documentNumber || '');
           setTipoFluxoCod(t.flowTypeCode || '');
           setFluxoN2(t.flowTypeLevel2 || '');
-          setValorOriginal(t.value.toString());
+          setValorOriginal(String(Number(t.value) || 0));
       } else if (targetTab === 'RECEBIMENTOS') {
           setDtPrevPagt(t.date);
           setCustomer(t.customer || '');
           setCarteira(t.portfolio || '');
-          setValorOriginal(t.value.toString());
+          setValorOriginal(String(Number(t.value) || 0));
           setTipoFluxoCod(t.flowTypeCode || '');
           setFluxoN2(t.flowTypeLevel2 || '');
       } else if (targetTab === 'TIPO_FLUXO') {
@@ -213,7 +213,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           setTipoFluxoCod(t.flowTypeCode || '');
           setFluxoN2(t.flowTypeLevel2 || '');
           setNomeTipoFluxo(t.category || '');
-          setValorOriginal(t.value.toString());
+          setValorOriginal(String(Number(t.value) || 0));
       }
   };
 
