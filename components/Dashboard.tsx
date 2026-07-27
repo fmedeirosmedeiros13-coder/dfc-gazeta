@@ -1258,60 +1258,104 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                         <tr className={`bg-slate-800 text-indigo-300 font-bold ${isSlide ? 'text-[8px]' : 'text-[10px]'} border-b border-slate-700`}>
                             <td className={`${isSlide ? 'p-0.5' : 'p-1'}`} colSpan={DFC_COLS.length + 2}>1 - ATIVIDADES OPERACIONAIS</td>
                         </tr>
-                        
-                        <tr className={`bg-slate-900 text-slate-300 font-bold ${isSlide ? 'text-[8px]' : 'text-[10px]'}`}>
-                            <td className={`${isSlide ? 'p-0.5 pl-2' : 'p-1 pl-4'}`} colSpan={DFC_COLS.length + 1}>Entradas</td>
-                            <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right bg-slate-900/50`}>
-                                {DFC_COLS.reduce((acc, c) => acc + getTotalBy(c.id, TransactionType.RECEIVABLE), 0).toLocaleString('pt-BR', {minimumFractionDigits: 0})}
-                            </td>
-                        </tr>
-                        {renderRow('(+) Publicidade/Projetos', 'DATA', { tType: TransactionType.RECEIVABLE, filter: ['Publicidade', 'Projeto', 'Ative', '101', '102', '103', '104', '105', '106', '108', '109', '112'] })}
-                        {renderRow('(+) Serviços', 'DATA', { tType: TransactionType.RECEIVABLE, filter: ['Serviço', 'Servico', 'Produção', 'Producao', 'Financeira', '110', '111', '113'] })}
-                        {renderRow('(+) Assinaturas', 'DATA', { tType: TransactionType.RECEIVABLE, filter: ['Assinatura', '107'] })}
-                        {renderRow('(+) Outras Entradas', 'CALC', {
-                            // Residual, mesmo critério do Fornecedores/Outros (Saídas): em vez
-                            // de excluir por palavra-chave (impreciso, pode deixar receita de
-                            // fora), calcula o que sobra do total de Entradas menos as 3
-                            // categorias nomeadas acima — garante que a soma sempre bate.
-                            customValueFn: (cId: string) => {
-                                const totalEntradas = getTotalBy(cId, TransactionType.RECEIVABLE);
-                                const publicidade   = getTotalBy(cId, TransactionType.RECEIVABLE, ['Publicidade', 'Projeto', 'Ative', '101', '102', '103', '104', '105', '106', '108', '109', '112']);
-                                const servicos       = getTotalBy(cId, TransactionType.RECEIVABLE, ['Serviço', 'Servico', 'Produção', 'Producao', 'Financeira', '110', '111', '113']);
-                                const assinaturas    = getTotalBy(cId, TransactionType.RECEIVABLE, ['Assinatura', '107']);
-                                return totalEntradas - publicidade - servicos - assinaturas;
-                            },
-                        })}
+                        {(() => {
+                            // Classificação EXCLUSIVA: cada lançamento cai em EXATAMENTE uma
+                            // categoria (ou no residual "Outras/Fornecedores"), nunca em mais
+                            // de uma. Antes, cada categoria era calculada por getTotalBy()
+                            // independente com filtro OR (categoria bate código do grupo OU
+                            // palavra-chave em texto) — uma mesma transação podia bater em
+                            // duas categorias ao mesmo tempo (ex.: texto contendo "Publicidade
+                            // e Serviços"), inflando a soma das categorias nomeadas e fazendo
+                            // o residual (Outras Entradas / Fornecedores-Outros) ficar
+                            // NEGATIVO. Com exclusividade, a soma das categorias + residual
+                            // bate exatamente com o total, e o residual nunca fica negativo.
+                            type CategoryDef = { label: string; codes: string[]; keywords: string[] };
+                            const INFLOW_CATS: CategoryDef[] = [
+                                { label: '(+) Publicidade/Projetos', codes: ['101','102','103','104','105','106','108','109','112'], keywords: ['publicidade','projeto','ative'] },
+                                { label: '(+) Serviços',              codes: ['110','111','113'],                                    keywords: ['serviço','servico','produção','producao','financeira'] },
+                                { label: '(+) Assinaturas',           codes: ['107'],                                                 keywords: ['assinatura'] },
+                            ];
+                            const OUTFLOW_CATS: CategoryDef[] = [
+                                { label: '(-) Distr Lucro/capital', codes: [],              keywords: ['lucro','dividendo'] },
+                                { label: '(-) Pessoal',             codes: ['201','202'],    keywords: ['pessoal','folha','salário','salario','benefício','beneficio'] },
+                                { label: '(-) Comissões',           codes: ['218'],          keywords: ['comiss'] },
+                                { label: '(-) Impostos',            codes: ['209','215'],    keywords: ['imposto','tribut'] },
+                            ];
 
-                        <tr className={`bg-slate-900 text-red-400 font-bold ${isSlide ? 'text-[8px]' : 'text-[10px]'}`}>
-                            <td className={`${isSlide ? 'p-0.5 pl-2' : 'p-1 pl-4'}`} colSpan={DFC_COLS.length + 1}>Saídas</td>
-                            <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right bg-slate-900/50`}>
-                                {DFC_COLS.reduce((acc, c) => acc + getTotalBy(c.id, TransactionType.PAYABLE), 0).toLocaleString('pt-BR', {minimumFractionDigits: 0})}
-                            </td>
-                        </tr>
-                        {renderRow('(-) Distr Lucro/capital', 'DATA', { tType: TransactionType.PAYABLE, filter: ['Lucro', 'Dividendo'], textColor: 'text-red-400' })}
-                        {renderRow('(-) Pessoal', 'DATA', { tType: TransactionType.PAYABLE, filter: ['Pessoal', 'Folha', 'Salário', 'Salario', 'Benefício', 'Beneficio', '201', '202'], textColor: 'text-red-400' })}
-                        {renderRow('(-) Comissões', 'DATA', { tType: TransactionType.PAYABLE, filter: ['Comiss', 'Comissao', '218'], textColor: 'text-red-400' })}
-                        {renderRow('(-) Impostos', 'DATA', { tType: TransactionType.PAYABLE, filter: ['Imposto', 'Tribut', '209', '215'], textColor: 'text-red-400' })}
-                        {renderRow('(-) Fornecedores / Outros', 'CALC', {
-                            textColor: 'text-red-400',
-                            // Residual: Saídas totais menos as categorias nomeadas acima.
-                            // Antes, essa linha tinha seu próprio filtro por palavra-chave
-                            // (exclusão), o que podia deixar lançamentos de fora ou fazer a
-                            // soma das categorias não bater com o total real de Saídas usado
-                            // no SLD de Caixa (a classificação por palavra-chave é imprecisa).
-                            // Calculando como residual, a soma das 5 linhas SEMPRE bate
-                            // exatamente com o total de Saídas, não importa a imprecisão da
-                            // classificação das outras categorias.
-                            customValueFn: (cId: string) => {
-                                const totalSaidas = getTotalBy(cId, TransactionType.PAYABLE);
-                                const distrLucro  = getTotalBy(cId, TransactionType.PAYABLE, ['Lucro', 'Dividendo']);
-                                const pessoal     = getTotalBy(cId, TransactionType.PAYABLE, ['Pessoal', 'Folha', 'Salário', 'Salario', 'Benefício', 'Beneficio', '201', '202']);
-                                const comissoes   = getTotalBy(cId, TransactionType.PAYABLE, ['Comiss', 'Comissao', '218']);
-                                const impostos    = getTotalBy(cId, TransactionType.PAYABLE, ['Imposto', 'Tribut', '209', '215']);
-                                return totalSaidas - distrLucro - pessoal - comissoes - impostos;
-                            },
-                        })}
+                            const classify = (t: Transaction, cats: CategoryDef[]): number => {
+                                const n2 = String(t.flowTypeLevel2 || '').trim();
+                                // 1ª prioridade: código de GRUPO (N2) do cadastro — exato, sem
+                                // ambiguidade. Só passa pra palavra-chave se nenhum código bateu.
+                                if (n2) {
+                                    const byCode = cats.findIndex(c => c.codes.includes(n2));
+                                    if (byCode !== -1) return byCode;
+                                }
+                                const text = ((t.category || '') + ' ' + (t.description || '')).toLowerCase();
+                                return cats.findIndex(c => c.keywords.some(k => text.includes(k)));
+                            };
 
+                            const buildExclusiveTotals = (type: TransactionType, cats: CategoryDef[]) => {
+                                const perCompany: Record<string, number[]> = {};   // [categoria0, categoria1, ..., residual]
+                                const companyTotal: Record<string, number> = {};
+                                DFC_COLS.forEach(c => { perCompany[c.id] = new Array(cats.length + 1).fill(0); companyTotal[c.id] = 0; });
+
+                                transactions.forEach(t => {
+                                    if (t.type !== type) return;
+                                    if (type === TransactionType.PAYABLE && t.status !== 'PREVISTO') return;
+                                    const compId = normCompany(t.companyCode);
+                                    const col = DFC_COLS.find(c => normCompany(c.id) === compId);
+                                    if (!col) return;
+                                    const idx = classify(t, cats);
+                                    const val = Number(t.value) || 0;
+                                    perCompany[col.id][idx === -1 ? cats.length : idx] += val;
+                                    companyTotal[col.id] += val;
+                                });
+                                return { perCompany, companyTotal };
+                            };
+
+                            const inflow = buildExclusiveTotals(TransactionType.RECEIVABLE, INFLOW_CATS);
+                            const outflow = buildExclusiveTotals(TransactionType.PAYABLE, OUTFLOW_CATS);
+
+                            const renderHeaderTotalsRow = (label: string, data: Record<string, number>, bg: string, textColor: string) => (
+                                <tr className={`${bg} ${textColor} font-bold ${isSlide ? 'text-[8px]' : 'text-[10px]'}`}>
+                                    <td className={`${isSlide ? 'p-0.5 pl-2' : 'p-1 pl-4'}`}>{label}</td>
+                                    {DFC_COLS.map(c => (
+                                        <td key={c.id} className={`${isSlide ? 'p-0.5' : 'p-1'} text-right`}>
+                                            {(data[c.id] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                                        </td>
+                                    ))}
+                                    <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right bg-black/20`}>
+                                        {DFC_COLS.reduce((acc, c) => acc + (data[c.id] || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                                    </td>
+                                </tr>
+                            );
+
+                            const renderExclusiveRow = (label: string, perCompany: Record<string, number[]>, catIndex: number, textColor?: string) => {
+                                const rowValues = DFC_COLS.map(c => perCompany[c.id][catIndex] || 0);
+                                const total = rowValues.reduce((a, v) => a + v, 0);
+                                return (
+                                    <tr className={`${isSlide ? 'text-[8px]' : 'text-[10px]'} ${textColor || 'text-slate-300'}`}>
+                                        <td className={`${isSlide ? 'p-0.5 pl-4' : 'p-1 pl-6'}`}>{label}</td>
+                                        {rowValues.map((v, i) => (
+                                            <td key={i} className={`${isSlide ? 'p-0.5' : 'p-1'} text-right`}>{v.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</td>
+                                        ))}
+                                        <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right font-bold`}>{total.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</td>
+                                    </tr>
+                                );
+                            };
+
+                            return (
+                                <>
+                                    {renderHeaderTotalsRow('Entradas', inflow.companyTotal, 'bg-slate-900', 'text-slate-300')}
+                                    {INFLOW_CATS.map((cat, i) => renderExclusiveRow(cat.label, inflow.perCompany, i))}
+                                    {renderExclusiveRow('(+) Outras Entradas', inflow.perCompany, INFLOW_CATS.length)}
+
+                                    {renderHeaderTotalsRow('Saídas', outflow.companyTotal, 'bg-slate-900', 'text-red-400')}
+                                    {OUTFLOW_CATS.map((cat, i) => renderExclusiveRow(cat.label, outflow.perCompany, i, 'text-red-400'))}
+                                    {renderExclusiveRow('(-) Fornecedores / Outros', outflow.perCompany, OUTFLOW_CATS.length, 'text-red-400')}
+                                </>
+                            );
+                        })()}
                         <tr className={`bg-slate-800 text-indigo-300 font-bold ${isSlide ? 'text-[8px]' : 'text-[10px]'} border-b border-slate-700 mt-2`}>
                             <td className={`${isSlide ? 'p-0.5' : 'p-1'}`} colSpan={DFC_COLS.length + 2}>2 - ATIVIDADES DE INVESTIMENTO</td>
                         </tr>
