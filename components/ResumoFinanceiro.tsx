@@ -46,10 +46,23 @@ export const ResumoFinanceiro: React.FC<ResumoFinanceiroProps> = ({ summary, tra
           flowTypeMap.set(String(t.flowTypeCode).trim(), t.description);
       }
   });
+  // Fallback intermediário: quando o código específico (N3) não tem cadastro
+  // próprio em "Tipo de Fluxo" — muito comum em obrigações do Calendário —
+  // usa o nome do GRUPO (N2), que é bem mais informativo que cair direto
+  // pra "Obrigação Recorrente" (a categoria fixa de tudo que vem de lá).
+  const N2_LABELS: Record<string, string> = {
+      '201': 'Pessoal', '202': 'Pessoal',
+      '209': 'Impostos', '215': 'Impostos',
+      '218': 'Comissões',
+      '211': 'Serviços Profissionais',
+      '205': 'Despesas Operacionais',
+      '206': 'Despesas Operacionais',
+  };
   const payByCategory: Record<string, number> = {};
   allPayables.forEach(t => {
       const flowCode = String(t.flowTypeCode || '').trim();
-      const cat = (flowCode && flowTypeMap.get(flowCode)) || t.category || 'Geral';
+      const n2 = String(t.flowTypeLevel2 || '').trim();
+      const cat = (flowCode && flowTypeMap.get(flowCode)) || N2_LABELS[n2] || t.category || 'Geral';
       payByCategory[cat] = (payByCategory[cat] || 0) + t.value;
   });
 
