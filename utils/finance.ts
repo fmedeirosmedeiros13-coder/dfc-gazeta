@@ -292,6 +292,62 @@ export function getLatestExtractDate(
 }
 
 /**
+ * Todas as datas (dd/mm/aaaa) com extrato bancário já importado, de
+ * qualquer empresa/banco — olhando as chaves sim_sd_ini_... salvas em
+ * dfcManualValues. Usado para GARANTIR que o dia do extrato apareça como
+ * coluna no FC Diário Banco mesmo sem nenhum Pagamento/Recebimento
+ * previsto naquele dia — sem previsto, o extrato ficava salvo mas sem
+ * lugar pra aparecer na tela (parecia que "não importou").
+ */
+export function getAllExtractDates(manualValues: Record<string, number>): string[] {
+  const dates = new Set<string>();
+  for (const key of Object.keys(manualValues ?? {})) {
+    if (!key.startsWith('sim_sd_ini_')) continue;
+    const parts = key.split('_');
+    const dateStr = parts[parts.length - 1];
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) dates.add(dateStr);
+  }
+  return Array.from(dates);
+}
+
+/**
+ * Encontra o FECHAMENTO (sim_close) mais recente conhecido de uma conta
+ * (storageId = "{empresa}_{banco}"), estritamente ANTES de uma data de
+ * referência — não importa quantos dias de distância.
+ *
+ * Antes, a cadeia só olhava o fechamento do dia útil EXATAMENTE anterior ao
+ * primeiro dia exibido: se o previsto começasse numa terça (28/07) mas o
+ * último extrato real fosse de uma sexta anterior (24/07, vários dias
+ * antes), o sistema não achava nada e caía pra zero — descartando um saldo
+ * real que já tinha sido importado. Agora ele acha o extrato mais recente,
+ * seja de ontem ou de vários dias atrás, e usa esse.
+ *
+ * Se depois for importado o previsto de um dia ainda mais cedo (ex.: o
+ * esquecido 27/07), o primeiro dia exibido muda pra ele, e essa mesma busca
+ * recalcula sozinha a partir da nova data — sem precisar de código extra.
+ */
+export function getLatestCloseBefore(
+  storageId: string,
+  cutoffDateBR: string, // dd/mm/aaaa — o dia cujo Saldo Inicial estamos calculando
+  manualValues: Record<string, number>,
+): number | undefined {
+  const prefix = `sim_close_${storageId}_`;
+  const cutoff = parseDate(cutoffDateBR);
+  if (!cutoff) return undefined;
+
+  let best: number | undefined;
+  let bestTime = -Infinity;
+  for (const key of Object.keys(manualValues ?? {})) {
+    if (!key.startsWith(prefix)) continue;
+    const dateISO = key.slice(prefix.length); // yyyy-mm-dd
+    const t = parseDate(dateISO);
+    if (!t || t >= cutoff) continue; // só fechamentos estritamente ANTERIORES
+    if (t > bestTime) { bestTime = t; best = manualValues[key]; }
+  }
+  return best;
+}
+
+/**
  * Extrai a data mais antiga de um conjunto de transações.
  * Retorna undefined se o array for vazio.
  */
