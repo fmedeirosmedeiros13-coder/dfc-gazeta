@@ -10,7 +10,7 @@ import { detectBank } from '../engines/bankExtratoDetector';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 import { Transaction, TransactionType, ManualValues } from '../types';
-import { parseDate, BANKS_MAPPING, byDate, moveToNextBusinessDay, COMPANIES, getAllExtractDates, getLatestCloseBefore } from '../utils/finance';
+import { parseDate, BANKS_MAPPING, byDate, moveToNextBusinessDay, COMPANIES, getLatestCloseBefore } from '../utils/finance';
 import { Calculator, AlertTriangle, Trash2 } from 'lucide-react';
 
 // Data canônica em ISO (yyyy-mm-dd), independente do formato de exibição.
@@ -98,16 +98,14 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
               date: moveToNextBusinessDay(t.date),
           }));
 
-      // As colunas incluem tanto os dias com Pagamento/Recebimento QUANTO os
-      // dias com extrato bancário já importado — sem isso, um extrato
-      // importado num dia sem nenhum previsto ficava salvo "invisível"
-      // (sem coluna pra aparecer), dando a impressão de que não importou.
-      const extractDates = getAllExtractDates(dfcManualValues || {});
-      const allDates = (Array.from(new Set([
-          ...adjustedTransactions.map(t => t.date),
-          ...extractDates,
-      ])) as string[]).sort(byDate);
-      
+      // As colunas vêm SÓ das datas de Pagamento/Recebimento (previsto
+      // importado) — o saldo do extrato NÃO cria uma coluna própria pro seu
+      // dia; ele alimenta o Saldo Inicial do primeiro dia do previsto via
+      // encadeamento (getLatestCloseBefore, mais abaixo). Ex.: extrato de
+      // 24/07 + previsto a partir de 27/07 → 24/07 nunca vira coluna, mas
+      // seu saldo chega em 27/07 do mesmo jeito.
+      const allDates = (Array.from(new Set(adjustedTransactions.map(t => t.date))) as string[]).sort(byDate);
+
       const displayDates = allDates.slice(0, 5);
 
       // Botão "ocultar dia anterior": quando ligado, mostra só o dia corrente
