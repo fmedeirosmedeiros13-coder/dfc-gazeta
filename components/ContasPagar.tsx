@@ -59,24 +59,36 @@ export const ContasPagar: React.FC<ContasPagarProps> = ({
           .trim();
   };
 
-  const getSumByCat = (filter: string) => {
-      const normalizedFilter = normalizeCategory(filter);
-      return allPayables
-          .filter(t => normalizeCategory(t.category).includes(normalizedFilter))
-          .reduce((acc, t) => acc + (Number(t.value) || 0), 0);
+  // Classificação EXCLUSIVA (cada lançamento cai em UMA categoria só) e
+  // ciente do código de fluxo (N2) do cadastro — não só do texto da
+  // categoria. Isso é essencial pros pagamentos GERADOS PELO CALENDÁRIO:
+  // eles sempre têm category = "Obrigação Recorrente" (fixo), então uma
+  // checagem só de texto (era o caso antes) nunca reconhecia um "Folha"
+  // vindo do calendário como Pessoal — caía era no residual (Fornecedores).
+  // Com o código de fluxo herdado do calendário, agora classifica certo.
+  const PESSOAL_N2 = ['201', '202'];
+  const COMISSAO_N2 = ['218'];
+  const matchesCat = (t: Transaction, keywords: string[], n2Codes: string[]) => {
+      const n2 = String(t.flowTypeLevel2 || '').trim();
+      if (n2 && n2Codes.includes(n2)) return true;
+      const cat = normalizeCategory(t.category);
+      return keywords.some(k => cat.includes(normalizeCategory(k)));
   };
-  
-  const valPessoal = getSumByCat('Pessoal') + getSumByCat('Folha');
-  const valInvest = getSumByCat('Investimento') + getSumByCat('Obra');
-  // Impostos: usa classifyTax (por fornecedor + keywords) em vez de só category
-  const valImpost = allPayables
-      .filter(t => classifyTax(t) !== null)
-      .reduce((acc, t) => acc + (Number(t.value) || 0), 0);
-  // Comissões: exclui os que são impostos (mesmo que o tipo de fluxo diga "Comissões")
-  const valComiss = allPayables
-      .filter(t => normalizeCategory(t.category).includes('COMISS') && classifyTax(t) === null)
-      .reduce((acc, t) => acc + (Number(t.value) || 0), 0);
-  const valFornec = totalPayables - valPessoal - valInvest - valComiss - valImpost;
+
+  const catBuckets = { pessoal: 0, invest: 0, comiss: 0, impost: 0, fornec: 0 };
+  allPayables.forEach(t => {
+      const val = Number(t.value) || 0;
+      if (classifyTax(t) !== null) { catBuckets.impost += val; return; }             // 1ª: impostos (mais preciso, por fornecedor/fluxo)
+      if (matchesCat(t, ['Pessoal', 'Folha'], PESSOAL_N2)) { catBuckets.pessoal += val; return; }
+      if (matchesCat(t, ['Investimento', 'Obra'], [])) { catBuckets.invest += val; return; }
+      if (matchesCat(t, ['Comiss'], COMISSAO_N2)) { catBuckets.comiss += val; return; }
+      catBuckets.fornec += val;                                                       // residual
+  });
+  const valPessoal = catBuckets.pessoal;
+  const valInvest = catBuckets.invest;
+  const valImpost = catBuckets.impost;
+  const valComiss = catBuckets.comiss;
+  const valFornec = catBuckets.fornec;
 
   const companyData: Record<string, number> = {};
   chartPayables.forEach(t => {
