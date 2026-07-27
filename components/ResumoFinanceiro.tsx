@@ -34,9 +34,22 @@ export const ResumoFinanceiro: React.FC<ResumoFinanceiroProps> = ({ summary, tra
   });
   
   // KPI 3: Top Expense
+  // Agrupa pelo NOME DO TIPO DE FLUXO (cadastro), não pela categoria bruta —
+  // pagamentos GERADOS PELO CALENDÁRIO sempre têm category = "Obrigação
+  // Recorrente" (fixo), então agrupar por categoria misturava Pessoal,
+  // Impostos, Comissões e Fornecedores recorrentes tudo num bucket só,
+  // pouco informativo e sempre dominando o "Maior Categoria Pago". Pelo
+  // fluxo, cada um aparece separado — a mesma granularidade de sempre.
+  const flowTypeMap = new Map<string, string>();  // flowTypeCode → nome do Tipo de Fluxo
+  transactions.forEach(t => {
+      if (t.type === TransactionType.FLOW_TYPE && t.flowTypeCode && t.description) {
+          flowTypeMap.set(String(t.flowTypeCode).trim(), t.description);
+      }
+  });
   const payByCategory: Record<string, number> = {};
   allPayables.forEach(t => {
-      const cat = t.category || 'Geral';
+      const flowCode = String(t.flowTypeCode || '').trim();
+      const cat = (flowCode && flowTypeMap.get(flowCode)) || t.category || 'Geral';
       payByCategory[cat] = (payByCategory[cat] || 0) + t.value;
   });
 
