@@ -1,8 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR" translate="no">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Impede o Google Tradutor de mexer no DOM: ele reescreve elementos por
+         fora do controle do React, e quando o React tenta atualizar a tela
+         depois (ex.: ao clicar em editar), acaba dando erro tipo
+         "Failed to execute 'insertBefore' on 'Node'" e quebrando tudo (tela
+         branca). Os dois atributos abaixo são o jeito oficial de desativar
+         a tradução automática do Chrome nesta página. -->
+    <meta name="google" content="notranslate">
     <title>Gazeta Gestão Financeira</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
@@ -36,8 +43,8 @@
     </style>
 <link rel="stylesheet" href="/index.css">
 </head>
-<body class="bg-slate-50">
-    <div id="root"></div>
+<body class="bg-slate-50" translate="no">
+    <div id="root" translate="no"></div>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
