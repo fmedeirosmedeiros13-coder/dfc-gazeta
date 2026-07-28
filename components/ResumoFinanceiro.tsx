@@ -223,12 +223,26 @@ export const ResumoFinanceiro: React.FC<ResumoFinanceiroProps> = ({ summary, tra
               </h3>
               <div className="flex-1 min-h-0">
                   <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={recByCatData} margin={{top: 0, right: 0, left: 0, bottom: 0}} barSize={isSlide ? 20 : 32}>
+                      <BarChart data={recByCatData} margin={{top: 36, right: 8, left: 0, bottom: 4}} barSize={isSlide ? 20 : 32}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" opacity={0.3} />
-                          <XAxis dataKey="name" tick={{fontSize: isSlide ? 8 : 10, fill: '#64748b'}} tickLine={false} axisLine={false} interval={0} angle={-15} textAnchor="end" height={isSlide ? 30 : 40} />
+                          {/* Nomes em cima da barra (em vez de embaixo) — o eixo de baixo
+                              tinha pouca altura e cortava nomes longos de fornecedor. Em
+                              cima sobra mais espaço (margem do gráfico), e cada nome fica
+                              perto da sua própria barra, sem depender de espremer tudo
+                              numa faixa estreita no rodapé. */}
+                          <XAxis dataKey="name" tick={false} axisLine={false} tickLine={false} height={4} />
                           <YAxis tick={{fontSize: isSlide ? 8 : 10, fill: '#64748b'}} tickFormatter={(v) => formatCompact(v)} axisLine={false} tickLine={false} />
                           <Tooltip cursor={{fill: '#1e293b', opacity: 0.4}} contentStyle={{backgroundColor: '#0f172a', borderRadius: '8px', border: '1px solid #1e293b', color: '#f8fafc', fontSize: '12px'}} formatter={(v: number) => formatCurrency(v)} />
-                          <Bar dataKey="value" fill={COLORS.rec} radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="value" fill={COLORS.rec} radius={[4, 4, 0, 0]}>
+                              <LabelList
+                                  dataKey="name"
+                                  position="top"
+                                  angle={-25}
+                                  offset={10}
+                                  style={{ fontSize: isSlide ? 8 : 10, fill: '#94a3b8' }}
+                                  formatter={(v: string) => (v && v.length > 18 ? v.slice(0, 18) + '…' : v)}
+                              />
+                          </Bar>
                       </BarChart>
                   </ResponsiveContainer>
               </div>
