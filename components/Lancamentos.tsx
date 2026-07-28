@@ -190,7 +190,7 @@ export const Lancamentos: React.FC<LancamentosProps> = ({ transactions, onEdit, 
                 })()}
               </td>
               <td className="px-2 py-2 bg-yellow-900/20 text-right font-bold text-slate-200">
-                {t.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                {(Number(t.value) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </td>
               <td className="px-2 py-2 border-r border-slate-800/50 text-center bg-yellow-900/10 font-mono text-slate-400">{t.flowTypeLevel2}</td>
             </>
@@ -218,7 +218,7 @@ export const Lancamentos: React.FC<LancamentosProps> = ({ transactions, onEdit, 
                 <td className="px-2 py-2 border-r border-slate-800/50 text-right text-slate-300">{t.balanceTitleValue?.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
                 <td className="px-2 py-2 border-r border-slate-800/50 text-right text-slate-300">{t.originalTitleValue?.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
                 <td className="px-2 py-2 bg-emerald-900/40 text-right font-bold text-emerald-400">
-                    {t.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    {(Number(t.value) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </td>
                 <td className="px-2 py-2 border-r border-slate-800/50 bg-yellow-900/10 text-center font-mono text-slate-400">{t.flowTypeLevel2}</td>
               </>
@@ -272,7 +272,7 @@ export const Lancamentos: React.FC<LancamentosProps> = ({ transactions, onEdit, 
               <td className="px-2 py-2 border-r border-slate-800/50"><span className="bg-slate-800 px-2 py-1 rounded text-[10px] text-slate-300">{t.category || '-'}</span></td>
               <td className="px-2 py-2 border-r border-slate-800/50 text-slate-400">{t.species || '-'}</td>
               <td className="px-2 py-2 text-right font-bold text-blue-400">
-                {t.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                {(Number(t.value) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </td>
             </>
           );
@@ -286,7 +286,7 @@ export const Lancamentos: React.FC<LancamentosProps> = ({ transactions, onEdit, 
               <td className="px-4 py-3 font-medium text-slate-300">{t.description}</td>
               <td className="px-4 py-3"><span className="bg-slate-800 px-2 py-1 rounded text-xs text-slate-300">{t.category}</span></td>
               <td className="px-4 py-3 text-right font-bold text-blue-400">
-                {t.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                {(Number(t.value) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </td>
             </>
           );
