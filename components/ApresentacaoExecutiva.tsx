@@ -191,6 +191,9 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
 
   const [boardSummary, setBoardSummary] = useState('');
   const [isEditingSummary, setIsEditingSummary] = useState(false);
+  // Tema do Demonstrativo (escopado só a este relatório — o app segue escuro).
+  // 'dark' = padrão atual; 'light' = paleta creme/navy (Rede Gazeta) para escolha.
+  const [reportTheme, setReportTheme] = useState<'dark' | 'light'>('dark');
 
   const generateAutoSummary = () => {
       const coberturaPct = summary.totalOutflow > 0 ? (summary.totalInflow / summary.totalOutflow) * 100 : 0;
@@ -311,10 +314,73 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   };
 
   return (
-    <div id="ppt-export-root" className="min-h-screen bg-[#0f172a] flex flex-col items-center p-8 font-sans gap-8">
+    <div id="ppt-export-root" className={`min-h-screen bg-[#0f172a] flex flex-col items-center p-8 font-sans gap-8 ${reportTheme === 'light' ? 'demo-theme-light' : ''}`}>
+
+        {/* ── TEMA CLARO (paleta Rede Gazeta) — escopado a #ppt-export-root.demo-theme-light,
+            então NÃO afeta o resto do app; só o Demonstrativo quando o tema Claro está ligado.
+            Mapeia cada papel visual (página / card / destaque / texto) para a cor certa,
+            preservando contraste. Os gráficos mantêm suas cores de dado. ── */}
+        <style>{`
+          #ppt-export-root.demo-theme-light { background:#FAF9F5 !important; }
+          /* fundos de página */
+          .demo-theme-light .bg-slate-900,
+          .demo-theme-light .bg-\\[\\#0f172a\\],
+          .demo-theme-light .bg-\\[\\#1e293b\\] { background-color:#FAF9F5 !important; }
+          /* cards / painéis normais */
+          .demo-theme-light .bg-slate-950\\/50,
+          .demo-theme-light .bg-slate-900\\/50,
+          .demo-theme-light .bg-slate-900\\/40 { background-color:#FFFFFF !important; }
+          /* destaques: card Saldo Final, cabeçalhos/linhas de grupo de tabela */
+          .demo-theme-light .bg-slate-800,
+          .demo-theme-light .bg-slate-800\\/50,
+          .demo-theme-light .bg-slate-800\\/40,
+          .demo-theme-light .bg-slate-700 { background-color:#2E3C4E !important; }
+          /* bordas */
+          .demo-theme-light .border-slate-800,
+          .demo-theme-light .border-slate-700,
+          .demo-theme-light .border-slate-600 { border-color:#BFD3D8 !important; }
+          /* textos claros -> navy/slate (sobre fundo claro) */
+          .demo-theme-light .text-white,
+          .demo-theme-light .text-slate-100,
+          .demo-theme-light .text-slate-200 { color:#2E3C4E !important; }
+          .demo-theme-light .text-slate-300 { color:#283848 !important; }
+          .demo-theme-light .text-slate-400,
+          .demo-theme-light .text-slate-500,
+          .demo-theme-light .text-slate-600 { color:#5C6C77 !important; }
+          /* MAS dentro de blocos navy (destaque), texto continua claro (descendentes) */
+          .demo-theme-light .bg-slate-800 .text-white, .demo-theme-light .bg-slate-800 .text-slate-100,
+          .demo-theme-light .bg-slate-800 .text-slate-200, .demo-theme-light .bg-slate-800 .text-slate-300,
+          .demo-theme-light .bg-slate-800 .text-slate-400,
+          .demo-theme-light .bg-slate-800\\/50 .text-white, .demo-theme-light .bg-slate-800\\/50 .text-slate-100,
+          .demo-theme-light .bg-slate-800\\/50 .text-slate-200,
+          .demo-theme-light .bg-slate-700 .text-white, .demo-theme-light .bg-slate-700 .text-slate-100,
+          .demo-theme-light .bg-slate-700 .text-slate-200 { color:#EAF2F6 !important; }
+          /* mesmo-elemento navy + texto (ex.: linhas de grupo de tabela) */
+          .demo-theme-light .bg-slate-800.text-slate-200, .demo-theme-light .bg-slate-800.text-slate-300,
+          .demo-theme-light .bg-slate-800.text-indigo-300, .demo-theme-light th { color:#EAF2F6 !important; }
+          /* acentos semânticos harmonizados */
+          .demo-theme-light .text-emerald-400, .demo-theme-light .text-emerald-300, .demo-theme-light .text-emerald-500 { color:#2E7D63 !important; }
+          .demo-theme-light .text-rose-400, .demo-theme-light .text-rose-300, .demo-theme-light .text-rose-500 { color:#B0574E !important; }
+          .demo-theme-light .text-emerald-700 { color:#6FA891 !important; }
+          .demo-theme-light .text-rose-700 { color:#C99089 !important; }
+          /* rodapé teal -> slate */
+          .demo-theme-light [style*="#3f7a6e"] { color:#5C6C77 !important; }
+          /* fundo escuro do donut de risco (track) -> azul-claro */
+          .demo-theme-light path[fill="#1f2937"] { fill:#D9EDF2 !important; }
+          /* os botões da barra de controle NÃO seguem o tema claro (ficam legíveis) */
+          .demo-theme-light .fixed.top-8.right-8 .bg-slate-800 { background-color:#2E3C4E !important; }
+          .demo-theme-light .fixed.top-8.right-8 .text-slate-200 { color:#EAF2F6 !important; }
+        `}</style>
         
         {/* CONTROLES SUPERIORES */}
         <div className="fixed top-8 right-8 flex gap-3 print:hidden z-50">
+            <button
+                onClick={() => setReportTheme(t => t === 'dark' ? 'light' : 'dark')}
+                className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition-colors text-xs font-semibold uppercase tracking-widest rounded-md shadow-sm"
+                title="Alterna o tema do relatório entre Escuro e Claro (só afeta o Demonstrativo)"
+            >
+                {reportTheme === 'dark' ? '☀ Tema Claro' : '🌙 Tema Escuro'}
+            </button>
             <button 
                 onClick={handleExportPPT}
                 className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition-colors text-xs font-semibold uppercase tracking-widest rounded-md shadow-sm"
