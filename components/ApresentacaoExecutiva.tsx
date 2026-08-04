@@ -321,55 +321,91 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
             Mapeia cada papel visual (página / card / destaque / texto) para a cor certa,
             preservando contraste. Os gráficos mantêm suas cores de dado. ── */}
         <style>{`
+          /* ===== TEMA CLARO (paleta Rede Gazeta) — escopado a .demo-theme-light,
+             não afeta o resto do app. Estratégia: TUDO claro (painéis claros),
+             navy só em cabeçalhos/linhas de total; textos escurecidos p/ leitura;
+             cards coloridos viram tints claros; gráficos mantêm cores vivas. ===== */
           #ppt-export-root.demo-theme-light { background:#FAF9F5 !important; }
-          /* fundos de página */
+
+          /* páginas e blocos escuros -> creme */
           .demo-theme-light .bg-slate-900,
-          .demo-theme-light .bg-\\[\\#0f172a\\],
-          .demo-theme-light .bg-\\[\\#1e293b\\] { background-color:#FAF9F5 !important; }
-          /* cards / painéis normais */
-          .demo-theme-light .bg-slate-950\\/50,
-          .demo-theme-light .bg-slate-900\\/50,
-          .demo-theme-light .bg-slate-900\\/40 { background-color:#FFFFFF !important; }
-          /* destaques: card Saldo Final, cabeçalhos/linhas de grupo de tabela */
+          .demo-theme-light .bg-\[\#0f172a\],
+          .demo-theme-light .bg-\[\#1e293b\],
+          .demo-theme-light .bg-black { background-color:#FAF9F5 !important; }
+
+          /* cards/painéis -> branco */
+          .demo-theme-light .bg-slate-950\/50,
+          .demo-theme-light .bg-slate-900\/60,
+          .demo-theme-light .bg-slate-900\/50,
+          .demo-theme-light .bg-slate-900\/40 { background-color:#FFFFFF !important; }
+
+          /* painéis/destaques secundários -> azul-claro */
           .demo-theme-light .bg-slate-800,
-          .demo-theme-light .bg-slate-800\\/50,
-          .demo-theme-light .bg-slate-800\\/40,
-          .demo-theme-light .bg-slate-700 { background-color:#2E3C4E !important; }
+          .demo-theme-light .bg-slate-800\/50,
+          .demo-theme-light .bg-slate-800\/40,
+          .demo-theme-light .bg-slate-700,
+          .demo-theme-light .bg-slate-700\/50 { background-color:#D9EDF2 !important; }
+
+          /* linhas de total/subtotal (accent) -> navy */
+          .demo-theme-light .bg-\[\#1e3a8a\] { background-color:#2E3C4E !important; }
+
+          /* KPI cards coloridos -> tint claro (Contas a Pagar = rosa; Receber = azul; positivo = verde) */
+          .demo-theme-light .bg-red-700,
+          .demo-theme-light .bg-red-900,
+          .demo-theme-light .bg-red-900\/20,
+          .demo-theme-light .bg-\[\#450a0a\] { background-color:#FBEAE8 !important; }
+          .demo-theme-light .bg-\[\#0e7490\],
+          .demo-theme-light .bg-\[\#0f4c75\] { background-color:#E3F0F5 !important; }
+          .demo-theme-light .bg-emerald-900,
+          .demo-theme-light .bg-emerald-900\/50 { background-color:#E6F2EC !important; }
+
           /* bordas */
           .demo-theme-light .border-slate-800,
           .demo-theme-light .border-slate-700,
           .demo-theme-light .border-slate-600 { border-color:#BFD3D8 !important; }
-          /* textos claros -> navy/slate (sobre fundo claro) */
+          .demo-theme-light .border-red-500 { border-color:#B0574E !important; }
+          .demo-theme-light .border-emerald-500 { border-color:#2E7D63 !important; }
+
+          /* ===== TEXTO — escurecido p/ legibilidade ===== */
           .demo-theme-light .text-white,
           .demo-theme-light .text-slate-100,
           .demo-theme-light .text-slate-200 { color:#2E3C4E !important; }
           .demo-theme-light .text-slate-300 { color:#283848 !important; }
           .demo-theme-light .text-slate-400,
-          .demo-theme-light .text-slate-500,
+          .demo-theme-light .text-slate-500 { color:#46535E !important; }
           .demo-theme-light .text-slate-600 { color:#5C6C77 !important; }
-          /* MAS dentro de blocos navy (destaque), texto continua claro (descendentes) */
-          .demo-theme-light .bg-slate-800 .text-white, .demo-theme-light .bg-slate-800 .text-slate-100,
-          .demo-theme-light .bg-slate-800 .text-slate-200, .demo-theme-light .bg-slate-800 .text-slate-300,
-          .demo-theme-light .bg-slate-800 .text-slate-400,
-          .demo-theme-light .bg-slate-800\\/50 .text-white, .demo-theme-light .bg-slate-800\\/50 .text-slate-100,
-          .demo-theme-light .bg-slate-800\\/50 .text-slate-200,
-          .demo-theme-light .bg-slate-700 .text-white, .demo-theme-light .bg-slate-700 .text-slate-100,
-          .demo-theme-light .bg-slate-700 .text-slate-200 { color:#EAF2F6 !important; }
-          /* mesmo-elemento navy + texto (ex.: linhas de grupo de tabela) */
-          .demo-theme-light .bg-slate-800.text-slate-200, .demo-theme-light .bg-slate-800.text-slate-300,
-          .demo-theme-light .bg-slate-800.text-indigo-300, .demo-theme-light th { color:#EAF2F6 !important; }
-          /* acentos semânticos harmonizados */
-          .demo-theme-light .text-emerald-400, .demo-theme-light .text-emerald-300, .demo-theme-light .text-emerald-500 { color:#2E7D63 !important; }
-          .demo-theme-light .text-rose-400, .demo-theme-light .text-rose-300, .demo-theme-light .text-rose-500 { color:#B0574E !important; }
+          .demo-theme-light .text-indigo-300,
+          .demo-theme-light .text-indigo-400 { color:#3B4E8C !important; }
+          .demo-theme-light .text-amber-200,
+          .demo-theme-light .text-amber-300 { color:#9A6B12 !important; }
+
+          /* acentos semânticos */
+          .demo-theme-light .text-emerald-400,.demo-theme-light .text-emerald-300,.demo-theme-light .text-emerald-500 { color:#2E7D63 !important; }
+          .demo-theme-light .text-rose-400,.demo-theme-light .text-rose-300,.demo-theme-light .text-rose-500,
+          .demo-theme-light .text-red-400,.demo-theme-light .text-red-500 { color:#B0574E !important; }
           .demo-theme-light .text-emerald-700 { color:#6FA891 !important; }
           .demo-theme-light .text-rose-700 { color:#C99089 !important; }
+
+          /* dentro de linhas navy (total) e <th>: texto claro */
+          .demo-theme-light .bg-\[\#1e3a8a\], .demo-theme-light .bg-\[\#1e3a8a\] *,
+          .demo-theme-light th, .demo-theme-light th * { color:#EAF2F6 !important; }
+          .demo-theme-light .bg-\[\#1e3a8a\] .text-amber-200 { color:#F3D48A !important; }
+
+          /* texto dentro dos KPI cards coloridos -> escuro legível */
+          .demo-theme-light .bg-\[\#450a0a\] *, .demo-theme-light .bg-red-700 * { color:#5A2A24 !important; }
+          .demo-theme-light .bg-\[\#0e7490\] *, .demo-theme-light .bg-\[\#0f4c75\] * { color:#173846 !important; }
+          .demo-theme-light .bg-emerald-900 *, .demo-theme-light .bg-emerald-900\/50 * { color:#1E4634 !important; }
+
+          /* gráficos: fundo escuro do donut de risco -> azul-claro */
+          .demo-theme-light path[fill="#1f2937"] { fill:#D9EDF2 !important; }
+
           /* rodapé teal -> slate */
           .demo-theme-light [style*="#3f7a6e"] { color:#5C6C77 !important; }
-          /* fundo escuro do donut de risco (track) -> azul-claro */
-          .demo-theme-light path[fill="#1f2937"] { fill:#D9EDF2 !important; }
-          /* os botões da barra de controle NÃO seguem o tema claro (ficam legíveis) */
+
+          /* barra de controle: botões navy legíveis sobre creme */
           .demo-theme-light .fixed.top-8.right-8 .bg-slate-800 { background-color:#2E3C4E !important; }
-          .demo-theme-light .fixed.top-8.right-8 .text-slate-200 { color:#EAF2F6 !important; }
+          .demo-theme-light .fixed.top-8.right-8 .text-slate-200,
+          .demo-theme-light .fixed.top-8.right-8 .text-slate-400 { color:#EAF2F6 !important; }
         `}</style>
         
         {/* CONTROLES SUPERIORES */}
