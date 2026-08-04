@@ -410,6 +410,23 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
           /* graficos: fundo escuro do donut de risco -> azul-claro */
           .demo-theme-light path[fill="#1f2937"] { fill:#D9EDF2 !important; }
 
+          /* COLUNA TOTAL das tabelas (celulas <td> com bg-slate-900/50 ou /70):
+             fica TRANSPARENTE p/ herdar a cor da propria linha (azul-claro em
+             ENTRADAS, ambar em ATIVIDADES, branco nas linhas de dado) em vez de
+             branco puro que destoava. So afeta <td> (nao os cards/cabecalhos). */
+          .demo-theme-light td[class~="bg-slate-900/50"],
+          .demo-theme-light td[class~="bg-slate-900/70"] { background-color:transparent !important; }
+          /* cabecalho de tabela que usava bg-slate-900/50 (Previsto vs Realizado) -> navy */
+          .demo-theme-light thead[class~="bg-slate-900/50"] { background-color:#2E3C4E !important; }
+
+          /* ===== CAPA (estilos inline) — escurece nada, clareia tudo ===== */
+          .demo-theme-light [style*="radial-gradient(72% 72%"] { background:#FAF9F5 !important; }
+          .demo-theme-light [style*="#8fc6ff"] { color:#2E5C8A !important; }
+          .demo-theme-light [style*="#0a1722"] { background:#D9EDF2 !important; border-color:#BFD3D8 !important; }
+          .demo-theme-light [style*="#0a1320"] { background:#FFFFFF !important; border-color:#BFD3D8 !important; }
+          .demo-theme-light [style*="#94a3b8"] { color:#5C6C77 !important; }
+          .demo-theme-light [style*="#64748b"] { color:#5C6C77 !important; }
+
           /* rodape teal -> slate */
           .demo-theme-light [style*="#3f7a6e"] { color:#5C6C77 !important; }
 
