@@ -421,6 +421,8 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
 
           /* ===== CAPA (estilos inline) — escurece nada, clareia tudo ===== */
           .demo-theme-light [style*="radial-gradient(72% 72%"] { background:#FAF9F5 !important; }
+          /* desenhos 3D: tira o tom azulado (grayscale), marca d'agua neutra e mais limpa */
+          .demo-theme-light [data-slide-type="cover"] img { filter:grayscale(1) contrast(1.1) !important; opacity:0.16 !important; }
           .demo-theme-light [style*="#8fc6ff"] { color:#2E5C8A !important; }
           .demo-theme-light [style*="#0a1722"] { background:#D9EDF2 !important; border-color:#BFD3D8 !important; }
           .demo-theme-light [style*="#0a1320"] { background:#FFFFFF !important; border-color:#BFD3D8 !important; }
