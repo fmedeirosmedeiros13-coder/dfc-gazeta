@@ -339,7 +339,8 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
           .demo-theme-light [class~="bg-slate-950/50"],
           .demo-theme-light [class~="bg-slate-900/60"],
           .demo-theme-light [class~="bg-slate-900/50"],
-          .demo-theme-light [class~="bg-slate-900/40"] { background-color:#FFFFFF !important; }
+          .demo-theme-light [class~="bg-slate-900/40"],
+          .demo-theme-light [class~="bg-[#111827]"] { background-color:#FFFFFF !important; }
 
           /* paineis/destaques secundarios -> azul-claro */
           .demo-theme-light [class~="bg-slate-800"],
@@ -360,10 +361,14 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
           .demo-theme-light [class~="bg-[#0f4c75]"] { background-color:#E3F0F5 !important; }
           .demo-theme-light [class~="bg-emerald-900"],
           .demo-theme-light [class~="bg-emerald-900/50"] { background-color:#E6F2EC !important; }
+          .demo-theme-light [class~="bg-amber-900/30"],
+          .demo-theme-light [class~="bg-amber-900/20"],
+          .demo-theme-light [class~="bg-amber-900"] { background-color:#FBF3E3 !important; }
 
           /* bordas */
           .demo-theme-light [class~="border-slate-800"],
           .demo-theme-light [class~="border-slate-700"],
+          .demo-theme-light [class~="border-slate-700/50"],
           .demo-theme-light [class~="border-slate-600"] { border-color:#BFD3D8 !important; }
           .demo-theme-light [class~="border-red-500"] { border-color:#B0574E !important; }
           .demo-theme-light [class~="border-emerald-500"] { border-color:#2E7D63 !important; }
@@ -375,11 +380,16 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
           .demo-theme-light [class~="text-slate-300"] { color:#283848 !important; }
           .demo-theme-light [class~="text-slate-400"],
           .demo-theme-light [class~="text-slate-500"] { color:#46535E !important; }
-          .demo-theme-light [class~="text-slate-600"] { color:#5C6C77 !important; }
+          .demo-theme-light [class~="text-slate-600"] { color:#4A5560 !important; }
           .demo-theme-light [class~="text-indigo-300"],
           .demo-theme-light [class~="text-indigo-400"] { color:#3B4E8C !important; }
           .demo-theme-light [class~="text-amber-200"],
-          .demo-theme-light [class~="text-amber-300"] { color:#9A6B12 !important; }
+          .demo-theme-light [class~="text-amber-300"],
+          .demo-theme-light [class~="text-amber-400"],
+          .demo-theme-light [class~="text-amber-500"] { color:#9A6B12 !important; }
+          .demo-theme-light [class~="text-blue-300"],
+          .demo-theme-light [class~="text-blue-400"],
+          .demo-theme-light [class~="text-blue-500"] { color:#1E5AA8 !important; }
 
           /* acentos semanticos */
           .demo-theme-light [class~="text-emerald-400"],.demo-theme-light [class~="text-emerald-300"],.demo-theme-light [class~="text-emerald-500"] { color:#2E7D63 !important; }
