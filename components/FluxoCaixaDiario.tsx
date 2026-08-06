@@ -307,6 +307,9 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
             ? prevClose
             : (dfcManualValues?.[`sim_start_${storageId}`] || 0);
 
+          // Data do dia exibido ANTERIOR (para buscar o fechamento real dele).
+          let prevDisplayISO: string | null = null;
+
           return displayDates.map((date: string) => {
               const pagtos = bankId 
                 ? getBankTotal(compId, bankId, TransactionType.PAYABLE, date) 
@@ -321,12 +324,24 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
               const keyTransf = `sim_transf_${storageId}_${date}`;
               
               const manualSdIni = dfcManualValues?.[keySdInicial];
-              // Só usa o valor digitado se for um número válido. Campo apagado vira
-              // NaN (parseFloat('')) — nesse caso cai no saldo encadeado em vez de
-              // contaminar parcial/final e todos os dias seguintes com NaN.
+
+              // FECHAMENTO REAL do dia ANTERIOR (extrato importado): quando existe,
+              // ele MANDA no SD Inicial deste dia, sobrepondo o saldo simulado
+              // encadeado. É isso que faz "extrato do dia D → SD Inicial de D+1"
+              // valer para TODOS os dias (não só o primeiro): ex.: extrato de
+              // 04/08 (fechamento 70.512,72) vira o SD Inicial de 05/08; extrato
+              // de 05/08 (fechamento 21.922,91) vira o SD Inicial de 06/08.
+              const realPrevClose = prevDisplayISO
+                ? dfcManualValues?.[`sim_close_${storageId}_${prevDisplayISO}`]
+                : undefined;
+
+              // Prioridade: (1) valor digitado à mão; (2) fechamento real do dia
+              // anterior; (3) saldo simulado encadeado.
               const sdInicial = (manualSdIni !== undefined && !Number.isNaN(manualSdIni))
                 ? manualSdIni
-                : currentBalance;
+                : (realPrevClose !== undefined && !Number.isNaN(realPrevClose))
+                  ? realPrevClose
+                  : currentBalance;
               
               const resg = dfcManualValues?.[keyResg] || 0;
               const transf = dfcManualValues?.[keyTransf] || 0;
@@ -334,7 +349,8 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
               const sdParcial = sdInicial - pagtos + resg + transf;
               const sdFinal = sdParcial + receb;
               
-              currentBalance = sdFinal; 
+              currentBalance = sdFinal;
+              prevDisplayISO = toISO(date);
               
               return { 
                   date, 
