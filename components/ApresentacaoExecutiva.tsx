@@ -278,11 +278,11 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
 
         // Slides de Contas a Pagar/Receber → geração nativa (sem html2canvas)
         if (slideType === 'payables') {
-            generatePayablesSlide(pres, transactions, realizedTransactions, dateRange);
+            generatePayablesSlide(pres, transactions, realizedTransactions, dateRange, reportTheme);
             continue;
         }
         if (slideType === 'receivables') {
-            generateReceivablesSlide(pres, transactions, dateRange);
+            generateReceivablesSlide(pres, transactions, dateRange, reportTheme);
             continue;
         }
 
@@ -291,7 +291,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
             const canvas = await html2canvas(slideElement, {
                 scale: 3,
                 useCORS: true,
-                backgroundColor: '#0f172a',
+                backgroundColor: reportTheme === 'light' ? '#FAF9F5' : '#0f172a',
                 logging: false
             });
             
