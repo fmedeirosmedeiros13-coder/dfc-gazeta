@@ -13,32 +13,54 @@ import PptxGenJS from 'pptxgenjs';
 import { Transaction, TransactionType } from '../types';
 import { classifyTax } from '../utils/finance';
 
-// ─── PALETA & CONSTANTES ──────────────────────────────────────────────────────
-const BG           = '0f172a';
-const CARD_BG      = '1e293b';
-const BORDER       = '334155';
-const BORDER_INNER = '475569';
-const TXT_MUTED    = '94a3b8';
-const TXT_LIGHT    = 'cbd5e1';
-const TXT_WHITE    = 'e2e8f0';
+// ─── PALETA & CONSTANTES (mutáveis por tema — applyTheme define escuro/claro) ───
+let BG           = '0f172a';
+let CARD_BG      = '1e293b';
+let BORDER       = '334155';
+let BORDER_INNER = '475569';
+let TXT_MUTED    = '94a3b8';
+let TXT_LIGHT    = 'cbd5e1';
+let TXT_WHITE    = 'e2e8f0';
+let KPI_TXT      = 'FFFFFF';   // cor do valor dentro do card de KPI
 const FONT         = 'Arial';
 const PAD          = 0.3;   // margem lateral do slide
 
-// ─── CORES POR CONTEXTO ──────────────────────────────────────────────────────
-const PAGAR = {
+// ─── CORES POR CONTEXTO (base = tema ESCURO) ─────────────────────────────────
+const PAGAR_BASE = {
   kpiBg: '450a0a', kpiBorder: 'ef4444',
   bar1: '0284c7', bar1Light: '38bdf8', val1: '7dd3fc',       // sky — Acima 35k
   bar2: '4f46e5', bar2Light: '818cf8', val2: 'a5b4fc',       // indigo — Abaixo 35k
   company: 'f97316', companyLight: 'fdba74', companyLabel: 'fb923c',
   cat: ['f97316', 'ef4444', 'f59e0b'],
 };
-const RECEBER = {
+const RECEBER_BASE = {
   kpiBg: '0f4c75', kpiBorder: '3282b8',
   bar1: '0d9488', bar1Light: '2dd4bf', val1: '5eead4',       // teal
   bar2: '0891b2', bar2Light: '22d3ee', val2: '67e8f9',       // cyan
   company: '38bdf8', companyLight: '7dd3fc', companyLabel: 'e2e8f0',
   cat: ['3b82f6', '10b981', '6366f1'],
 };
+let PAGAR   = { ...PAGAR_BASE };
+let RECEBER = { ...RECEBER_BASE };
+
+/**
+ * Ajusta toda a paleta para o tema escolhido. Chamado no início de cada slide.
+ * O tema CLARO usa a mesma paleta da tela (creme/navy/azul-claro) e escurece os
+ * números de valor (que no escuro são claros) para manterem contraste no branco.
+ */
+function applyTheme(theme: 'dark' | 'light') {
+  if (theme === 'light') {
+    BG = 'FAF9F5'; CARD_BG = 'FFFFFF'; BORDER = 'BFD3D8'; BORDER_INNER = 'D6E2E7';
+    TXT_MUTED = '5C6C77'; TXT_LIGHT = '46535E'; TXT_WHITE = '2E3C4E'; KPI_TXT = '2E3C4E';
+    PAGAR   = { ...PAGAR_BASE,   kpiBg: 'FBEAE8', kpiBorder: 'B0574E', val1: '177093', val2: '3B4E8C', companyLabel: 'B45309' };
+    RECEBER = { ...RECEBER_BASE, kpiBg: 'E3F0F5', kpiBorder: '2E5C8A', val1: '0F766E', val2: '177093', companyLabel: '2E3C4E' };
+  } else {
+    BG = '0f172a'; CARD_BG = '1e293b'; BORDER = '334155'; BORDER_INNER = '475569';
+    TXT_MUTED = '94a3b8'; TXT_LIGHT = 'cbd5e1'; TXT_WHITE = 'e2e8f0'; KPI_TXT = 'FFFFFF';
+    PAGAR   = { ...PAGAR_BASE };
+    RECEBER = { ...RECEBER_BASE };
+  }
+}
 
 const COMPANIES_MAP: Record<string, string> = {
   '1': 'S.A. A GAZETA', '2': 'TV GAZETA', '3': 'TV CACHOEIRO',
@@ -121,7 +143,7 @@ function drawKpis(
     });
     slide.addText(`R$ ${fmtVal(kpi.value)}`, {
       x, y: y + 0.16, w: bw, h: 0.18,
-      fontSize: 8, color: 'FFFFFF', fontFace: FONT, bold: true, align: 'center',
+      fontSize: 8, color: KPI_TXT, fontFace: FONT, bold: true, align: 'center',
     });
   });
 }
@@ -415,7 +437,9 @@ export function generatePayablesSlide(
   transactions: Transaction[],
   realizedTransactions: Transaction[],
   dateRange: string,
+  theme: 'dark' | 'light' = 'dark',
 ) {
+  applyTheme(theme);
   const slide = pres.addSlide();
 
   // ── Dados ───────────────────────────────────────────────────────────────
@@ -521,7 +545,9 @@ export function generateReceivablesSlide(
   pres: PptxGenJS,
   transactions: Transaction[],
   dateRange: string,
+  theme: 'dark' | 'light' = 'dark',
 ) {
+  applyTheme(theme);
   const slide = pres.addSlide();
 
   // ── Dados ───────────────────────────────────────────────────────────────
