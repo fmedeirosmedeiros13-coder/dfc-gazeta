@@ -427,6 +427,9 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
           .demo-theme-light [class~="text-blue-300"],
           .demo-theme-light [class~="text-blue-400"],
           .demo-theme-light [class~="text-blue-500"] { color:#1E5AA8 !important; }
+          .demo-theme-light [class~="text-cyan-300"],
+          .demo-theme-light [class~="text-cyan-400"],
+          .demo-theme-light [class~="text-cyan-500"] { color:#177093 !important; }
 
           /* acentos semanticos */
           .demo-theme-light [class~="text-emerald-400"],.demo-theme-light [class~="text-emerald-300"],.demo-theme-light [class~="text-emerald-500"] { color:#2E7D63 !important; }
