@@ -188,17 +188,17 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                   }
               }
 
-              // Cada extrato usa a PRÓPRIA data (lida de dentro do PDF, dateISO) —
-              // sem digitar nada antes. Bancos diferentes no mesmo lote podem ter
-              // fechado em dias diferentes; cada um grava na sua própria data certa.
+              // O extrato de um dia D é o FECHAMENTO de D — que é o SALDO INICIAL
+              // do dia seguinte (D+1), não de D. Por isso gravamos SÓ o sim_close
+              // na data do próprio extrato. Quem leva esse saldo para a linha certa
+              // é a cadeia (getLatestCloseBefore): o SD Inicial do primeiro dia
+              // exibido = fechamento conhecido mais recente ANTES dele. Ex.: subo
+              // hoje (06.08) o extrato de 05.08 → SD Inicial de 06.08 = fechamento
+              // de 05.08. Amanhã (07.08) subo o de 06.08 → SD Inicial de 07.08 = 06.08.
+              // (Antes havia uma 2ª escrita de sim_sd_ini na PRÓPRIA data do extrato,
+              // que forçava o dia a abrir com o próprio fechamento — removida.)
               result.balances.forEach(b => {
-                  const [ano, mes, dia] = b.dateISO.split('-');
-                  const dataDisplay = `${dia}/${mes}/${ano}`;
-                  // Fechamento do dia do extrato: o dia útil seguinte herda sozinho.
                   onManualValueChange(`sim_close_${b.companyId}_${b.bankId}_${b.dateISO}`, b.saldo);
-                  // Escreve também direto no SD Inicial do dia do extrato, pra
-                  // aparecer na hora na linha do banco, sem precisar recarregar.
-                  onManualValueChange(`sim_sd_ini_${b.companyId}_${b.bankId}_${dataDisplay}`, b.saldo);
               });
               setExtratoResult(result);
           } catch (err) {
