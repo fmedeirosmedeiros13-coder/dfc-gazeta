@@ -191,6 +191,10 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
 
   const [boardSummary, setBoardSummary] = useState('');
   const [isEditingSummary, setIsEditingSummary] = useState(false);
+  // "Análise do Período" agora é editável, com os mesmos controles do Parecer
+  // (Editar / Gerar Automático / Limpar).
+  const [analiseText, setAnaliseText] = useState('');
+  const [isEditingAnalise, setIsEditingAnalise] = useState(false);
   // Tema do Demonstrativo (escopado só a este relatório — o app segue escuro).
   // 'dark' = padrão atual; 'light' = paleta creme/navy (Rede Gazeta) para escolha.
   const [reportTheme, setReportTheme] = useState<'dark' | 'light'>('dark');
@@ -221,11 +225,42 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
       setBoardSummary(text);
   };
 
+  // Gera o texto da "Análise do Período" (mesmo conteúdo dos parágrafos, em
+  // texto corrido editável) — espelha o padrão do Parecer do Financeiro.
+  const generateAutoAnalise = () => {
+      const cobertura = summary.totalOutflow > 0 ? ((summary.totalInflow / summary.totalOutflow) * 100).toFixed(0) : '0';
+      const parts: string[] = [];
+      parts.push(`Os recebimentos do período (${formatCurrency(summary.totalInflow)}) cobriram ${cobertura}% dos pagamentos realizados (${formatCurrency(summary.totalOutflow)}), resultando em um resultado operacional ${formatCurrency(operatingResult)}.`);
+      if (topSupplier || topCustomer) {
+          let p2 = '';
+          if (topSupplier && summary.totalOutflow > 0) {
+              p2 += `O maior desembolso individual foi para ${topSupplier.name}, ${formatCurrency(topSupplier.value)} — sozinho, ${((topSupplier.value / summary.totalOutflow) * 100).toFixed(1)}% de tudo que foi pago no período. `;
+          }
+          if (topCustomer && summary.totalInflow > 0) {
+              p2 += `Do lado das entradas, ${topCustomer.name} foi a maior fonte de receita, ${formatCurrency(topCustomer.value)} (${((topCustomer.value / summary.totalInflow) * 100).toFixed(1)}% do recebido)${(topCustomer.value / summary.totalInflow) > 0.3 ? ' — uma concentração alta, vale ficar de olho se esse cliente atrasar.' : '.'}`;
+          }
+          if (p2.trim()) parts.push(p2.trim());
+      }
+      if (totalManualAplicacoes > 0 || totalManualResgates > 0) {
+          parts.push(`As movimentações de aplicações somaram ${formatCurrency(totalManualAplicacoes)} em aportes e ${formatCurrency(totalManualResgates)} em resgates, um efeito líquido de ${formatCurrency(cashFlowImpact)} sobre o caixa.`);
+      } else {
+          parts.push('Não houve movimentação de aplicações ou resgates registrada neste período.');
+      }
+      parts.push(`A posição consolidada encerra o período em ${formatCurrency(netPeriodResult)},${netPeriodResult >= initialBalance ? ' um avanço frente ao saldo inicial.' : ' uma retração frente ao saldo inicial — vale acompanhar a tendência nos próximos períodos.'}`);
+      setAnaliseText(parts.join('\n\n'));
+  };
+
   useEffect(() => {
       if (!boardSummary) {
           generateAutoSummary();
       }
   }, [dateRange, initialBalance, summary, operatingResult, cashFlowImpact, netPeriodResult]);
+
+  useEffect(() => {
+      if (!analiseText) {
+          generateAutoAnalise();
+      }
+  }, [dateRange, summary, operatingResult, cashFlowImpact, netPeriodResult, totalManualAplicacoes, totalManualResgates]);
 
   // --- FUNÇÃO DE EXPORTAÇÃO PPT ---
   const handleExportPPT = async () => {
@@ -641,62 +676,45 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                     </div>
 
                     {/* RESUMO EXECUTIVO */}
-                    <div className="flex-[6] border border-slate-800 bg-slate-950/50 rounded-lg p-6 flex flex-col min-h-0">
-                        <h3 className="text-lg font-semibold text-slate-200 border-b border-slate-800 pb-3 mb-4 shrink-0">
-                            Análise do Período
-                        </h3>
-                        <div className="flex-1 flex flex-col justify-center gap-3 text-sm font-normal text-slate-300 leading-relaxed text-justify">
-                            <p>
-                                Os recebimentos do período ({formatCurrency(summary.totalInflow)}) cobriram
-                                <strong className="font-semibold text-slate-100 mx-1">
-                                    {summary.totalOutflow > 0 ? ((summary.totalInflow / summary.totalOutflow) * 100).toFixed(0) : '0'}%
-                                </strong>
-                                dos pagamentos realizados ({formatCurrency(summary.totalOutflow)}), resultando em um resultado operacional
-                                <strong className={`font-semibold ml-1 ${operatingResult >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{formatCurrency(operatingResult)}</strong>.
-                            </p>
-                            {(topSupplier || topCustomer) && (
-                                <p>
-                                    {topSupplier && summary.totalOutflow > 0 && (
-                                        <>
-                                            O maior desembolso individual foi para
-                                            <strong className="font-semibold text-slate-100 mx-1">{topSupplier.name}</strong>,
-                                            <strong className="font-semibold text-rose-400 mx-1">{formatCurrency(topSupplier.value)}</strong>
-                                            — sozinho, {((topSupplier.value / summary.totalOutflow) * 100).toFixed(1)}% de tudo que foi pago no período.{' '}
-                                        </>
-                                    )}
-                                    {topCustomer && summary.totalInflow > 0 && (
-                                        <>
-                                            Do lado das entradas,
-                                            <strong className="font-semibold text-slate-100 mx-1">{topCustomer.name}</strong>
-                                            foi a maior fonte de receita,
-                                            <strong className="font-semibold text-emerald-400 mx-1">{formatCurrency(topCustomer.value)}</strong>
-                                            ({((topCustomer.value / summary.totalInflow) * 100).toFixed(1)}% do recebido)
-                                            {(topCustomer.value / summary.totalInflow) > 0.3 ? ' — uma concentração alta, vale ficar de olho se esse cliente atrasar.' : '.'}
-                                        </>
-                                    )}
-                                </p>
-                            )}
-                            <p>
-                                {totalManualAplicacoes > 0 || totalManualResgates > 0 ? (
-                                    <>
-                                        As movimentações de aplicações somaram
-                                        <strong className="font-semibold text-slate-100 mx-1">{formatCurrency(totalManualAplicacoes)}</strong>
-                                        em aportes e
-                                        <strong className="font-semibold text-slate-100 mx-1">{formatCurrency(totalManualResgates)}</strong>
-                                        em resgates, um efeito líquido de
-                                        <strong className={`font-semibold ml-1 ${cashFlowImpact >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{formatCurrency(cashFlowImpact)}</strong> sobre o caixa.
-                                    </>
+                    <div className="flex-[6] border border-slate-800 bg-slate-950/50 rounded-lg p-6 flex flex-col relative group min-h-0">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-4 shrink-0">
+                            <h3 className="text-lg font-semibold text-slate-200">
+                                Análise do Período
+                            </h3>
+                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">
+                                {isEditingAnalise ? (
+                                    <button onClick={() => setIsEditingAnalise(false)} className="p-1.5 text-emerald-400 hover:bg-slate-800 rounded-md transition-colors" title="Salvar">
+                                        <Check className="w-4 h-4" />
+                                    </button>
                                 ) : (
-                                    <>Não houve movimentação de aplicações ou resgates registrada neste período.</>
+                                    <>
+                                        <button onClick={() => setIsEditingAnalise(true)} className="p-1.5 text-slate-400 hover:bg-slate-800 rounded-md transition-colors" title="Editar">
+                                            <Edit2 className="w-4 h-4" />
+                                        </button>
+                                        <button onClick={generateAutoAnalise} className="p-1.5 text-slate-400 hover:bg-slate-800 rounded-md transition-colors" title="Gerar Automático">
+                                            <RefreshCw className="w-4 h-4" />
+                                        </button>
+                                        <button onClick={() => setAnaliseText('')} className="p-1.5 text-rose-400 hover:bg-slate-800 rounded-md transition-colors" title="Limpar">
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </>
                                 )}
-                            </p>
-                            <p>
-                                A posição consolidada encerra o período em
-                                <strong className="font-semibold text-white ml-1">{formatCurrency(netPeriodResult)}</strong>,
-                                {netPeriodResult >= initialBalance
-                                    ? ' um avanço frente ao saldo inicial.'
-                                    : ' uma retração frente ao saldo inicial — vale acompanhar a tendência nos próximos períodos.'}
-                            </p>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 min-h-0">
+                            {isEditingAnalise ? (
+                                <textarea
+                                    value={analiseText}
+                                    onChange={(e) => setAnaliseText(e.target.value)}
+                                    className="w-full h-full p-4 text-sm font-normal text-slate-300 bg-slate-900 border border-slate-700 rounded-md focus:outline-none focus:border-slate-500 resize-none custom-scrollbar"
+                                    placeholder="Insira a análise do período aqui..."
+                                />
+                            ) : (
+                                <div className="h-full overflow-y-auto pr-4 text-sm font-normal text-slate-300 leading-relaxed text-justify whitespace-pre-wrap custom-scrollbar">
+                                    {analiseText || <span className="text-slate-500 italic">Nenhuma análise gerada. Utilize os controles para adicionar.</span>}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
