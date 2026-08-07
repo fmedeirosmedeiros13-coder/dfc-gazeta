@@ -121,7 +121,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
       // por assinatura de texto (engines/bankExtratoDetector.ts) e roteado pro
       // parser certo. Pra adicionar um banco novo: só plugar o parser aqui —
       // o botão e a tela não mudam.
-      type UnifiedBalance = { bankId: string; companyId: string; saldo: number; dateISO: string };
+      type UnifiedBalance = { bankId: string; companyId: string; saldo: number; dateISO: string; saldoAnterior?: number };
       type UnifiedResult = {
           balances: UnifiedBalance[];
           skippedAccounts: string[];   // contas-caixa auxiliares (Banestes) ou fora do De-Para
@@ -155,7 +155,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                       // Cada saldo herda a data DAQUELE extrato — bancos diferentes no
                       // mesmo lote podem ter fechado em dias diferentes.
                       if (r.dateISO) {
-                          r.balances.forEach(b => result.balances.push({ bankId: 'BANESTES', companyId: b.companyId, saldo: b.saldo, dateISO: r.dateISO! }));
+                          r.balances.forEach(b => result.balances.push({ bankId: 'BANESTES', companyId: b.companyId, saldo: b.saldo, dateISO: r.dateISO!, saldoAnterior: b.saldoAnterior }));
                       }
                       result.skippedAccounts.push(...r.skippedAccounts);
                   } else if (bank === 'BB') {
@@ -188,17 +188,24 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                   }
               }
 
-              // O extrato de um dia D é o FECHAMENTO de D — que é o SALDO INICIAL
-              // do dia seguinte (D+1), não de D. Por isso gravamos SÓ o sim_close
-              // na data do próprio extrato. Quem leva esse saldo para a linha certa
-              // é a cadeia (getLatestCloseBefore): o SD Inicial do primeiro dia
-              // exibido = fechamento conhecido mais recente ANTES dele. Ex.: subo
-              // hoje (06.08) o extrato de 05.08 → SD Inicial de 06.08 = fechamento
-              // de 05.08. Amanhã (07.08) subo o de 06.08 → SD Inicial de 07.08 = 06.08.
-              // (Antes havia uma 2ª escrita de sim_sd_ini na PRÓPRIA data do extrato,
-              // que forçava o dia a abrir com o próprio fechamento — removida.)
+              // Um único extrato preenche DOIS dias, porque traz os dois saldos:
+              //  • S A L D O (fechamento) → sim_close do PRÓPRIO dia do extrato
+              //    (vira o SD Inicial do dia SEGUINTE);
+              //  • SALDO ANTERIOR (abertura) → sim_close do dia ÚTIL ANTERIOR
+              //    (vira o SD Inicial do PRÓPRIO dia do extrato).
+              // Ex.: extrato de 05/08 → SALDO ANTERIOR 70.512,72 vira SD Inicial de
+              // 05/08, e S A L D O 21.922,91 vira SD Inicial de 06/08.
+              const prevBusinessDayISO = (iso: string): string => {
+                  const [y, m, d] = iso.split('-').map(Number);
+                  const dt = new Date(y, m - 1, d);
+                  do { dt.setDate(dt.getDate() - 1); } while (dt.getDay() === 0 || dt.getDay() === 6);
+                  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+              };
               result.balances.forEach(b => {
                   onManualValueChange(`sim_close_${b.companyId}_${b.bankId}_${b.dateISO}`, b.saldo);
+                  if (b.saldoAnterior !== undefined && !Number.isNaN(b.saldoAnterior)) {
+                      onManualValueChange(`sim_close_${b.companyId}_${b.bankId}_${prevBusinessDayISO(b.dateISO)}`, b.saldoAnterior);
+                  }
               });
               setExtratoResult(result);
           } catch (err) {
