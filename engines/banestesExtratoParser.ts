@@ -22,11 +22,10 @@
 import { resolveCompanyFromContaBanestes } from '../utils/banestesDePara';
 
 export interface BanestesAccountBalance {
-  conta:          string;
-  companyId:      string;
-  saldo:          number;   // S A L D O (fechamento realizado do dia do extrato)
-  saldoAnterior?: number;   // SALDO ANTERIOR (abertura do dia do extrato = fechamento do dia anterior)
-  origem:         'S A L D O (realizado)' | 'SALDO CONTA CORRENTE (sem previstos)';
+  conta:      string;
+  companyId:  string;
+  saldo:      number;   // S A L D O (fechamento realizado do dia do extrato)
+  origem:     'S A L D O (realizado)' | 'SALDO CONTA CORRENTE (sem previstos)';
 }
 
 export interface BanestesExtratoParseResult {
@@ -65,10 +64,6 @@ export function parseBanestesExtrato(rawText: string): BanestesExtratoParseResul
 
     const temPrevistos = /LANCAMENTOS PREVISTOS/.test(block);
     const sMatch = block.match(/S\s+A\s+L\s+D\s+O\s*\.+\s*([\d.,]+)/);
-    // SALDO ANTERIOR = abertura do dia do extrato (= fechamento do dia anterior).
-    // Usado como SD Inicial do próprio dia do extrato no FC Diário.
-    const antMatch = block.match(/SALDO ANTERIOR\s*([\d.,]+)/);
-    const saldoAnterior = antMatch ? parseNum(antMatch[1]) : undefined;
 
     let saldo: number | null = null;
     let origem: BanestesAccountBalance['origem'] | null = null;
@@ -85,7 +80,7 @@ export function parseBanestesExtrato(rawText: string): BanestesExtratoParseResul
     }
 
     if (saldo !== null && origem) {
-      balances.push({ conta, companyId, saldo, saldoAnterior, origem });
+      balances.push({ conta, companyId, saldo, origem });
     }
   }
 
