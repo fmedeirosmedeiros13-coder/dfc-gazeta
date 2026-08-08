@@ -155,7 +155,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                       // Cada saldo herda a data DAQUELE extrato — bancos diferentes no
                       // mesmo lote podem ter fechado em dias diferentes.
                       if (r.dateISO) {
-                          r.balances.forEach(b => result.balances.push({ bankId: 'BANESTES', companyId: b.companyId, saldo: b.saldo, dateISO: r.dateISO!, saldoAnterior: b.saldoAnterior }));
+                          r.balances.forEach(b => result.balances.push({ bankId: 'BANESTES', companyId: b.companyId, saldo: b.saldo, dateISO: r.dateISO! }));
                       }
                       result.skippedAccounts.push(...r.skippedAccounts);
                   } else if (bank === 'BB') {
@@ -188,24 +188,20 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                   }
               }
 
-              // Um único extrato preenche DOIS dias, porque traz os dois saldos:
-              //  • S A L D O (fechamento) → sim_close do PRÓPRIO dia do extrato
-              //    (vira o SD Inicial do dia SEGUINTE);
-              //  • SALDO ANTERIOR (abertura) → sim_close do dia ÚTIL ANTERIOR
-              //    (vira o SD Inicial do PRÓPRIO dia do extrato).
-              // Ex.: extrato de 05/08 → SALDO ANTERIOR 70.512,72 vira SD Inicial de
-              // 05/08, e S A L D O 21.922,91 vira SD Inicial de 06/08.
-              const prevBusinessDayISO = (iso: string): string => {
+              // REGRA: o saldo do extrato de um dia D entra como SD INICIAL do
+              // DIA ÚTIL SEGUINTE (D+1). Ex.: extrato de 05/08 → SD Inicial de
+              // 06/08 = saldo do extrato. Gravamos direto no dia seguinte
+              // (sim_sd_ini) e também o fechamento do dia (sim_close), que serve
+              // de semente pra cadeia dos dias posteriores.
+              const nextBusinessDayBR = (iso: string): string => {
                   const [y, m, d] = iso.split('-').map(Number);
                   const dt = new Date(y, m - 1, d);
-                  do { dt.setDate(dt.getDate() - 1); } while (dt.getDay() === 0 || dt.getDay() === 6);
-                  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+                  do { dt.setDate(dt.getDate() + 1); } while (dt.getDay() === 0 || dt.getDay() === 6);
+                  return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
               };
               result.balances.forEach(b => {
                   onManualValueChange(`sim_close_${b.companyId}_${b.bankId}_${b.dateISO}`, b.saldo);
-                  if (b.saldoAnterior !== undefined && !Number.isNaN(b.saldoAnterior)) {
-                      onManualValueChange(`sim_close_${b.companyId}_${b.bankId}_${prevBusinessDayISO(b.dateISO)}`, b.saldoAnterior);
-                  }
+                  onManualValueChange(`sim_sd_ini_${b.companyId}_${b.bankId}_${nextBusinessDayBR(b.dateISO)}`, b.saldo);
               });
               setExtratoResult(result);
           } catch (err) {
