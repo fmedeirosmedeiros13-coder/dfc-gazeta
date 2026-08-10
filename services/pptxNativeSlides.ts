@@ -22,6 +22,8 @@ let TXT_MUTED    = '94a3b8';
 let TXT_LIGHT    = 'cbd5e1';
 let TXT_WHITE    = 'e2e8f0';
 let KPI_TXT      = 'FFFFFF';   // cor do valor dentro do card de KPI
+let CHIP_BG      = '334155';   // fundo dos chips (mini-paineis e cards do VL DIA)
+let SUBHEAD_BG   = '0f172a';   // fundo do cabecalho da coluna VL DIA
 const FONT         = 'Arial';
 const PAD          = 0.3;   // margem lateral do slide
 
@@ -52,11 +54,13 @@ function applyTheme(theme: 'dark' | 'light') {
   if (theme === 'light') {
     BG = 'FAF9F5'; CARD_BG = 'FFFFFF'; BORDER = 'BFD3D8'; BORDER_INNER = 'D6E2E7';
     TXT_MUTED = '5C6C77'; TXT_LIGHT = '46535E'; TXT_WHITE = '2E3C4E'; KPI_TXT = '2E3C4E';
+    CHIP_BG = 'EAF1F5'; SUBHEAD_BG = 'D9EDF2';
     PAGAR   = { ...PAGAR_BASE,   kpiBg: 'FBEAE8', kpiBorder: 'B0574E', val1: '177093', val2: '3B4E8C', companyLabel: 'B45309' };
     RECEBER = { ...RECEBER_BASE, kpiBg: 'E3F0F5', kpiBorder: '2E5C8A', val1: '0F766E', val2: '177093', companyLabel: '2E3C4E' };
   } else {
     BG = '0f172a'; CARD_BG = '1e293b'; BORDER = '334155'; BORDER_INNER = '475569';
     TXT_MUTED = '94a3b8'; TXT_LIGHT = 'cbd5e1'; TXT_WHITE = 'e2e8f0'; KPI_TXT = 'FFFFFF';
+    CHIP_BG = '334155'; SUBHEAD_BG = '0f172a';
     PAGAR   = { ...PAGAR_BASE };
     RECEBER = { ...RECEBER_BASE };
   }
@@ -285,7 +289,7 @@ function drawStackedCards(
       // Fundo do item
       slide.addShape(pres.ShapeType.roundRect, {
         x: x + 0.05, y: iy + 0.005, w: w - 0.10, h: itemH - 0.01,
-        fill: { color: '334155' }, rectRadius: 0.025,
+        fill: { color: CHIP_BG }, rectRadius: 0.025,
       });
 
       // Nome
@@ -394,7 +398,7 @@ function drawVlDia(
   // Título
   slide.addShape(pres.ShapeType.rect, {
     x: x + 0.01, y, w: w - 0.02, h: 0.22,
-    fill: { color: '0f172a' }, rectRadius: 0.05,
+    fill: { color: SUBHEAD_BG }, rectRadius: 0.05,
   });
   slide.addText('VL DIA', {
     x, y: y + 0.02, w, h: 0.18,
@@ -411,7 +415,7 @@ function drawVlDia(
 
     slide.addShape(pres.ShapeType.roundRect, {
       x: x + 0.04, y: iy, w: w - 0.08, h: cardH - 0.03,
-      fill: { color: '334155' },
+      fill: { color: CHIP_BG },
       line: { color: BORDER_INNER, width: 0.3 },
       rectRadius: 0.03,
     });
