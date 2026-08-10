@@ -86,6 +86,11 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
   onClearBankExtracts,
   onTestWipeAll,
 }) => {
+      // Período exibido: por padrão vai de SEGUNDA a SEGUNDA (dias úteis). O
+      // usuário pode ampliar escolhendo início/fim nos campos de data. '' = auto.
+      const [periodStart, setPeriodStart] = useState<string>('');
+      const [periodEnd, setPeriodEnd] = useState<string>('');
+
       // Mover transações de sábado/domingo para a segunda-feira seguinte.
       // Considera apenas fluxo de caixa REAL (Pagamentos/Recebimentos) com data
       // completa (dd/mm/aaaa). Itens do Calendário (data só com o dia), Tipos de
@@ -106,7 +111,38 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
       // seu saldo chega em 27/07 do mesmo jeito.
       const allDates = (Array.from(new Set(adjustedTransactions.map(t => t.date))) as string[]).sort(byDate);
 
-      const displayDates = allDates.slice(0, 5);
+      // ── PERÍODO EXIBIDO ──────────────────────────────────────────────────
+      // Padrão: da SEGUNDA da semana do 1º dia com previsto até a SEGUNDA
+      // SEGUINTE (Mon→Mon), mostrando só dias úteis (ex.: 03, 04, 05, 06, 07 e
+      // 10/08). O usuário pode ampliar o período pelos campos de data.
+      const isoToDate = (iso: string) => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); };
+      const dateToISO = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const dateToBR = (dt: Date) => `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+      const mondayOnOrBefore = (iso: string) => { const dt = isoToDate(iso); const back = (dt.getDay() === 0 ? 6 : dt.getDay() - 1); dt.setDate(dt.getDate() - back); return dateToISO(dt); };
+
+      const firstISO = allDates.length > 0 ? toISO(allDates[0]) : dateToISO(new Date());
+      const defaultStartISO = mondayOnOrBefore(firstISO);
+      const defaultEndISO = (() => { const dt = isoToDate(defaultStartISO); dt.setDate(dt.getDate() + 7); return dateToISO(dt); })(); // segunda seguinte
+      const startISO = periodStart || defaultStartISO;
+      // Fim: usa o escolhido (se válido); senão, uma segunda após o início escolhido; senão o padrão.
+      const weekAfter = (iso: string) => { const dt = isoToDate(iso); dt.setDate(dt.getDate() + 7); return dateToISO(dt); };
+      const endISO = (periodEnd && periodEnd >= startISO)
+          ? periodEnd
+          : (periodStart ? weekAfter(startISO) : defaultEndISO);
+
+      const displayDates = (() => {
+          const out: string[] = [];
+          const dt = isoToDate(startISO);
+          const end = isoToDate(endISO);
+          let guard = 0;
+          while (dt.getTime() <= end.getTime() && guard < 400) {
+              const dow = dt.getDay();
+              if (dow !== 0 && dow !== 6) out.push(dateToBR(dt));
+              dt.setDate(dt.getDate() + 1);
+              guard++;
+          }
+          return out;
+      })();
 
       // Botão "ocultar dia anterior": quando ligado, mostra só o dia corrente
       // (hoje) em diante. O cálculo do saldo continua passando por todos os dias;
@@ -553,6 +589,33 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                              🧪 TESTE: Limpar Tudo
                          </button>
                      )}
+                     <div className="flex items-center gap-1.5">
+                         <label className="text-[10px] font-bold uppercase text-slate-400">Período:</label>
+                         <input
+                             type="date"
+                             value={startISO}
+                             onChange={e => setPeriodStart(e.target.value)}
+                             className="px-2 py-1 rounded text-[10px] bg-slate-700 text-slate-200 border border-slate-600"
+                             title="Data inicial do período exibido (padrão: segunda-feira)"
+                         />
+                         <span className="text-[10px] text-slate-500">até</span>
+                         <input
+                             type="date"
+                             value={endISO}
+                             onChange={e => setPeriodEnd(e.target.value)}
+                             className="px-2 py-1 rounded text-[10px] bg-slate-700 text-slate-200 border border-slate-600"
+                             title="Data final do período exibido (padrão: segunda seguinte). Amplie para ver um período maior."
+                         />
+                         {(periodStart || periodEnd) && (
+                             <button
+                                 onClick={() => { setPeriodStart(''); setPeriodEnd(''); }}
+                                 className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700 hover:text-slate-200 transition-colors"
+                                 title="Voltar para a semana padrão (segunda a segunda)"
+                             >
+                                 Semana
+                             </button>
+                         )}
+                     </div>
                      <div className="flex items-center gap-1.5">
                          <label className="text-[10px] font-bold uppercase text-slate-400">Ocultar antes de:</label>
                          <select
