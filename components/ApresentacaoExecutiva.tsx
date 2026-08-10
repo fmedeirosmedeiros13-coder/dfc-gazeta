@@ -358,6 +358,14 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
             Mapeia cada papel visual (página / card / destaque / texto) para a cor certa,
             preservando contraste. Os gráficos mantêm suas cores de dado. ── */}
         <style>{`
+          /* Páginas de Contas a Pagar/Receber ficam no TAMANHO DO EXPORT (slide
+             16:9). Cada painel mostra só os itens que cabem (sem encolher fonte,
+             sem rolagem e sem estourar) — o corte é feito por overflow-hidden nas
+             colunas do FinanceLayout e nos painéis (modo Demonstrativo). */
+          #ppt-export-root .custom-scrollbar { overflow: hidden !important; }
+          /* Sem barras de rolagem em nenhuma área rolável do relatório. */
+          #ppt-export-root ::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; }
+          #ppt-export-root * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
           /* ===== TEMA CLARO (paleta Rede Gazeta) — robusto: usa seletores de
              ATRIBUTO [class~="..."] (sem escape, imunes ao minificador) e força o
              fundo de TODA pagina via .pdf-export-page. Escopado a .demo-theme-light. ===== */
