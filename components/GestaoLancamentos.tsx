@@ -1217,7 +1217,15 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           const company = (p.companyCode || '').trim();
           const supplier = (p.supplierCode || '').trim();
           const val = Number(p.value) || 0;
-          if (supplier) { const k = `SUP|${supplier}|${flow}`; realKeys.add(k); addValue(k, val); }
+          if (supplier) {
+              const k = `SUP|${supplier}|${flow}`; realKeys.add(k); addValue(k, val);
+              // Chave SÓ por fornecedor (sem o fluxo): permite reconhecer que a
+              // obrigação já está na importação mesmo quando o Tipo de Fluxo do
+              // cadastro difere do que veio do TOTVS. Ex.: INSS (fornecedor 62858)
+              // vem como fluxo 20129 na importação, mas está cadastrado como 21404
+              // no Calendário — sem esta chave ele seria gerado em duplicidade.
+              const ks = `SUP|${supplier}`; realKeys.add(ks); addValue(ks, val);
+          }
           if (company)  { const k = `EMP|${company}|${flow}`;  realKeys.add(k); addValue(k, val); }
           if (company && isComissao(p)) { const k = `ESP|${company}|${flow}`; realKeys.add(k); addValue(k, val); }
       });
@@ -1287,16 +1295,27 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
       calendarItems.forEach(cal => {
           if (!hasKey(cal)) return;  // sem fornecedor + tipo de fluxo não há como casar
           const key = calendarMatchKey(cal);
+          // Fallback por fornecedor: se o fornecedor do cadastro JÁ existe nos
+          // pagamentos reais (ainda que com Tipo de Fluxo diferente), a obrigação
+          // está presente e NÃO deve ser gerada. Resolve o INSS (fluxo 20129 na
+          // importação vs 21404 no cadastro). Só para itens com fornecedor
+          // específico (não Comissão, que casa por Empresa+Fluxo agregado).
+          const supOnly = (!isComissao(cal) && (cal.supplierCode || '').trim())
+              ? `SUP|${(cal.supplierCode || '').trim()}`
+              : null;
+          const matchedKey = realKeys.has(key)
+              ? key
+              : (supOnly && realKeys.has(supOnly) ? supOnly : null);
           const linkedGenerated = payables.filter(p => p.generatedFromCalendarId === cal.id);
           const staleLinked = linkedGenerated.filter(g => !isFullDate(g.date));  // data incompleta (lixo)
           const validLinked = linkedGenerated.filter(g => isFullDate(g.date));
 
-          if (realKeys.has(key)) {
+          if (matchedKey) {
               // Pagamento real chegou: marca OK e reconcilia (remove o gerado, se houver).
               // Compara o valor real (soma, agregado no caso de Comissão) contra
               // a média do calendário — diverge muito? sinaliza, mas o match
               // continua valendo como OK (o pagamento aconteceu de fato).
-              const realSum = realValueByKey.get(key) || 0;
+              const realSum = realValueByKey.get(matchedKey) || 0;
               const diverges = valueDiverges(realSum, Number(cal.value) || 0);
               if (cal.calendarStatus !== 'OK' || !!cal.calendarValueDivergence !== diverges) {
                   updates.push({ ...cal, calendarStatus: 'OK', calendarValueDivergence: diverges });
