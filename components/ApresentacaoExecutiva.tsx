@@ -948,90 +948,90 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
             </div>
         </div>
         {/* ── PÁGINA: Sugestão de Aplicação / Resgate por Empresa (PREVISÃO) ── */}
-        <div data-slide-type="alocacao" className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-8 gap-5 border border-slate-800">
-            <header className="flex justify-between items-end pb-4 border-b border-slate-800 shrink-0">
+        <div data-slide-type="alocacao" className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-6 gap-3 border border-slate-800">
+            <header className="flex justify-between items-end pb-3 border-b border-slate-800 shrink-0">
                 <div>
-                    <h2 className="text-sm font-medium text-slate-400 uppercase tracking-widest mb-1">Rede Gazeta</h2>
-                    <h1 className="text-3xl font-semibold text-slate-100 tracking-tight uppercase leading-none flex items-center gap-3">
+                    <h2 className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-1">Rede Gazeta</h2>
+                    <h1 className="text-2xl font-semibold text-slate-100 tracking-tight uppercase leading-none flex items-center gap-3">
                         Sugestão de Aplicação / Resgate
-                        <span className="text-[11px] font-bold tracking-wider text-amber-300 bg-amber-900/30 border border-amber-700/50 rounded-full px-3 py-1 normal-case">Previsão</span>
+                        <span className="text-[10px] font-bold tracking-wider text-amber-300 bg-amber-900/30 border border-amber-700/50 rounded-full px-2.5 py-0.5 normal-case">Previsão</span>
                     </h1>
                 </div>
                 <div className="text-right flex flex-col items-end">
-                    <p className="text-lg font-semibold text-slate-300 uppercase tracking-tight">{dateRange}</p>
+                    <p className="text-base font-semibold text-slate-300 uppercase tracking-tight">{dateRange}</p>
                 </div>
             </header>
 
-            <div className="grid grid-cols-3 gap-4 shrink-0">
-                <div className="bg-slate-950/50 border border-slate-800 rounded-lg p-4">
-                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Total a Aplicar</p>
-                    <p className="text-2xl font-extrabold text-emerald-400 mt-1">{formatCurrency(allocTotals.aplicar)}</p>
+            <div className="grid grid-cols-3 gap-3 shrink-0">
+                <div className="bg-slate-950/50 border border-slate-800 rounded-lg px-4 py-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Total a Aplicar</p>
+                    <p className="text-xl font-extrabold text-emerald-400">{formatCurrency(allocTotals.aplicar)}</p>
                 </div>
-                <div className="bg-slate-950/50 border border-slate-800 rounded-lg p-4">
-                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Total a Resgatar</p>
-                    <p className="text-2xl font-extrabold text-rose-400 mt-1">{formatCurrency(allocTotals.resgatar)}</p>
+                <div className="bg-slate-950/50 border border-slate-800 rounded-lg px-4 py-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Total a Resgatar</p>
+                    <p className="text-xl font-extrabold text-rose-400">{formatCurrency(allocTotals.resgatar)}</p>
                 </div>
-                <div className="bg-slate-950/50 border border-slate-800 rounded-lg p-4">
-                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Efeito líquido no caixa</p>
-                    <p className="text-2xl font-extrabold text-slate-100 mt-1">{formatCurrency(allocTotals.liquido)}</p>
+                <div className="bg-slate-950/50 border border-slate-800 rounded-lg px-4 py-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Efeito líquido no caixa</p>
+                    <p className="text-xl font-extrabold text-slate-100">{formatCurrency(allocTotals.liquido)}</p>
                 </div>
             </div>
 
             <div className="flex-1 overflow-hidden min-h-0 border border-slate-800 rounded-lg">
-                <table className="w-full text-sm">
+                <table className="w-full text-xs">
                     <thead>
-                        <tr className="bg-slate-900/50 text-slate-300">
-                            <th className="text-left p-2 font-bold">Empresa</th>
-                            <th className="text-right p-2 font-bold">Saldo Banco</th>
-                            <th className="text-right p-2 font-bold">(+) A Receber</th>
-                            <th className="text-right p-2 font-bold">(−) A Pagar</th>
-                            <th className="text-right p-2 font-bold">Saldo Projetado</th>
-                            <th className="text-right p-2 font-bold">Reserva Mín.</th>
-                            <th className="text-left p-2 font-bold">Sugestão</th>
+                        <tr style={{ backgroundColor: '#2E3C4E', color: '#FFFFFF' }}>
+                            <th className="text-left px-2 py-1.5 font-bold" style={{ color: '#FFFFFF' }}>Empresa</th>
+                            <th className="text-right px-2 py-1.5 font-bold" style={{ color: '#FFFFFF' }}>Saldo Banco</th>
+                            <th className="text-right px-2 py-1.5 font-bold" style={{ color: '#FFFFFF' }}>(+) A Receber</th>
+                            <th className="text-right px-2 py-1.5 font-bold" style={{ color: '#FFFFFF' }}>(−) A Pagar</th>
+                            <th className="text-right px-2 py-1.5 font-bold" style={{ color: '#FFFFFF' }}>Saldo Projetado</th>
+                            <th className="text-right px-2 py-1.5 font-bold" style={{ color: '#FFFFFF' }}>Reserva Mín.</th>
+                            <th className="text-left px-2 py-1.5 font-bold" style={{ color: '#FFFFFF' }}>Sugestão</th>
                         </tr>
                     </thead>
                     <tbody>
                         {allocationRows.map(r => (
                             <tr key={r.id} className="border-t border-slate-800">
-                                <td className="p-2 font-semibold text-slate-100">{r.name}</td>
-                                <td className="p-2 text-right text-slate-300">{formatCurrency(r.banco)}</td>
-                                <td className="p-2 text-right text-emerald-400">{formatCurrency(r.receber)}</td>
-                                <td className="p-2 text-right text-rose-400">{formatCurrency(r.pagar)}</td>
-                                <td className="p-2 text-right font-bold text-slate-100">{formatCurrency(r.projetado)}</td>
-                                <td className="p-2 text-right">
+                                <td className="px-2 py-1 font-semibold text-slate-100">{r.name}</td>
+                                <td className="px-2 py-1 text-right text-slate-300">{formatCurrency(r.banco)}</td>
+                                <td className="px-2 py-1 text-right text-emerald-400">{formatCurrency(r.receber)}</td>
+                                <td className="px-2 py-1 text-right text-rose-400">{formatCurrency(r.pagar)}</td>
+                                <td className="px-2 py-1 text-right font-bold text-slate-100">{formatCurrency(r.projetado)}</td>
+                                <td className="px-2 py-1 text-right">
                                     <input
                                         type="number"
                                         value={r.reserva || ''}
                                         placeholder="0"
                                         onChange={e => onManualValueChange(`reserva_min_${r.id}`, parseFloat(e.target.value) || 0)}
-                                        className="w-28 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-right text-slate-200 text-xs"
+                                        className="w-24 bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-right text-slate-200 text-xs"
                                     />
                                 </td>
-                                <td className="p-2">
+                                <td className="px-2 py-1">
                                     {r.excedente > 1 ? (
-                                        <span className="font-bold text-emerald-400 bg-emerald-900/30 rounded px-2 py-1 whitespace-nowrap">Aplicar {formatCurrency(r.excedente)}</span>
+                                        <span className="font-bold text-emerald-400 bg-emerald-900/30 rounded px-2 py-0.5 whitespace-nowrap">Aplicar {formatCurrency(r.excedente)}</span>
                                     ) : r.excedente < -1 ? (
-                                        <span className="font-bold text-rose-400 bg-rose-900/30 rounded px-2 py-1 whitespace-nowrap">Resgatar {formatCurrency(Math.abs(r.excedente))}</span>
+                                        <span className="font-bold text-rose-400 bg-rose-900/30 rounded px-2 py-0.5 whitespace-nowrap">Resgatar {formatCurrency(Math.abs(r.excedente))}</span>
                                     ) : (
-                                        <span className="font-medium text-slate-400 bg-slate-800/60 rounded px-2 py-1 whitespace-nowrap">Dentro da reserva</span>
+                                        <span className="font-medium text-slate-400 bg-slate-800/60 rounded px-2 py-0.5 whitespace-nowrap">Dentro da reserva</span>
                                     )}
                                 </td>
                             </tr>
                         ))}
                         <tr className="border-t-2 border-slate-600 bg-slate-900/50">
-                            <td className="p-2 font-extrabold text-slate-100">CONSOLIDADO</td>
-                            <td className="p-2 text-right font-bold text-slate-200">{formatCurrency(allocationRows.reduce((s, r) => s + r.banco, 0))}</td>
-                            <td className="p-2 text-right font-bold text-emerald-400">{formatCurrency(allocationRows.reduce((s, r) => s + r.receber, 0))}</td>
-                            <td className="p-2 text-right font-bold text-rose-400">{formatCurrency(allocationRows.reduce((s, r) => s + r.pagar, 0))}</td>
-                            <td className="p-2 text-right font-extrabold text-slate-100">{formatCurrency(allocationRows.reduce((s, r) => s + r.projetado, 0))}</td>
-                            <td className="p-2 text-right font-bold text-slate-200">{formatCurrency(allocationRows.reduce((s, r) => s + r.reserva, 0))}</td>
-                            <td className="p-2 font-extrabold text-slate-100 whitespace-nowrap">Aplicar líq. {formatCurrency(allocTotals.liquido)}</td>
+                            <td className="px-2 py-1 font-extrabold text-slate-100">CONSOLIDADO</td>
+                            <td className="px-2 py-1 text-right font-bold text-slate-200">{formatCurrency(allocationRows.reduce((s, r) => s + r.banco, 0))}</td>
+                            <td className="px-2 py-1 text-right font-bold text-emerald-400">{formatCurrency(allocationRows.reduce((s, r) => s + r.receber, 0))}</td>
+                            <td className="px-2 py-1 text-right font-bold text-rose-400">{formatCurrency(allocationRows.reduce((s, r) => s + r.pagar, 0))}</td>
+                            <td className="px-2 py-1 text-right font-extrabold text-slate-100">{formatCurrency(allocationRows.reduce((s, r) => s + r.projetado, 0))}</td>
+                            <td className="px-2 py-1 text-right font-bold text-slate-200">{formatCurrency(allocationRows.reduce((s, r) => s + r.reserva, 0))}</td>
+                            <td className="px-2 py-1 font-extrabold text-slate-100 whitespace-nowrap">Aplicar líq. {formatCurrency(allocTotals.liquido)}</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
 
-            <p className="text-xs text-slate-400 italic shrink-0">
+            <p className="text-[11px] text-slate-400 italic shrink-0 leading-tight">
                 Previsão baseada no saldo de banco de cada empresa + títulos previstos (a receber e a pagar) do período, comparado à reserva mínima cadastrada de cada empresa. Não é recomendação de investimento — valide antes de executar.
             </p>
         </div>
