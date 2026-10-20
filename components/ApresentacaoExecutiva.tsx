@@ -106,7 +106,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   // Maior fornecedor e maior cliente individual do período — não por
   // categoria, por NOME específico — pra dar uma leitura mais humana e
   // acionável do que só "os recebimentos cobriram X% dos pagamentos".
-  const { topSupplier, topCustomer } = useMemo(() => {
+  const { topSupplier, topCustomer, top5Customers, top5Suppliers, custConcPct, suppConcPct } = useMemo(() => {
       const bySupplier: Record<string, number> = {};
       transactions.forEach(t => {
           if (t.type !== TransactionType.PAYABLE || t.status !== 'PREVISTO') return;
@@ -125,10 +125,39 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
           const [name, value] = entries.reduce((a, b) => (b[1] > a[1] ? b : a));
           return { name, value };
       };
+      // Top 5 (maiores) por valor, e o total geral de cada lado (para o %).
+      const top5 = (obj: Record<string, number>) =>
+          Object.entries(obj)
+              .filter(([, v]) => v > 0)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 5)
+              .map(([name, value]) => ({ name, value }));
+      const sumAll = (obj: Record<string, number>) => Object.values(obj).reduce((s, v) => s + (v > 0 ? v : 0), 0);
+      const top5Customers = top5(byCustomer);
+      const top5Suppliers = top5(bySupplier);
+      const totCustomers = sumAll(byCustomer);
+      const totSuppliers = sumAll(bySupplier);
       return {
           topSupplier: topEntry(bySupplier),
           topCustomer: topEntry(byCustomer),
+          top5Customers,
+          top5Suppliers,
+          // Concentração = soma dos 5 maiores / total do lado (recebimentos / pagamentos).
+          custConcPct: totCustomers > 0 ? (top5Customers.reduce((s, c) => s + c.value, 0) / totCustomers) * 100 : 0,
+          suppConcPct: totSuppliers > 0 ? (top5Suppliers.reduce((s, c) => s + c.value, 0) / totSuppliers) * 100 : 0,
       };
+  }, [transactions]);
+
+  // Capex (Investimentos) — MESMO critério do DFC Consolidada: pagamento previsto
+  // com investmentDescription preenchido, OU categoria "Investimento", OU fluxo 401.
+  const totalCapex = useMemo(() => {
+      return transactions
+          .filter(t => t.type === TransactionType.PAYABLE && t.status === 'PREVISTO' && (
+              (t.investmentDescription && t.investmentDescription.trim() !== '') ||
+              t.category === 'Investimento' ||
+              t.flowTypeCode === '401'
+          ))
+          .reduce((s, t) => s + (Number(t.value) || 0), 0);
   }, [transactions]);
 
   const totalPlanned = summary.totalOutflow;
@@ -246,7 +275,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   const [isEditingAnalise, setIsEditingAnalise] = useState(false);
   // Tema do Demonstrativo (escopado só a este relatório — o app segue escuro).
   // 'dark' = padrão atual; 'light' = paleta creme/navy (Rede Gazeta) para escolha.
-  const [reportTheme, setReportTheme] = useState<'dark' | 'light'>('dark');
+  const [reportTheme, setReportTheme] = useState<'dark' | 'light'>('light');
 
   const generateAutoSummary = () => {
       const coberturaPct = summary.totalOutflow > 0 ? (summary.totalInflow / summary.totalOutflow) * 100 : 0;
@@ -585,22 +614,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                 <div style={{ color: '#5C6C77', fontWeight: 600, marginTop: '0.6cqw', fontSize: 'clamp(12px, 1.5cqw, 20px)' }}>Rede Gazeta · Período: {dateRange}</div>
             </div>
 
-            {/* Barra de KPIs (dinâmica) sobre faixa clara */}
-            <div className="absolute inset-x-[3%] bottom-[7%] rounded-xl flex items-stretch" style={{ background: 'rgba(255,255,255,0.95)', border: '1px solid #BFD3D8', boxShadow: '0 6px 24px rgba(0,0,0,0.25)' }}>
-                {[
-                    { l: 'SALDO PREVISTO', v: fmtMi(coverNetFlow),          s: 'no período',        c: coverNetFlow >= 0 ? '#2E7D63' : '#B0574E' },
-                    { l: 'ENTRADAS',       v: fmtMi(summary.totalInflow),  s: 'Total previsto',    c: '#2E7D63' },
-                    { l: 'SAÍDAS',         v: fmtMi(summary.totalOutflow), s: 'Total previsto',    c: '#B0574E' },
-                    { l: 'FLUXO LÍQUIDO',  v: fmtMi(coverNetFlow),         s: 'Resultado líquido', c: coverNetFlow >= 0 ? '#2E7D63' : '#B0574E' },
-                    { l: 'PERÍODO',        v: coverFim ? `${coverIni} a ${coverFim}` : (coverIni || '—'), s: '', c: '#2E5C8A' },
-                ].map((k, i) => (
-                    <div key={i} className="flex-1 px-4 py-3" style={{ textAlign: 'center', borderLeft: i ? '1px solid #E2E8EC' : 'none' }}>
-                        <div style={{ color: '#5C6C77', fontWeight: 700, fontSize: 'clamp(8px, 0.95cqw, 12px)' }}>{k.l}</div>
-                        <div style={{ color: k.c, fontWeight: 800, whiteSpace: 'nowrap', fontSize: 'clamp(12px, 1.5cqw, 20px)' }}>{k.v}</div>
-                        <div style={{ color: '#8892A0', fontSize: 'clamp(7px, 0.8cqw, 10px)' }}>{k.s}</div>
-                    </div>
-                ))}
-            </div>
+            {/* Barra de KPIs da capa removida a pedido (tarja com valores). */}
 
             {/* Rodapé */}
             <div className="absolute" style={{ bottom: '3%', right: '3%', color: '#EAF2F6', fontWeight: 700, fontSize: 'clamp(7px, 0.85cqw, 11px)', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>GERADO EM {new Date().toLocaleDateString('pt-BR')} • VERSÃO 1.0</div>
@@ -623,241 +637,99 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                 </div>
             </header>
 
-            {/* CORPO DO DEMONSTRATIVO (20% / 45% / 35%) */}
-            <div className="flex-1 flex flex-col gap-6 min-h-0">
-                
-                {/* 20% - KPIs PRINCIPAIS */}
-                <div className="flex-[2] flex gap-6 shrink-0 min-h-0">
-                    {/* 01 SALDO INICIAL */}
-                    <div className="flex-1 border border-slate-800 bg-slate-950/50 rounded-lg p-4 flex flex-col justify-center gap-2">
-                        <span className="text-sm font-medium text-slate-400 uppercase tracking-wider">Saldo Inicial</span>
-                        <div className="text-4xl font-semibold text-slate-100 tracking-tight">
-                            <span className="text-lg text-slate-500 mr-1 font-normal">R$</span>
-                            {formatCurrency(initialBalance).replace('R$', '').trim()}
-                        </div>
-                    </div>
-                    {/* 02 RECEBIMENTOS */}
-                    <div className="flex-1 border border-slate-800 bg-slate-950/50 rounded-lg p-4 flex flex-col justify-center gap-2">
-                        <span className="text-sm font-medium text-slate-400 uppercase tracking-wider">(+) Recebimentos</span>
-                        <div className="text-4xl font-semibold text-emerald-400 tracking-tight">
-                            <span className="text-lg text-emerald-700 mr-1 font-normal">R$</span>
-                            {formatCurrency(summary.totalInflow).replace('R$', '').trim()}
-                        </div>
-                    </div>
-                    {/* 03 PAGAMENTOS */}
-                    <div className="flex-1 border border-slate-800 bg-slate-950/50 rounded-lg p-4 flex flex-col justify-center gap-2">
-                        <span className="text-sm font-medium text-slate-400 uppercase tracking-wider">(-) Pagamentos</span>
-                        <div className="text-4xl font-semibold text-rose-400 tracking-tight">
-                            <span className="text-lg text-rose-700 mr-1 font-normal">R$</span>
-                            {formatCurrency(summary.totalOutflow).replace('R$', '').trim()}
-                        </div>
-                    </div>
-                    {/* 04 RESULTADO */}
-                    <div className="flex-1 border border-slate-700 bg-slate-800/50 rounded-lg p-4 flex flex-col justify-center gap-2">
-                        <span className="text-sm font-medium text-slate-300 uppercase tracking-wider">(=) Resultado Operacional</span>
-                        <div className={`text-4xl font-semibold tracking-tight ${operatingResult >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            <span className={`text-lg mr-1 font-normal ${operatingResult >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>R$</span>
-                            {formatCurrency(operatingResult).replace('R$', '').trim()}
-                        </div>
-                    </div>
-                    {/* 05 SALDO FINAL */}
-                    <div className="flex-[1.2] border border-slate-600 bg-slate-800 rounded-lg p-4 flex flex-col justify-center gap-2">
-                        <span className="text-sm font-medium text-slate-200 uppercase tracking-wider">Saldo Final Consolidado</span>
-                        <div className="text-4xl font-semibold text-white tracking-tight">
-                            <span className="text-lg text-slate-400 mr-1 font-normal">R$</span>
-                            {formatCurrency(netPeriodResult).replace('R$', '').trim()}
-                        </div>
-                    </div>
-                </div>
+            {/* CORPO — MODELO (slide 3): 2 caixas (com centavos) + 2 donuts (top 5) + Análise */}
+            <div className="flex-1 flex flex-col gap-4 min-h-0">
+                {(() => {
+                    // Caixas pedem valor CHEIO com centavos (o geral do app é sem decimais).
+                    const fmtC = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+                    const saidasOperac = summary.totalOutflow - totalCapex;      // Saídas sem o Capex
+                    const aplicResgNet = totalManualResgates - totalManualAplicacoes; // (-/+)
+                    const hasSnapshot = applicationSnapshots.length >= 1;
+                    const appOpening = hasSnapshot ? applicationSnapshots[applicationSnapshots.length - 1].totalGeral : 0;
+                    const appClosing = appOpening + totalManualAplicacoes - totalManualResgates;
 
-                {/* 45% - BLOCO ESTRATÉGICO */}
-                <div className="flex-[4.5] flex gap-6 shrink-0 min-h-0">
-                    {/* FLUXO DE APLICAÇÕES — ponte (bridge) Caixa + Aplicações, lado a lado */}
-                    <div className="flex-[5] border border-slate-800 bg-slate-950/50 rounded-lg p-5 flex flex-col min-h-0">
-                        <h3 className="text-lg font-semibold text-slate-200 border-b border-slate-800 pb-3 mb-3 shrink-0">
-                            Fluxo de Caixa e Aplicações
-                        </h3>
-                        {(() => {
-                            // Ponte do Caixa: sai do saldo inicial e aplica cada movimento até o final.
-                            const caixaSteps = [
-                                { label: 'SD Inicial', value: initialBalance, kind: 'start' as const },
-                                { label: '(+) Recebimentos', value: summary.totalInflow, kind: 'add' as const },
-                                { label: '(-) Pagamentos', value: -summary.totalOutflow, kind: 'sub' as const },
-                                { label: '(-) Aplicações', value: -totalManualAplicacoes, kind: 'sub' as const },
-                                { label: '(+) Resgates', value: totalManualResgates, kind: 'add' as const },
-                                { label: 'SD Final', value: netPeriodResult, kind: 'end' as const },
-                            ];
-
-                            // Ponte das Aplicações Financeiras: usa a última posição IMPORTADA como
-                            // SD Inicial (o ponto real mais recente que se conhece) e SOMA o
-                            // movimento do período (Resg Aplic do FC Diário) por cima — assim o
-                            // SD Final sempre reflete a conta, mesmo quando o movimento foi
-                            // digitado depois da última importação da planilha de Aplicações.
-                            const hasSnapshot = applicationSnapshots.length >= 1;
-                            const appOpening = hasSnapshot ? applicationSnapshots[applicationSnapshots.length - 1].totalGeral : 0;
-                            const appClosing = appOpening + totalManualAplicacoes - totalManualResgates;
-                            const aplicSteps = [
-                                { label: 'SD Inicial', value: appOpening, kind: 'start' as const },
-                                { label: '(-) Resgates', value: -totalManualResgates, kind: 'sub' as const },
-                                { label: '(+) Aplicações', value: totalManualAplicacoes, kind: 'add' as const },
-                                { label: 'SD Final', value: appClosing, kind: 'end' as const },
-                            ];
-
-                            const Row = ({ label, value, kind }: { label: string; value: number; kind: 'start' | 'add' | 'sub' | 'end' }) => (
-                                <div className={`flex justify-between items-center py-1.5 ${kind === 'start' || kind === 'end' ? 'border-t border-slate-800 mt-1 pt-2' : ''}`}>
-                                    <span className={`text-[13px] ${kind === 'start' || kind === 'end' ? 'font-semibold text-slate-200' : 'text-slate-400'}`}>{label}</span>
-                                    <span className={`text-[13px] font-semibold tabular-nums ${
-                                        kind === 'add' ? 'text-emerald-400' : kind === 'sub' ? 'text-rose-400' : value < 0 ? 'text-rose-400' : 'text-slate-100'
-                                    }`}>
-                                        {kind === 'sub' && value < 0 ? '(' : ''}{formatCurrency(Math.abs(value))}{kind === 'sub' && value < 0 ? ')' : ''}
-                                    </span>
-                                </div>
-                            );
-
-                            return (
-                                <div className="flex-1 grid grid-cols-2 gap-5 min-h-0">
-                                    <div className="flex flex-col justify-center bg-slate-900/40 rounded-md px-4 py-2">
-                                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Caixa (Contas Correntes)</p>
-                                        {caixaSteps.map((s, i) => <Row key={i} {...s} />)}
+                    const caixaRows = [
+                        { l: 'SD Inicial',               v: initialBalance,       c: '#283848', b: true },
+                        { l: '(+) Entradas',             v: summary.totalInflow,  c: '#2E7D63' },
+                        { l: '(−) Saídas (op.)',         v: saidasOperac,         c: '#B0574E' },
+                        { l: '(−) Investimentos/Capex',  v: totalCapex,           c: '#B0574E' },
+                        { l: '(−/+) Aplic/Resg',         v: aplicResgNet,         c: '#283848' },
+                        { l: 'SD Final',                 v: netPeriodResult,      c: '#283848', b: true, tot: true },
+                    ];
+                    const aplicRows = [
+                        { l: 'SD Inicial',    v: appOpening,            c: '#283848', b: true },
+                        { l: '(−) Resgates',  v: totalManualResgates,  c: '#283848' },
+                        { l: '(+) Aplicações',v: totalManualAplicacoes,c: '#283848' },
+                        { l: 'SD Final',      v: appClosing,           c: '#283848', b: true, tot: true },
+                    ];
+                    const Box = ({ title, rows }: { title: string; rows: any[] }) => (
+                        <div style={{ background: '#fff', border: '1px solid #BFD3D8', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ background: '#1F6F7A', color: '#fff', fontWeight: 700, textAlign: 'center', fontSize: 13, padding: '7px' }}>{title}</div>
+                            <div style={{ padding: '8px 13px', display: 'flex', flexDirection: 'column' }}>
+                                {rows.map((r, i) => (
+                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 12.5, borderTop: r.tot ? '1px solid #BFD3D8' : 'none', marginTop: r.tot ? 2 : 0, paddingTop: r.tot ? 6 : 3 }}>
+                                        <span style={{ color: r.b ? '#283848' : '#5C6C77', fontWeight: r.b ? 800 : 400 }}>{r.l}</span>
+                                        <span style={{ fontWeight: 700, color: r.c }}>{fmtC(r.v)}</span>
                                     </div>
-                                    <div className="flex flex-col justify-center bg-slate-900/40 rounded-md px-4 py-2">
-                                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-                                            Aplicações Financeiras {!hasSnapshot && <span className="normal-case font-normal text-slate-600">(sem posição importada ainda)</span>}
-                                        </p>
-                                        {aplicSteps.map((s, i) => <Row key={i} {...s} />)}
-                                    </div>
-                                </div>
-                            );
-                        })()}
-                    </div>
-
-                    {/* RESUMO EXECUTIVO */}
-                    <div className="flex-[6] border border-slate-800 bg-slate-950/50 rounded-lg p-6 flex flex-col relative group min-h-0">
-                        <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-4 shrink-0">
-                            <h3 className="text-lg font-semibold text-slate-200">
-                                Análise do Período
-                            </h3>
-                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">
-                                {isEditingAnalise ? (
-                                    <button onClick={() => setIsEditingAnalise(false)} className="p-1.5 text-emerald-400 hover:bg-slate-800 rounded-md transition-colors" title="Salvar">
-                                        <Check className="w-4 h-4" />
-                                    </button>
-                                ) : (
-                                    <>
-                                        <button onClick={() => setIsEditingAnalise(true)} className="p-1.5 text-slate-400 hover:bg-slate-800 rounded-md transition-colors" title="Editar">
-                                            <Edit2 className="w-4 h-4" />
-                                        </button>
-                                        <button onClick={generateAutoAnalise} className="p-1.5 text-slate-400 hover:bg-slate-800 rounded-md transition-colors" title="Gerar Automático">
-                                            <RefreshCw className="w-4 h-4" />
-                                        </button>
-                                        <button onClick={() => setAnaliseText('')} className="p-1.5 text-rose-400 hover:bg-slate-800 rounded-md transition-colors" title="Limpar">
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </>
-                                )}
+                                ))}
                             </div>
                         </div>
+                    );
+                    const DonutCard = ({ title, pct, color, list }: { title: string; pct: number; color: string; list: { name: string; value: number }[] }) => (
+                        <div style={{ background: '#2E3C4E', borderRadius: 10, display: 'flex', flexDirection: 'column', padding: 12 }}>
+                            <div style={{ background: '#415468', color: '#fff', fontWeight: 700, fontSize: 10.5, textAlign: 'center', borderRadius: 6, padding: '4px 8px', lineHeight: 1.2 }}>{title} · {pct.toFixed(0)}%</div>
+                            <div style={{ height: 82, margin: '6px 0 2px' }}><RiskDonut pct={pct} color={color} /></div>
+                            <div style={{ borderTop: '1px solid #3a4a5c', paddingTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                {list.length ? list.map((e, i) => (
+                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5 }}>
+                                        <span style={{ color: '#cdd8e2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{e.name}</span>
+                                        <span style={{ color: '#fff', fontWeight: 700 }}>{formatCurrency(e.value)}</span>
+                                    </div>
+                                )) : <span style={{ color: '#8892A0', fontSize: 9.5, fontStyle: 'italic', textAlign: 'center' }}>Sem registros.</span>}
+                            </div>
+                        </div>
+                    );
+                    return (
+                        <div className="grid grid-cols-4 gap-4 shrink-0">
+                            <Box title="Contas Correntes + Caixa" rows={caixaRows} />
+                            <Box title="Aplicações" rows={aplicRows} />
+                            <DonutCard title="Recebimentos — 5 MAIORES CLIENTES" pct={custConcPct} color="#E0A526" list={top5Customers} />
+                            <DonutCard title="Pagamentos — 5 MAIORES FORNECEDORES" pct={suppConcPct} color="#2E8BC0" list={top5Suppliers} />
+                        </div>
+                    );
+                })()}
 
-                        <div className="flex-1 min-h-0">
+                {/* Análise do Período (automática + editável) */}
+                <div className="flex-1 border border-slate-800 bg-slate-950/50 rounded-lg p-5 flex flex-col relative group min-h-0">
+                    <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-3 shrink-0">
+                        <h3 className="text-lg font-semibold text-slate-200">Análise do Período</h3>
+                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">
                             {isEditingAnalise ? (
-                                <textarea
-                                    value={analiseText}
-                                    onChange={(e) => setAnaliseText(e.target.value)}
-                                    className="w-full h-full p-4 text-sm font-normal text-slate-300 bg-slate-900 border border-slate-700 rounded-md focus:outline-none focus:border-slate-500 resize-none custom-scrollbar"
-                                    placeholder="Insira a análise do período aqui..."
-                                />
+                                <button onClick={() => setIsEditingAnalise(false)} className="p-1.5 text-emerald-400 hover:bg-slate-800 rounded-md transition-colors" title="Salvar"><Check className="w-4 h-4" /></button>
                             ) : (
-                                <div className="h-full overflow-y-auto pr-4 text-sm font-normal text-slate-300 leading-relaxed text-justify whitespace-pre-wrap custom-scrollbar">
-                                    {analiseText || <span className="text-slate-500 italic">Nenhuma análise gerada. Utilize os controles para adicionar.</span>}
-                                </div>
+                                <>
+                                    <button onClick={() => setIsEditingAnalise(true)} className="p-1.5 text-slate-400 hover:bg-slate-800 rounded-md transition-colors" title="Editar"><Edit2 className="w-4 h-4" /></button>
+                                    <button onClick={generateAutoAnalise} className="p-1.5 text-slate-400 hover:bg-slate-800 rounded-md transition-colors" title="Gerar Automático"><RefreshCw className="w-4 h-4" /></button>
+                                    <button onClick={() => setAnaliseText('')} className="p-1.5 text-rose-400 hover:bg-slate-800 rounded-md transition-colors" title="Limpar"><Trash2 className="w-4 h-4" /></button>
+                                </>
                             )}
                         </div>
                     </div>
-                </div>
-
-                {/* 35% - TABELA CONSOLIDADA / DIRETORIA */}
-                <div className="flex-[3.5] flex gap-6 shrink-0 min-h-0">
-                    {/* RESUMO PARA A DIRETORIA */}
-                    <div className="flex-[7] border border-slate-800 bg-slate-950/50 rounded-lg p-6 flex flex-col relative group min-h-0">
-                        <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-4 shrink-0">
-                            <h3 className="text-lg font-semibold text-slate-200">
-                                Parecer do Financeiro
-                            </h3>
-                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">
-                                {isEditingSummary ? (
-                                    <button onClick={() => setIsEditingSummary(false)} className="p-1.5 text-emerald-400 hover:bg-slate-800 rounded-md transition-colors" title="Salvar">
-                                        <Check className="w-4 h-4" />
-                                    </button>
-                                ) : (
-                                    <>
-                                        <button onClick={() => setIsEditingSummary(true)} className="p-1.5 text-slate-400 hover:bg-slate-800 rounded-md transition-colors" title="Editar">
-                                            <Edit2 className="w-4 h-4" />
-                                        </button>
-                                        <button onClick={generateAutoSummary} className="p-1.5 text-slate-400 hover:bg-slate-800 rounded-md transition-colors" title="Gerar Automático">
-                                            <RefreshCw className="w-4 h-4" />
-                                        </button>
-                                        <button onClick={() => setBoardSummary('')} className="p-1.5 text-rose-400 hover:bg-slate-800 rounded-md transition-colors" title="Limpar">
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </>
-                                )}
+                    <div className="flex-1 min-h-0">
+                        {isEditingAnalise ? (
+                            <textarea value={analiseText} onChange={(e) => setAnaliseText(e.target.value)} className="w-full h-full p-4 text-sm font-normal text-slate-300 bg-slate-900 border border-slate-700 rounded-md focus:outline-none focus:border-slate-500 resize-none custom-scrollbar" placeholder="Insira a análise do período aqui..." />
+                        ) : (
+                            <div className="h-full overflow-y-auto pr-4 text-sm font-normal text-slate-300 leading-relaxed text-justify whitespace-pre-wrap custom-scrollbar">
+                                {analiseText || <span className="text-slate-500 italic">Nenhuma análise gerada. Utilize os controles para adicionar.</span>}
                             </div>
-                        </div>
-                        
-                        <div className="flex-1 min-h-0">
-                            {isEditingSummary ? (
-                                <textarea 
-                                    value={boardSummary}
-                                    onChange={(e) => setBoardSummary(e.target.value)}
-                                    className="w-full h-full p-4 text-sm font-normal text-slate-300 bg-slate-900 border border-slate-700 rounded-md focus:outline-none focus:border-slate-500 resize-none custom-scrollbar"
-                                    placeholder="Insira o parecer executivo aqui..."
-                                />
-                            ) : (
-                                <div className="h-full overflow-y-auto pr-4 text-sm font-normal text-slate-300 leading-relaxed text-justify whitespace-pre-wrap custom-scrollbar">
-                                    {boardSummary || <span className="text-slate-500 italic">Nenhum parecer gerado. Utilize os controles para adicionar.</span>}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* PRÓXIMAS ANÁLISES */}
-                    <div className="flex-[3] border border-slate-800 bg-slate-950/50 rounded-lg p-6 flex flex-col min-h-0 overflow-hidden">
-                        <h3 className="text-lg font-semibold text-slate-200 border-b border-slate-800 pb-2 mb-3 shrink-0">
-                            Anexos & Detalhamentos
-                        </h3>
-                        <div className="flex-1 min-h-0 flex flex-col justify-between py-1">
-                            {['Resumo Financeiro', 'Fluxo de Caixa (DFC)', 'Contas a Pagar', 'Contas a Receber', 'Pontos Críticos & Alocação', 'Aplicações Financeiras'].map((item, i) => (
-                                <div key={i} className="flex items-center text-sm font-medium text-slate-400">
-                                    <div className="w-1.5 h-1.5 bg-slate-600 rounded-full mr-3 shrink-0"></div>
-                                    {item}
-                                </div>
-                            ))}
-                        </div>
+                        )}
                     </div>
                 </div>
             </div>
         </div>
 
-        {/* PÁGINA 2: RESUMO FINANCEIRO */}
-        <div className="bg-slate-900 w-full max-w-[1920px] min-h-[720px] shadow-2xl rounded-xl flex flex-col relative print:break-after-page print:shadow-none mx-auto p-8 gap-6 border border-slate-800">
-            <header className="flex justify-between items-end pb-4 border-b border-slate-800 shrink-0">
-                <div>
-                    <h2 className="text-sm font-medium text-slate-400 uppercase tracking-widest mb-1">
-                        Rede Gazeta
-                    </h2>
-                    <h1 className="text-3xl font-semibold text-slate-100 tracking-tight uppercase leading-none">
-                        Resumo Financeiro
-                    </h1>
-                </div>
-                <div className="text-right flex flex-col items-end">
-                    <p className="text-lg font-semibold text-slate-300 uppercase tracking-tight">{dateRange}</p>
-                </div>
-            </header>
-
-            <div className="flex-1 min-h-0">
-                <ResumoFinanceiro summary={summary} transactions={transactions} isSlide={true} />
-            </div>
-        </div>
+        {/* Páginas "Resumo Financeiro" removida (segue no app). O antigo "Fluxo de
+            Caixa (DFC)" foi TROCADO pela visão "DFC Consolidada" (mais resumida). */}
         <div className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-8 gap-6 border border-slate-800">
             <header className="flex justify-between items-end pb-4 border-b border-slate-800 shrink-0">
                 <div>
@@ -865,25 +737,25 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                         Rede Gazeta
                     </h2>
                     <h1 className="text-3xl font-semibold text-slate-100 tracking-tight uppercase leading-none">
-                        Fluxo de Caixa (DFC)
+                        DFC Consolidada
                     </h1>
                 </div>
                 <div className="text-right flex flex-col items-end">
                     <p className="text-lg font-semibold text-slate-300 uppercase tracking-tight">{dateRange}</p>
                 </div>
             </header>
-
             <div className="flex-1 overflow-hidden min-h-0">
-                <Dashboard 
-                    transactions={transactions} 
+                <Dashboard
+                    transactions={transactions}
                     realizedTransactions={realizedTransactions}
                     summary={summary}
                     aiAnalysis={aiAnalysis}
                     onGenerateAI={onGenerateAI}
                     isGeneratingAI={isGeneratingAI}
-                    viewType={DashboardViewType.BASE_DFC}
+                    viewType={DashboardViewType.DFC}
                     dfcManualValues={dfcManualValues}
                     onManualValueChange={onManualValueChange}
+                    isSlide={true}
                 />
             </div>
         </div>
@@ -944,121 +816,6 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                     dfcManualValues={dfcManualValues}
                     onManualValueChange={onManualValueChange}
                     isSlide={true}
-                />
-            </div>
-        </div>
-        {/* ── PÁGINA: Sugestão de Aplicação / Resgate por Empresa (PREVISÃO) ── */}
-        <div data-slide-type="alocacao" className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-6 gap-3 border border-slate-800">
-            <header className="flex justify-between items-end pb-3 border-b border-slate-800 shrink-0">
-                <div>
-                    <h2 className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-1">Rede Gazeta</h2>
-                    <h1 className="text-2xl font-semibold text-slate-100 tracking-tight uppercase leading-none flex items-center gap-3">
-                        Sugestão de Aplicação / Resgate
-                        <span className="text-[10px] font-bold tracking-wider text-amber-300 bg-amber-900/30 border border-amber-700/50 rounded-full px-2.5 py-0.5 normal-case">Previsão</span>
-                    </h1>
-                </div>
-                <div className="text-right flex flex-col items-end">
-                    <p className="text-base font-semibold text-slate-300 uppercase tracking-tight">{dateRange}</p>
-                </div>
-            </header>
-
-            <div className="grid grid-cols-3 gap-3 shrink-0">
-                <div className="bg-slate-950/50 border border-slate-800 rounded-lg px-4 py-2.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Total a Aplicar</p>
-                    <p className="text-xl font-extrabold text-emerald-400">{formatCurrency(allocTotals.aplicar)}</p>
-                </div>
-                <div className="bg-slate-950/50 border border-slate-800 rounded-lg px-4 py-2.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Total a Resgatar</p>
-                    <p className="text-xl font-extrabold text-rose-400">{formatCurrency(allocTotals.resgatar)}</p>
-                </div>
-                <div className="bg-slate-950/50 border border-slate-800 rounded-lg px-4 py-2.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Efeito líquido no caixa</p>
-                    <p className="text-xl font-extrabold text-slate-100">{formatCurrency(allocTotals.liquido)}</p>
-                </div>
-            </div>
-
-            <div className="flex-1 overflow-hidden min-h-0 border border-slate-800 rounded-lg">
-                <table className="w-full text-xs">
-                    <thead>
-                        <tr style={{ backgroundColor: '#2E3C4E', color: '#FFFFFF' }}>
-                            <th className="text-left px-2 py-1.5 font-bold" style={{ color: '#FFFFFF' }}>Empresa</th>
-                            <th className="text-right px-2 py-1.5 font-bold" style={{ color: '#FFFFFF' }}>Saldo Banco</th>
-                            <th className="text-right px-2 py-1.5 font-bold" style={{ color: '#FFFFFF' }}>(+) A Receber</th>
-                            <th className="text-right px-2 py-1.5 font-bold" style={{ color: '#FFFFFF' }}>(−) A Pagar</th>
-                            <th className="text-right px-2 py-1.5 font-bold" style={{ color: '#FFFFFF' }}>Saldo Projetado</th>
-                            <th className="text-right px-2 py-1.5 font-bold" style={{ color: '#FFFFFF' }}>Reserva Mín.</th>
-                            <th className="text-left px-2 py-1.5 font-bold" style={{ color: '#FFFFFF' }}>Sugestão</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {allocationRows.map(r => (
-                            <tr key={r.id} className="border-t border-slate-800">
-                                <td className="px-2 py-1 font-semibold text-slate-100">{r.name}</td>
-                                <td className="px-2 py-1 text-right text-slate-300">{formatCurrency(r.banco)}</td>
-                                <td className="px-2 py-1 text-right text-emerald-400">{formatCurrency(r.receber)}</td>
-                                <td className="px-2 py-1 text-right text-rose-400">{formatCurrency(r.pagar)}</td>
-                                <td className="px-2 py-1 text-right font-bold text-slate-100">{formatCurrency(r.projetado)}</td>
-                                <td className="px-2 py-1 text-right">
-                                    <input
-                                        type="number"
-                                        value={r.reserva || ''}
-                                        placeholder="0"
-                                        onChange={e => onManualValueChange(`reserva_min_${r.id}`, parseFloat(e.target.value) || 0)}
-                                        className="w-24 bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-right text-slate-200 text-xs"
-                                    />
-                                </td>
-                                <td className="px-2 py-1">
-                                    {r.excedente > 1 ? (
-                                        <span className="font-bold text-emerald-400 bg-emerald-900/30 rounded px-2 py-0.5 whitespace-nowrap">Aplicar {formatCurrency(r.excedente)}</span>
-                                    ) : r.excedente < -1 ? (
-                                        <span className="font-bold text-rose-400 bg-rose-900/30 rounded px-2 py-0.5 whitespace-nowrap">Resgatar {formatCurrency(Math.abs(r.excedente))}</span>
-                                    ) : (
-                                        <span className="font-medium text-slate-400 bg-slate-800/60 rounded px-2 py-0.5 whitespace-nowrap">Dentro da reserva</span>
-                                    )}
-                                </td>
-                            </tr>
-                        ))}
-                        <tr className="border-t-2 border-slate-600 bg-slate-900/50">
-                            <td className="px-2 py-1 font-extrabold text-slate-100">CONSOLIDADO</td>
-                            <td className="px-2 py-1 text-right font-bold text-slate-200">{formatCurrency(allocationRows.reduce((s, r) => s + r.banco, 0))}</td>
-                            <td className="px-2 py-1 text-right font-bold text-emerald-400">{formatCurrency(allocationRows.reduce((s, r) => s + r.receber, 0))}</td>
-                            <td className="px-2 py-1 text-right font-bold text-rose-400">{formatCurrency(allocationRows.reduce((s, r) => s + r.pagar, 0))}</td>
-                            <td className="px-2 py-1 text-right font-extrabold text-slate-100">{formatCurrency(allocationRows.reduce((s, r) => s + r.projetado, 0))}</td>
-                            <td className="px-2 py-1 text-right font-bold text-slate-200">{formatCurrency(allocationRows.reduce((s, r) => s + r.reserva, 0))}</td>
-                            <td className="px-2 py-1 font-extrabold text-slate-100 whitespace-nowrap">Aplicar líq. {formatCurrency(allocTotals.liquido)}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <p className="text-[11px] text-slate-400 italic shrink-0 leading-tight">
-                Previsão baseada no saldo de banco de cada empresa + títulos previstos (a receber e a pagar) do período, comparado à reserva mínima cadastrada de cada empresa. Não é recomendação de investimento — valide antes de executar.
-            </p>
-        </div>
-        <div className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video min-h-[720px] shadow-2xl rounded-xl flex flex-col relative print:break-after-page print:shadow-none mx-auto p-4 gap-4 border border-slate-800">
-            <header className="flex justify-between items-end pb-2 border-b border-slate-800 shrink-0">
-                <div>
-                    <h2 className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-1">
-                        Rede Gazeta
-                    </h2>
-                    <h1 className="text-xl font-semibold text-slate-100 tracking-tight uppercase leading-none">
-                        Análise Previsto vs Realizado
-                    </h1>
-                </div>
-                <div className="text-right flex flex-col items-end">
-                    <p className="text-base font-semibold text-slate-300 uppercase tracking-tight">{dateRange}</p>
-                </div>
-            </header>
-
-            <div className="flex-1 min-h-0">
-                <VisaoEstrategicaRealizado 
-                    planned={plannedTransactions} 
-                    realized={realizedTransactions} 
-                    isSlide={true}
-                    totalPlanned={totalPlanned}
-                    totalRealized={totalRealized}
-                    deviation={deviation}
-                    deviationPercent={deviationPercent}
                 />
             </div>
         </div>
@@ -1157,105 +914,6 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
             </footer>
         </div>
 
-        {/* APLICAÇÕES FINANCEIRAS */}
-        {applicationSnapshots.length > 0 && (() => {
-            const snaps = applicationSnapshots; // já vem ordenado por data crescente
-            const rows = snaps.map((s, i) => {
-                const prev = i > 0 ? snaps[i - 1] : null;
-                const diff = prev ? s.totalGeral - prev.totalGeral : 0;
-                const pct = prev && prev.totalGeral !== 0 ? (diff / prev.totalGeral) * 100 : 0;
-                return { ...s, diff, pct, isFirst: i === 0 };
-            });
-            const last = rows[rows.length - 1];
-            const first = rows[0];
-            const variacaoTotal = last.totalGeral - first.totalGeral;
-            const variacaoTotalPct = first.totalGeral !== 0 ? (variacaoTotal / first.totalGeral) * 100 : 0;
-            const chartData = rows.map(r => ({ label: r.label, saldo: r.totalGeral }));
-            const porEmpresa = Object.entries(last.porEmpresa)
-                .filter(([, v]) => v !== 0)
-                .sort((a, b) => b[1] - a[1]);
-
-            return (
-        <div className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-8 gap-6 border border-slate-800">
-            <header className="flex justify-between items-end pb-4 border-b border-slate-700 shrink-0">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-amber-600/20 rounded-lg">
-                        <svg className="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-100">Aplicações Financeiras</h1>
-                        <p className="text-xs text-slate-400 uppercase tracking-widest">Posição em {last.label}</p>
-                    </div>
-                </div>
-                <p className="text-sm text-slate-400">{dateRange}</p>
-            </header>
-
-            <div className="grid grid-cols-3 gap-4 shrink-0">
-                <div className="bg-[#111827] border border-slate-700/50 rounded-xl p-4">
-                    <p className="text-xs text-slate-500 uppercase tracking-wide">Saldo atual</p>
-                    <p className="text-2xl font-bold text-slate-100 mt-1">{formatCurrency(last.totalGeral)}</p>
-                </div>
-                <div className="bg-[#111827] border border-slate-700/50 rounded-xl p-4">
-                    <p className="text-xs text-slate-500 uppercase tracking-wide">Variação vs. mês anterior</p>
-                    <p className={`text-2xl font-bold mt-1 flex items-center gap-2 ${last.diff > 0 ? 'text-emerald-400' : last.diff < 0 ? 'text-red-400' : 'text-slate-300'}`}>
-                        {last.isFirst ? '—' : (
-                            <>
-                                {last.diff > 0 ? <TrendingUp className="w-5 h-5" /> : last.diff < 0 ? <TrendingDown className="w-5 h-5" /> : <Minus className="w-5 h-5" />}
-                                {last.diff >= 0 ? '+' : ''}{formatCurrency(last.diff)}
-                            </>
-                        )}
-                    </p>
-                </div>
-                <div className="bg-[#111827] border border-slate-700/50 rounded-xl p-4">
-                    <p className="text-xs text-slate-500 uppercase tracking-wide">Variação do período ({first.label} → {last.label})</p>
-                    <p className={`text-2xl font-bold mt-1 ${variacaoTotal > 0 ? 'text-emerald-400' : variacaoTotal < 0 ? 'text-red-400' : 'text-slate-300'}`}>
-                        {variacaoTotalPct >= 0 ? '+' : ''}{variacaoTotalPct.toFixed(1)}%
-                    </p>
-                </div>
-            </div>
-
-            <div className="flex-1 grid grid-cols-3 gap-4 min-h-0">
-                <div className="col-span-2 bg-[#111827] border border-slate-700/50 rounded-xl p-4 flex flex-col min-h-0">
-                    <p className="text-sm font-bold text-slate-200 mb-1">Evolução do saldo</p>
-                    <p className="text-[10px] text-slate-500 mb-2">Variação bruta entre posições — inclui aportes, resgates e rendimento (a planilha já vem líquida disso).</p>
-                    <div className="flex-1 min-h-0">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                                <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                                <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => `${(v / 1_000_000).toFixed(0)}mi`} width={50} />
-                                <RechartsTooltip
-                                    contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }}
-                                    formatter={(v: number) => [formatCurrency(v), 'Saldo']}
-                                />
-                                <Line type="monotone" dataKey="saldo" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-                <div className="bg-[#111827] border border-slate-700/50 rounded-xl p-4 flex flex-col min-h-0">
-                    <p className="text-sm font-bold text-slate-200 mb-2">Por empresa (posição atual)</p>
-                    <div className="flex-1 overflow-hidden grid grid-cols-2 gap-x-3 gap-y-1.5 content-start">
-                        {porEmpresa.map(([cc, v]) => {
-                            const name = COMPANIES.find(c => c.id === cc)?.name || cc;
-                            return (
-                                <div key={cc} className="flex flex-col text-xs border-b border-slate-800 pb-1">
-                                    <span className="text-slate-500 truncate text-[10px]">{name}</span>
-                                    <span className="text-slate-200 font-medium">{formatCurrency(v)}</span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            </div>
-
-            <footer className="flex justify-between text-[10px] text-slate-600 border-t border-slate-700 pt-3 shrink-0">
-                <span>Confidencial — Uso Interno</span>
-                <span>Rede Gazeta</span>
-            </footer>
-        </div>
-            );
-        })()}
 
         {/* ESTRUTURA ALTERNATIVA PARA EXPORTAÇÃO PPT (OCULTA NA WEB) */}
         <PPTExportAlternative 
