@@ -88,8 +88,20 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
 }) => {
       // Período exibido: por padrão vai de SEGUNDA a SEGUNDA (dias úteis). O
       // usuário pode ampliar escolhendo início/fim nos campos de data. '' = auto.
-      const [periodStart, setPeriodStart] = useState<string>('');
-      const [periodEnd, setPeriodEnd] = useState<string>('');
+      // Persistido em localStorage para NÃO voltar ao início ao trocar de tela
+      // (o componente desmonta/remonta e perderia o estado local).
+      const [periodStart, setPeriodStart] = useState<string>(() => {
+          try { return localStorage.getItem('fc_period_start') || ''; } catch { return ''; }
+      });
+      const [periodEnd, setPeriodEnd] = useState<string>(() => {
+          try { return localStorage.getItem('fc_period_end') || ''; } catch { return ''; }
+      });
+      useEffect(() => {
+          try {
+              localStorage.setItem('fc_period_start', periodStart);
+              localStorage.setItem('fc_period_end', periodEnd);
+          } catch { /* ignora se localStorage indisponível */ }
+      }, [periodStart, periodEnd]);
 
       // Mover transações de sábado/domingo para a segunda-feira seguinte.
       // Considera apenas fluxo de caixa REAL (Pagamentos/Recebimentos) com data
