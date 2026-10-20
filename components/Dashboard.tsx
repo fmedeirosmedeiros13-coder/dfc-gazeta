@@ -260,7 +260,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
       // Daily Data
       const dailyData: Record<string, number> = {};
       allReceivables.forEach(t => dailyData[t.date] = (dailyData[t.date] || 0) + (Number(t.value) || 0));
-      const vlDiaList = Object.entries(dailyData).map(([date, value]) => ({ date, value })).sort((a,b) => b.value - a.value);
+      const vlDiaList = Object.entries(dailyData).map(([date, value]) => ({ date, value })).sort((a,b) => parseDate(a.date) - parseDate(b.date));
 
       return (
         <div className={`flex flex-col ${isSlide ? 'gap-3 pb-0 h-full' : 'gap-6 pb-10'} animate-fadeIn`}>
@@ -549,6 +549,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           { code: '111', label: 'Produção', keywords: ['Produção', 'Producao'] },
           { code: '112', label: 'Publicidade Globo', keywords: ['Globo'] },
           { code: '113', label: 'Financeiras', keywords: ['Financeira'] },
+          // Aluguéis/Venda Imob: N3 11404 (dentro do N2 114). Precisa vir ANTES
+          // da linha "Outras" (114) para que o fluxo 11404 seja classificado aqui
+          // (match por N3 exato) e NÃO caia em Outras (match por N2 114).
+          { code: '11404', label: 'Aluguéis/Venda Imob', keywords: ['Aluguel', 'Aluguéis', 'Alugueis', 'Locação', 'Locacao', 'Venda Imob', 'Venda de Imóv', 'Venda de Imov'] },
           { code: '114', label: 'Outras', keywords: ['Outra', 'Recebimento', 'Venda', 'Fatura', 'Nota Fiscal', 'NF', 'Cliente'] },
       ];
 
