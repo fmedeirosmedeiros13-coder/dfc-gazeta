@@ -3,7 +3,7 @@ import { Transaction, TransactionType } from '../types';
 import { BarChart, Bar, Tooltip, ResponsiveContainer, Cell, LabelList, XAxis, YAxis } from 'recharts';
 import { Briefcase, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { FinanceLayout } from './FinanceLayout';
-import { formatCurrency, classifyTax } from '../utils/finance';
+import { formatCurrency, classifyTax, parseDate } from '../utils/finance';
 
 interface ContasPagarProps {
   transactions: Transaction[];
@@ -139,7 +139,7 @@ export const ContasPagar: React.FC<ContasPagarProps> = ({
   
   const dailyData: Record<string, number> = {};
   allPayables.forEach(t => dailyData[t.date] = (dailyData[t.date] || 0) + (Number(t.value) || 0));
-  const vlDiaList = Object.entries(dailyData).map(([date, value]) => ({ date, value })).sort((a,b) => b.value - a.value);
+  const vlDiaList = Object.entries(dailyData).map(([date, value]) => ({ date, value })).sort((a,b) => parseDate(a.date) - parseDate(b.date));
 
   return (
     <div className={`flex flex-col ${isSlide ? 'gap-3 pb-0 h-full' : 'gap-6 pb-10'} animate-fadeIn`}>
