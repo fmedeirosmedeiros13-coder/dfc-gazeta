@@ -641,13 +641,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           else if (t.type === TransactionType.RECEIVABLE) {
               prefix = 'IN';
               const n2 = String(t.flowTypeLevel2 || '').trim();
+              const flowN3 = String(t.flowTypeCode || '').trim();
               const match = INFLOW_ROWS.find(r => {
-                  // 1ª prioridade: código de GRUPO (N2) do cadastro de Tipo de
-                  // Fluxo — é o nível certo pra esta classificação.
+                  // Código N3 exato (ex.: 11404 Aluguéis) tem prioridade sobre o
+                  // grupo N2, senão o 11404 cairia em "Outras" (114). Comparado já
+                  // convertido/trimado — o flowTypeCode pode vir como número ou com
+                  // espaços, e o '===' cru falharia (daí aparecer só no detalhe N3).
+                  if (r.code.length >= 4 && flowN3 === r.code) return true;
+                  // Código de GRUPO (N2) do cadastro de Tipo de Fluxo.
                   if (n2 && n2 === r.code) return true;
-                  // 2ª: código exato do item (N3) coincidindo com o do grupo
-                  // (raro, mas possível em cadastros mais simples).
-                  if (t.flowTypeCode === r.code) return true;
+                  // Código exato do item (N3) coincidindo com o do grupo.
+                  if (flowN3 === r.code) return true;
                   // 3ª (só se as duas acima não resolveram): palavra-chave —
                   // fallback impreciso, mantido só para dados sem N2 cadastrado.
                   return !n2 && r.keywords.some(k => text.includes(k.toUpperCase()));
