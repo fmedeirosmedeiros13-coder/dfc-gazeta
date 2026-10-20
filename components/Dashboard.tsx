@@ -552,7 +552,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           // Aluguéis/Venda Imob: N3 11404 (dentro do N2 114). Precisa vir ANTES
           // da linha "Outras" (114) para que o fluxo 11404 seja classificado aqui
           // (match por N3 exato) e NÃO caia em Outras (match por N2 114).
-          { code: '11404', label: 'Aluguéis/Venda Imob', keywords: ['Aluguel', 'Aluguéis', 'Alugueis', 'Locação', 'Locacao', 'Venda Imob', 'Venda de Imóv', 'Venda de Imov'] },
+          { code: '11404', displayCode: '114', label: 'Aluguéis/Venda Imob', keywords: ['Aluguel', 'Aluguéis', 'Alugueis', 'Locação', 'Locacao', 'Venda Imob', 'Venda de Imóv', 'Venda de Imov'] },
           { code: '114', label: 'Outras', keywords: ['Outra', 'Recebimento', 'Venda', 'Fatura', 'Nota Fiscal', 'NF', 'Cliente'] },
       ];
 
@@ -686,7 +686,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           }
       });
 
-      const renderDataRow = (rowDef: {code: string, label: string}, prefix: string) => {
+      const renderDataRow = (rowDef: {code: string, label: string, displayCode?: string}, prefix: string) => {
           const rowKey = `${prefix}_${rowDef.code}`;
           const rowTotal = totals[rowKey] || 0;
           const showCode = rowDef.code !== 'INV_TOTAL';
@@ -707,7 +707,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
               >
                   <td className={`${isSlide ? 'p-0.5 pl-1' : 'p-1 pl-4'} border-r border-slate-700 font-medium text-slate-300 flex gap-2 items-start whitespace-normal min-w-[250px]`}>
                       {canExpand && <ChevronRight className={`w-3 h-3 shrink-0 mt-0.5 text-slate-500 transition-transform ${isOpen ? 'rotate-90' : ''}`} />}
-                      {showCode && <span className="w-6 text-right text-slate-500 shrink-0">{rowDef.code}</span>}
+                      {showCode && <span className="w-6 text-right text-slate-500 shrink-0">{rowDef.displayCode || rowDef.code}</span>}
                       <span className="break-words leading-tight">{rowDef.label}</span>
                   </td>
                   {COLS.map(c => {
@@ -773,15 +773,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
       const getAfterInvestBalance = (cId: string) => getOperBalance(cId) - getInvestTotal(cId);
       const getFinalBalance = (cId: string) => getAfterInvestBalance(cId) + getFinancTotal(cId);
 
+      // Ordena por CÓDIGO N2 (não por valor). Linhas que são N3 (ex.: 11404
+      // Aluguéis) usam o N2 delas (os 3 primeiros dígitos → 114), caindo na
+      // posição certa entre as demais, igual às outras entradas.
+      const byN2Code = (a: { code: string }, b: { code: string }) => {
+          const n2a = parseInt(String(a.code).slice(0, 3), 10) || 0;
+          const n2b = parseInt(String(b.code).slice(0, 3), 10) || 0;
+          if (n2a !== n2b) return n2a - n2b;
+          return String(a.code).localeCompare(String(b.code));
+      };
+
       const sortedInflowRows = [...INFLOW_ROWS_EXT]
           .map(r => ({ ...r, total: totals[`IN_${r.code}`] || 0 }))
           .filter(r => r.total !== 0)
-          .sort((a, b) => b.total - a.total);
+          .sort(byN2Code);
 
       const sortedOutflowRows = [...OUTFLOW_ROWS_EXT]
           .map(r => ({ ...r, total: totals[`OUT_${r.code}`] || 0 }))
           .filter(r => r.total !== 0)
-          .sort((a, b) => b.total - a.total);
+          .sort(byN2Code);
       
       const sortedInvestRows = [...INVEST_ROWS]
           .map(r => ({ ...r, total: totals[`INV_${r.code}`] || 0 }))
