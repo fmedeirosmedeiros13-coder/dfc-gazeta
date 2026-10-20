@@ -123,11 +123,13 @@ const PT_BR = 'pt-BR';
  * Usar em células de tabela, cards de resumo, tooltips de gráficos.
  */
 export function formatCurrency(val: number): string {
+  // Exibição SEM casas decimais (pedido "GERAL"). Apenas formatação — a precisão
+  // dos cálculos e o casamento de valores continuam usando os números originais.
   return new Intl.NumberFormat(PT_BR, {
     style: 'currency',
     currency: 'BRL',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   }).format(val);
 }
 
