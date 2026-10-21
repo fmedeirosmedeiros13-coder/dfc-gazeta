@@ -4,7 +4,7 @@ import {
   FileSpreadsheet, ArrowDownCircle,
   ArrowUpCircle, Table2, Scale, CalendarRange,
   LayoutGrid, Calculator, PieChart, Projector,
-  Bell, TrendingUp, Activity,
+  Bell, TrendingUp, Activity, ShieldAlert, Lightbulb,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -51,8 +51,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ? { value: alertCounts!.warning, color: 'bg-amber-500' }
         : undefined,
     },
-    { mode: ViewMode.FORECAST_VIEW, label: 'Projeção', icon: TrendingUp },
-    { mode: ViewMode.AUDIT_VIEW,    label: 'Auditoria', icon: Activity },
+    { mode: ViewMode.FORECAST_VIEW,    label: 'Projeção', icon: TrendingUp },
+    { mode: ViewMode.RISK_VIEW,        label: 'Pontos Críticos', icon: ShieldAlert },
+    { mode: ViewMode.SUGGESTION_VIEW,  label: 'Aplicação / Resgate', icon: Lightbulb },
+    { mode: ViewMode.AUDIT_VIEW,       label: 'Auditoria', icon: Activity },
   ];
 
   const toolItems = [
