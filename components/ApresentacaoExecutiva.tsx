@@ -12,21 +12,21 @@ import { drawPayablesPage, drawReceivablesPage } from '../services/pdfNativeSlid
 import { formatCurrency, parseDate, COMPANIES, BANKS_MAPPING } from '../utils/finance';
 
 // ── Gráficos dos quadros de Pontos Críticos ──────────────────────────────────
-const RiskDonut: React.FC<{ pct: number; color: string; caption?: string }> = ({ pct, color, caption }) => {
+const RiskDonut: React.FC<{ pct: number; color: string; caption?: string; small?: boolean; track?: string }> = ({ pct, color, caption, small, track }) => {
   const p = Math.max(0, Math.min(100, pct));
   const data = [{ value: p }, { value: 100 - p }];
   return (
     <div className="relative w-full h-full flex items-center justify-center">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
-          <Pie data={data} dataKey="value" innerRadius="64%" outerRadius="88%" startAngle={90} endAngle={-270} stroke="none" isAnimationActive={false}>
+          <Pie data={data} dataKey="value" innerRadius="70%" outerRadius="90%" startAngle={90} endAngle={-270} stroke="none" isAnimationActive={false}>
             <Cell fill={color} />
-            <Cell fill="#1f2937" />
+            <Cell fill={track || '#46586c'} />
           </Pie>
         </PieChart>
       </ResponsiveContainer>
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-        <span className="text-3xl font-bold" style={{ color }}>{p.toFixed(0)}%</span>
+        <span className={`${small ? 'text-xl' : 'text-3xl'} font-bold`} style={{ color }}>{p.toFixed(0)}%</span>
         {caption && <span className="text-[10px] text-slate-500 mt-0.5 px-2 text-center">{caption}</span>}
       </div>
     </div>
@@ -676,16 +676,17 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                         </div>
                     );
                     const DonutCard = ({ title, pct, color, list }: { title: string; pct: number; color: string; list: { name: string; value: number }[] }) => (
-                        <div style={{ background: '#2E3C4E', borderRadius: 10, display: 'flex', flexDirection: 'column', padding: 12 }}>
-                            <div style={{ background: '#415468', color: '#fff', fontWeight: 700, fontSize: 10.5, textAlign: 'center', borderRadius: 6, padding: '4px 8px', lineHeight: 1.2 }}>{title} · {pct.toFixed(0)}%</div>
-                            <div style={{ height: 82, margin: '6px 0 2px' }}><RiskDonut pct={pct} color={color} /></div>
-                            <div style={{ borderTop: '1px solid #3a4a5c', paddingTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <div style={{ background: '#334457', borderRadius: 10, display: 'flex', flexDirection: 'column', padding: 12, border: '1px solid #44586d' }}>
+                            <div style={{ background: '#44586d', color: '#EAF2F8', fontWeight: 700, fontSize: 10.5, textAlign: 'center', borderRadius: 6, padding: '4px 8px', lineHeight: 1.2 }}>{title} · {pct.toFixed(0)}%</div>
+                            {/* Donut QUADRADO (fica redondo) e centralizado, % compacto */}
+                            <div style={{ width: 96, height: 96, margin: '8px auto 4px' }}><RiskDonut pct={pct} color={color} small track="#51657b" /></div>
+                            <div style={{ borderTop: '1px solid #44586d', paddingTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
                                 {list.length ? list.map((e, i) => (
                                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5 }}>
-                                        <span style={{ color: '#cdd8e2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{e.name}</span>
-                                        <span style={{ color: '#fff', fontWeight: 700 }}>{formatCurrency(e.value)}</span>
+                                        <span style={{ color: '#D6E2EC', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{e.name}</span>
+                                        <span style={{ color: '#FFFFFF', fontWeight: 700 }}>{formatCurrency(e.value)}</span>
                                     </div>
-                                )) : <span style={{ color: '#8892A0', fontSize: 9.5, fontStyle: 'italic', textAlign: 'center' }}>Sem registros.</span>}
+                                )) : <span style={{ color: '#9DB0C2', fontSize: 9.5, fontStyle: 'italic', textAlign: 'center' }}>Sem registros.</span>}
                             </div>
                         </div>
                     );
@@ -821,98 +822,6 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
         </div>
 
 
-        {/* PONTOS CRÍTICOS & ALOCAÇÃO */}
-        <div className="pdf-export-page bg-[#1e293b] w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-8 gap-6 border border-slate-800">
-            <header className="flex justify-between items-end pb-4 border-b border-slate-700 shrink-0">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-amber-600/20 rounded-lg">
-                        <svg className="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-100">Pontos Críticos & Alocação</h1>
-                        <p className="text-xs text-slate-400 uppercase tracking-widest">Análise de Risco</p>
-                    </div>
-                </div>
-                <p className="text-sm text-slate-400">{dateRange}</p>
-            </header>
-
-            <div className="flex-1 grid grid-cols-2 gap-5 min-h-0">
-                {(() => {
-                    const payables = transactions.filter(t => t.type === TransactionType.PAYABLE);
-                    const receivables = transactions.filter(t => t.type === TransactionType.RECEIVABLE);
-                    const totalOut = payables.reduce((s, t) => s + t.value, 0);
-                    const totalIn = receivables.reduce((s, t) => s + t.value, 0);
-
-                    // Concentração de recebimento por dia
-                    const recByDate: Record<string, number> = {};
-                    receivables.forEach(t => { recByDate[t.date] = (recByDate[t.date] || 0) + t.value; });
-                    const topRecDate = Object.entries(recByDate).sort((a, b) => b[1] - a[1])[0];
-                    const recConcentration = topRecDate && totalIn > 0 ? (topRecDate[1] / totalIn * 100) : 0;
-
-                    // Despesas de pessoal
-                    const pessoal = payables.filter(t => (t.flowTypeLevel2 || '').trim() === '201' || (t.category || '').toUpperCase().includes('PESSOAL'));
-                    const pessoalPct = totalOut > 0 ? (pessoal.reduce((s, t) => s + t.value, 0) / totalOut * 100) : 0;
-                    const pessoalVal = pessoal.reduce((s, t) => s + t.value, 0);
-
-                    // Impostos
-                    const impostos = payables.filter(t => ['209', '215'].includes((t.flowTypeLevel2 || '').trim()) || (t.category || '').toUpperCase().includes('TRIBUT') || (t.category || '').toUpperCase().includes('IMPOSTO'));
-                    const impPct = totalOut > 0 ? (impostos.reduce((s, t) => s + t.value, 0) / totalOut * 100) : 0;
-                    const impVal = impostos.reduce((s, t) => s + t.value, 0);
-
-                    // Investimentos/Resgates
-                    const investimentos = transactions.filter(t => t.type === TransactionType.APPLICATION);
-                    const invVal = investimentos.reduce((s, t) => s + t.value, 0);
-
-                    const fmtK = (v: number) => `R$ ${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil`;
-                    const fmtPct = (v: number) => `${v.toFixed(0)}%`;
-
-                    const cards = [
-                        {
-                            icon: '⏱', color: 'text-amber-400 bg-amber-500/10',
-                            title: 'Concentração de Recebimento',
-                            text: topRecDate ? `${fmtPct(recConcentration)} (${fmtK(topRecDate[1])}) dos recebimentos estão previstos para o dia ${topRecDate[0]}.` : 'Sem dados de recebimentos.',
-                            chart: <RiskDonut pct={recConcentration} color="#fbbf24" caption={topRecDate ? `concentrado em ${topRecDate[0]}` : 'do total recebido'} />,
-                        },
-                        {
-                            icon: '👥', color: 'text-sky-400 bg-sky-500/10',
-                            title: 'Despesas de Pessoal',
-                            text: totalOut > 0 ? `${fmtPct(pessoalPct)} (${fmtK(pessoalVal)}) do total de saídas está comprometido com Folha e Benefícios.` : 'Sem dados de saídas.',
-                            chart: <RiskDonut pct={pessoalPct} color="#38bdf8" caption="do total de saídas" />,
-                        },
-                        {
-                            icon: '🏛', color: 'text-blue-400 bg-blue-500/10',
-                            title: 'Impacto Tributário',
-                            text: totalOut > 0 ? `${fmtPct(impPct)} (${fmtK(impVal)}) referentes a impostos e contribuições no período. Federais antecipam, estaduais/municipais postergam.` : 'Sem dados de impostos.',
-                            chart: <RiskDonut pct={impPct} color="#60a5fa" caption="do total de saídas" />,
-                        },
-                        {
-                            icon: '🛡', color: 'text-emerald-400 bg-emerald-500/10',
-                            title: 'Estratégia de Liquidez',
-                            text: invVal > 0 ? `Aplicações/Resgates de investimentos no período: ${fmtK(invVal)}. Geração líquida de caixa: ${fmtK(totalIn - totalOut)}.` : `Geração líquida de caixa prevista: ${fmtK(totalIn - totalOut)}. Sem movimentação de investimentos.`,
-                            chart: <LiquidityBars entradas={totalIn} saidas={totalOut} resultado={totalIn - totalOut} />,
-                        },
-                    ];
-
-                    return cards.map((c, i) => (
-                        <div key={i} className="bg-[#111827] rounded-xl border border-slate-700/50 p-5 flex flex-col gap-3 min-h-0">
-                            <div className="flex gap-4 items-start shrink-0">
-                                <div className={`text-2xl p-3 rounded-lg ${c.color}`}>{c.icon}</div>
-                                <div>
-                                    <h4 className="text-base font-bold text-slate-100 mb-1">{c.title}</h4>
-                                    <p className="text-sm text-slate-400 leading-relaxed">{c.text}</p>
-                                </div>
-                            </div>
-                            <div className="flex-1 min-h-0">{c.chart}</div>
-                        </div>
-                    ));
-                })()}
-            </div>
-
-            <footer className="flex justify-between text-[10px] text-slate-600 border-t border-slate-700 pt-3 shrink-0">
-                <span>Confidencial — Uso Interno</span>
-                <span>Rede Gazeta</span>
-            </footer>
-        </div>
 
 
         {/* ESTRUTURA ALTERNATIVA PARA EXPORTAÇÃO PPT (OCULTA NA WEB) */}
