@@ -21,6 +21,8 @@ export enum ViewMode {
   ALERTS_VIEW            = 'alerts_view',
   FORECAST_VIEW          = 'forecast_view',
   AUDIT_VIEW             = 'audit_view',
+  RISK_VIEW              = 'risk_view',
+  SUGGESTION_VIEW        = 'suggestion_view',
 }
 
 /**
