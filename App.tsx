@@ -32,10 +32,12 @@ import { AlertsPanel }           from './components/AlertsPanel';
 import { ForecastChart }         from './components/ForecastChart';
 import { AuditLogView }          from './components/AuditLogView';
 import { DrillDownChart }        from './components/DrillDownChart';
+import { RiskAllocationView }    from './components/RiskAllocationView';
+import { SuggestionView }        from './components/SuggestionView';
 import {
   FileSpreadsheet, Scale, CalendarRange, LayoutGrid,
   Calculator, PieChart, Table2, Save, AlertTriangle,
-  Bell, RefreshCw, TrendingUp, Activity,
+  Bell, RefreshCw, TrendingUp, Activity, ShieldAlert, Lightbulb,
 } from 'lucide-react';
 
 // Serviços e engines
@@ -92,6 +94,8 @@ const VIEW_CONFIG: Record<ViewMode, { icon: React.ElementType; title: string }> 
   [ViewMode.ALERTS_VIEW]:            { icon: Bell,            title: 'Alertas & Anomalias'           },
   [ViewMode.FORECAST_VIEW]:          { icon: TrendingUp,      title: 'Projeção de Caixa'             },
   [ViewMode.AUDIT_VIEW]:             { icon: Activity,        title: 'Registro de Auditoria'         },
+  [ViewMode.RISK_VIEW]:              { icon: ShieldAlert,     title: 'Pontos Críticos & Alocação'    },
+  [ViewMode.SUGGESTION_VIEW]:        { icon: Lightbulb,       title: 'Sugestão de Aplicação / Resgate' },
 };
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -527,6 +531,15 @@ export default function App() {
           />
         ) : viewMode === ViewMode.RESUMO_FINANCEIRO ? (
           <ResumoFinanceiro key="resumo" summary={summary} transactions={filteredTransactions} aiAnalysis={aiAnalysis} isGeneratingAI={isGeneratingAI} onGenerateAI={handleGenerateAI} />
+        ) : viewMode === ViewMode.RISK_VIEW ? (
+          <RiskAllocationView transactions={filteredTransactions} />
+        ) : viewMode === ViewMode.SUGGESTION_VIEW ? (
+          <SuggestionView
+            transactions={filteredTransactions}
+            dfcManualValues={manualValues}
+            applicationSnapshots={applicationSnapshots.snapshots}
+            onManualValueChange={handleManualValueChange}
+          />
         ) : (
           <Dashboard
             key={viewMode}
