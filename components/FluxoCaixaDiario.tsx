@@ -573,10 +573,12 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
       const resgateAllowed = (
           companyId: string, companyName: string, fund: 'btg' | 'banestes',
           change: Record<string, number>, oldValue: number, newValue: number,
+          silent = false,
       ): boolean => {
           if (!(newValue > 0) || newValue <= oldValue) return true;
           const chk = checkResgateSaldo(transactions, { ...(dfcManualValues || {}), ...change }, companyId, fund);
           if (chk.status === 'ok') return true;
+          if (silent) return false;
           const motivo = chk.status === 'insuficiente'
               ? `${chk.fundo} importado: ${fmtBRL0(chk.saldo)}\nResgates com este lançamento: ${fmtBRL0(chk.lancado)}\nFalta: ${fmtBRL0(chk.falta)}`
               : `Não há ${chk.fundo} desta empresa na base de Aplicações importada.`;
@@ -922,9 +924,8 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                                      {(() => {
                                                          // Linha do Banestes: escolhe de qual aplicação sai (resgate) ou
                                                          // para qual vai (aplicação). Padrão: Fundo BTG.
-                                                         // Seletor SEMPRE visível na linha do Banestes: com o bloqueio de
-                                                         // saldo, é preciso escolher o fundo ANTES de digitar o resgate.
-                                                         const showFund = bRow.bank.id === 'BANESTES';
+                                                         // Seletor só aparece depois que há valor (resgate ou aplicação).
+                                                         const showFund = bRow.bank.id === 'BANESTES' && Number(day.resg) !== 0;
                                                          const keyFund = day.keyResg.replace(/^sim_resg_/, 'sim_fund_');
                                                          const isBanestesFund = Number(dfcManualValues?.[keyFund]) === 1;
                                                          return (
@@ -936,7 +937,23 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                                                          // BLOQUEIO: resgate maior do que o saldo importado do fundo
                                                                          // não é aceito (o campo volta ao valor anterior).
                                                                          const fund = bRow.bank.id === 'BANESTES' && isBanestesFund ? 'banestes' : 'btg';
-                                                                         if (!resgateAllowed(group.entity.id, group.entity.name, fund, { [day.keyResg]: v }, Number(day.resg) || 0, v)) return;
+                                                                         const oldV = Number(day.resg) || 0;
+                                                                         // Linha do Banestes, fundo atual sem saldo mas o OUTRO tem:
+                                                                         // oferece lançar pelo outro (o seletor só aparece depois do valor).
+                                                                         if (bRow.bank.id === 'BANESTES' && !resgateAllowed(group.entity.id, group.entity.name, fund, { [day.keyResg]: v }, oldV, v, true)) {
+                                                                             const other = fund === 'btg' ? 'banestes' : 'btg';
+                                                                             const otherChange = { [day.keyResg]: v, [keyFund]: other === 'banestes' ? 1 : 0 };
+                                                                             if (resgateAllowed(group.entity.id, group.entity.name, other, otherChange, oldV, v, true)) {
+                                                                                 const nome = other === 'banestes' ? 'CDB Banestes' : 'Fundo BTG';
+                                                                                 const atual = fund === 'banestes' ? 'CDB Banestes' : 'Fundo BTG';
+                                                                                 if (confirm(`${group.entity.name}: o ${atual} não tem saldo para este resgate.\n\nO ${nome} tem saldo. Lançar o resgate do ${nome}?`)) {
+                                                                                     onManualValueChange && onManualValueChange(keyFund, other === 'banestes' ? 1 : 0);
+                                                                                     onManualValueChange && onManualValueChange(day.keyResg, v);
+                                                                                 }
+                                                                                 return;
+                                                                             }
+                                                                         }
+                                                                         if (!resgateAllowed(group.entity.id, group.entity.name, fund, { [day.keyResg]: v }, oldV, v)) return;
                                                                          onManualValueChange && onManualValueChange(day.keyResg, v);
                                                                      }}
                                                                  />
