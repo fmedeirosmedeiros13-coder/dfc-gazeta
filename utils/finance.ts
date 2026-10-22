@@ -439,6 +439,39 @@ export function calcResgAplicSplit(
   return { resgates, aplicacoes };
 }
 
+/** Chave da aplicação de origem/destino do Resg Aplic de uma célula do FC Diário.
+ *  Valor: 1 = CDB Banestes; ausente/0 = Fundo BTG (padrão). */
+export function keyResgFund(companyId: string, bankId: string, dateBR: string): string {
+  return `sim_fund_${companyId}_${bankId}_${dateBR}`;
+}
+
+/**
+ * Resg Aplic do FC Diário separado por APLICAÇÃO (Fundo BTG × CDB Banestes).
+ * Positivo = resgate (sai da aplicação, entra no caixa); negativo = aplicação.
+ * Linha do Banestes: vale o seletor da célula (padrão BTG). Demais bancos: BTG.
+ */
+export function calcResgAplicByFund(
+  companyId: string,
+  manualValues: Record<string, number>,
+): { btg: number; banestes: number; total: number } {
+  let btg = 0, banestes = 0;
+  const mv = manualValues ?? {};
+  for (const [key, val] of Object.entries(mv)) {
+    if (!key.startsWith('sim_resg_')) continue;
+    const rest = key.slice('sim_resg_'.length);           // {empresa}_{banco}_{data}
+    const i1 = rest.indexOf('_');
+    if (i1 === -1 || rest.slice(0, i1) !== companyId) continue;
+    const i2 = rest.indexOf('_', i1 + 1);
+    const v = Number(val) || 0;
+    if (i2 === -1) { btg += v; continue; }                // chave sem banco: conta no BTG (mesmo total do calcResgAplicTotal)
+    const bankId = rest.slice(i1 + 1, i2);
+    const date = rest.slice(i2 + 1);
+    const fromBanestes = bankId === 'BANESTES' && Number(mv[keyResgFund(companyId, bankId, date)]) === 1;
+    if (fromBanestes) banestes += v; else btg += v;
+  }
+  return { btg, banestes, total: btg + banestes };
+}
+
 /**
  * Soma a coluna "Transf" do FC Diário Banco de uma empresa (chaves
  * sim_transf_{empresa}_{banco}_{data}). Usado no bloco 4 da DFC Consolidada

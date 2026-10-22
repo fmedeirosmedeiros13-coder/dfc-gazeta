@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Transaction, TransactionType } from '../types';
 import { ApplicationSnapshot } from '../hooks/useApplicationSnapshots';
-import { COMPANIES, BANKS_MAPPING, formatCurrency, parseDate } from '../utils/finance';
+import { COMPANIES, BANKS_MAPPING, formatCurrency, parseDate, calcResgAplicTotal } from '../utils/finance';
 
 interface Props {
   transactions: Transaction[];
@@ -47,7 +47,10 @@ export const SuggestionView: React.FC<Props> = ({ transactions, dfcManualValues,
       const projetado = banco + receber - pagar;
       const reserva = Number(dfcManualValues?.[`reserva_min_${co.id}`]) || 0;
       const excedente = projetado - reserva;
-      const aplicacoes = Number(aplicPorEmpresa[co.id] ?? aplicPorEmpresa[norm(co.id)] ?? 0);
+      // Posição em aplicações menos o que já foi resgatado no FC Diário (e mais o
+      // que já foi aplicado), para não sugerir resgatar o mesmo dinheiro duas vezes.
+      const aplicacoes = Number(aplicPorEmpresa[co.id] ?? aplicPorEmpresa[norm(co.id)] ?? 0)
+        - calcResgAplicTotal(co.id, dfcManualValues || {});
       return { id: co.id, name: co.name, banco, receber, pagar, projetado, reserva, excedente, aplicacoes };
     });
   }, [transactions, dfcManualValues, applicationSnapshots]);

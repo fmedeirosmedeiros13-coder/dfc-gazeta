@@ -1,6 +1,6 @@
 import React, { useRef, useState, useMemo } from 'react';
 import { Transaction, TransactionType, FinancialSummary, AIAnalysisResult, DashboardViewType, ManualValues } from '../types';
-import { parseDate, buildVlDiaList, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell, calcInitialBalance, calcResgAplicTotal, calcTransfTotal, isCapexTransaction, isDistribLucrosTransaction, getStartDate, getLatestExtractDate } from '../utils/finance';
+import { parseDate, buildVlDiaList, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell, calcInitialBalance, calcResgAplicTotal, calcResgAplicByFund, calcTransfTotal, isCapexTransaction, isDistribLucrosTransaction, getStartDate, getLatestExtractDate } from '../utils/finance';
 import { FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS } from '../utils/flowDePara';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, PieChart, Pie, LabelList, AreaChart, Area, LineChart, Line } from 'recharts';
 import { TrendingUp, TrendingDown, Wallet, AlertCircle, RefreshCw, Briefcase, ChevronRight, ArrowUpCircle, BrainCircuit, ShieldCheck, Lightbulb, Table2, Scale, Upload, Trash2, AlertTriangle, CheckCircle2, FileX, Tag, ArrowLeft, Layers, CalendarRange, DollarSign, Calendar, ArrowDownRight, ArrowUpRight, Printer, Calculator, Target, LayoutGrid, ListFilter, Landmark } from 'lucide-react';
@@ -1201,7 +1201,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           // Saldo Após Aplic/Resg = Saldo Atual + a previsão manual digitada na
           // linha logo acima. Antes, essa linha simplesmente repetia "Saldo
           // Atual" — o campo de previsão existia na tela mas não afetava nada.
-          const prevAplic = dfcManualValues?.[`dfc_prev_aplic_${cId}`] || 0;
+          // AUTOMÁTICO a partir do Resg Aplic do FC Diário: resgate (positivo)
+          // DIMINUI a aplicação, aplicação (negativo) SOMA. Não é mais digitado.
+          const prevAplic = -calcResgAplicTotal(cId, dfcManualValues ?? {});
           const saldoAposAplicResg = investment + prevAplic;
           // Total de Disponibilidades = caixa final + posição em aplicações (já
           // considerando a previsão manual de aplic/resg). O dinheiro não
@@ -1309,6 +1311,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
       // Recebimento sem linha no modelo (ex.: 100 Antecipações, 114 exceto Aluguéis,
       // 115-117) não some: aparece em "Outras Entradas" só quando existir.
       const hasOutrasEntradas = DFC_COLS.some(c => Math.round(inflowCat[INFLOW_CATS.length][c.id]) !== 0);
+      // Previsão de Aplic/Resg (lado da APLICAÇÃO) = −Resg Aplic do FC Diário,
+      // separado por aplicação de origem/destino (seletor da linha do Banestes).
+      const prevAplicByCol = zeroByCol(), prevBtgByCol = zeroByCol(), prevBanByCol = zeroByCol();
+      DFC_COLS.forEach(c => {
+          const f = calcResgAplicByFund(c.id, dfcManualValues ?? {});
+          prevBtgByCol[c.id] = -f.btg; prevBanByCol[c.id] = -f.banestes; prevAplicByCol[c.id] = -f.total;
+      });
       const capexNeg = zeroByCol(), lucrosNeg = zeroByCol();
       DFC_COLS.forEach(c => { capexNeg[c.id] = -capexByCol[c.id]; lucrosNeg[c.id] = -lucrosByCol[c.id]; });
       const sumCols = (r: Record<string, number>) => DFC_COLS.reduce((a, c) => a + (r[c.id] || 0), 0);
@@ -1431,7 +1440,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                             renderRow('Ebricks', 'DATA', { tType: TransactionType.APPLICATION, filter: 'Ebricks' })}
 
                         {renderSummaryRow('SALDO ATUAL', 'investment', 'bg-[#1e3a8a]', 'text-white')}
-                        {renderRow('(+/-) Previsão de Aplic/Resg', 'INPUT', { manualKey: 'dfc_prev_aplic', bgColor: 'bg-amber-900/30', textColor: 'text-amber-200' })}
+                        {/* Automático (Resg Aplic do FC Diário): resgate diminui, aplicação soma */}
+                        {renderValRow('(+/-) Previsão de Aplic/Resg (automático)', prevAplicByCol, 'sub', 'text-amber-200')}
+                        {prevBtgByCol && DFC_COLS.some(c => Math.round(prevBtgByCol[c.id]) !== 0) && renderValRow('↳ Fundo BTG Pactual', prevBtgByCol, 'item', 'text-amber-200')}
+                        {prevBanByCol && DFC_COLS.some(c => Math.round(prevBanByCol[c.id]) !== 0) && renderValRow('↳ CDB Banestes', prevBanByCol, 'item', 'text-amber-200')}
                         {renderSummaryRow('SALDO APÓS APLIC/RESG', 'saldoAposAplicResg', 'bg-[#1e3a8a]', 'text-white')}
 
                         <tr className={`${isSlide ? '' : 'h-4'} bg-slate-900`} style={isSlide ? { height: '0.6cqw' } : undefined}></tr>

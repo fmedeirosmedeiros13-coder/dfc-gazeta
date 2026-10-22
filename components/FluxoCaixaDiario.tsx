@@ -10,7 +10,7 @@ import { detectBank } from '../engines/bankExtratoDetector';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 import { Transaction, TransactionType, ManualValues } from '../types';
-import { parseDate, BANKS_MAPPING, byDate, moveToNextBusinessDay, COMPANIES, getLatestCloseBefore } from '../utils/finance';
+import { parseDate, BANKS_MAPPING, byDate, moveToNextBusinessDay, COMPANIES, getLatestCloseBefore, calcResgAplicTotal } from '../utils/finance';
 import { Calculator, AlertTriangle, Trash2 } from 'lucide-react';
 
 // Data canônica em ISO (yyyy-mm-dd), independente do formato de exibição.
@@ -560,7 +560,10 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                   if (minTime !== null && parseDate(date) < minTime) return; // dia anterior ao último extrato importado — ignora
                   const sdFinal = s.days[i]?.sdFinal;
                   if (typeof sdFinal === 'number' && sdFinal < 0) {
-                      const aplicacaoDisponivel = latestApplicationSnapshot?.porEmpresa[s.entity.id] || 0;
+                      // Posição em aplicações MENOS o que já foi resgatado no FC Diário
+                      // (e mais o que já foi aplicado) — não sugere resgatar 2x.
+                      const aplicacaoDisponivel = (latestApplicationSnapshot?.porEmpresa[s.entity.id] || 0)
+                          - calcResgAplicTotal(s.entity.id, dfcManualValues || {});
                       warnings.push({
                           companyId: s.entity.id,
                           companyName: s.entity.name,
@@ -573,7 +576,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
           });
           return warnings;
           // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [structuredData, displayDates, hideBeforeDate, latestApplicationSnapshot, latestImportedDateISO]);
+      }, [structuredData, displayDates, hideBeforeDate, latestApplicationSnapshot, latestImportedDateISO, dfcManualValues]);
 
       return (
          <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 overflow-hidden flex flex-col h-full animate-fadeIn">
@@ -739,7 +742,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                      className="border-collapse text-[10px] table-fixed"
                      onMouseDown={(e) => {
                          const target = e.target as HTMLElement;
-                         if (target.tagName === 'INPUT') return;
+                         if (target.tagName === 'INPUT' || target.closest('button')) return;
                          const cell = target.closest('td');
                          const field = cell?.querySelector('input') as HTMLInputElement | null;
                          if (field) { e.preventDefault(); field.focus(); }
@@ -851,11 +854,32 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                                      {day.pagtos !== 0 ? day.pagtos.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}
                                                  </td>
                                                  <td className="border border-slate-800 p-0 bg-amber-900/5">
-                                                     <CurrencyInput
-                                                         className="w-full h-full bg-transparent text-center px-1 text-blue-500/70 text-[10px] outline-none"
-                                                         value={day.resg}
-                                                         onCommit={(v) => onManualValueChange && onManualValueChange(day.keyResg, v)}
-                                                     />
+                                                     {(() => {
+                                                         // Linha do Banestes com Resg Aplic: escolhe de qual aplicação
+                                                         // sai (resgate) ou para qual vai (aplicação). Padrão: Fundo BTG.
+                                                         const showFund = bRow.bank.id === 'BANESTES' && Number(day.resg) !== 0;
+                                                         const keyFund = day.keyResg.replace(/^sim_resg_/, 'sim_fund_');
+                                                         const isBanestesFund = Number(dfcManualValues?.[keyFund]) === 1;
+                                                         return (
+                                                             <div className="flex items-center h-full">
+                                                                 <CurrencyInput
+                                                                     className="flex-1 min-w-0 h-full bg-transparent text-center px-1 text-blue-500/70 text-[10px] outline-none"
+                                                                     value={day.resg}
+                                                                     onCommit={(v) => onManualValueChange && onManualValueChange(day.keyResg, v)}
+                                                                 />
+                                                                 {showFund && (
+                                                                     <button
+                                                                         type="button"
+                                                                         title={`${Number(day.resg) > 0 ? 'Resgate do' : 'Aplicação no'} ${isBanestesFund ? 'CDB Banestes' : 'Fundo BTG'} — clique para trocar`}
+                                                                         onClick={() => onManualValueChange && onManualValueChange(keyFund, isBanestesFund ? 0 : 1)}
+                                                                         className={`shrink-0 mr-0.5 px-1 rounded text-[8px] font-bold leading-[14px] border ${isBanestesFund ? 'bg-amber-600 text-white border-amber-500' : 'bg-indigo-700 text-white border-indigo-500'}`}
+                                                                     >
+                                                                         {isBanestesFund ? 'BAN' : 'BTG'}
+                                                                     </button>
+                                                                 )}
+                                                             </div>
+                                                         );
+                                                     })()}
                                                  </td>
                                                  <td className="border border-slate-800 p-0 bg-amber-900/5">
                                                       <CurrencyInput
