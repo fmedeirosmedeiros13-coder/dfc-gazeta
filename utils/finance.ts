@@ -114,6 +114,34 @@ export function parseDate(d: unknown): number {
   return 0;
 }
 
+/**
+ * Normaliza a data de um lançamento para dd/mm/aaaa, tolerando o que vem
+ * "sujo" da importação (hora junto, caractere invisível, formato ISO).
+ * Usado no VL DIA para agrupar o mesmo dia e ordenar em ordem CRESCENTE.
+ * Retorna o texto original quando não reconhece a data.
+ */
+export function normalizeDayLabel(d: unknown): string {
+  const raw = String(d ?? '');
+  const br = raw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (br) return `${br[1].padStart(2, '0')}/${br[2].padStart(2, '0')}/${br[3]}`;
+  const iso = raw.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  return raw.trim();
+}
+
+/** Lista do VL DIA: soma por dia e ordena por data crescente (sem data vai pro fim). */
+export function buildVlDiaList(list: { date?: unknown; value?: unknown }[]): { date: string; value: number }[] {
+  const byDay: Record<string, number> = {};
+  list.forEach(t => {
+    const k = normalizeDayLabel(t.date);
+    byDay[k] = (byDay[k] || 0) + (Number(t.value) || 0);
+  });
+  const key = (label: string) => parseDate(label) || Number.MAX_SAFE_INTEGER;
+  return Object.entries(byDay)
+    .map(([date, value]) => ({ date, value }))
+    .sort((a, b) => key(a.date) - key(b.date));
+}
+
 // ─── 4. FORMATAÇÃO DE VALORES ─────────────────────────────────────────────────
 
 const PT_BR = 'pt-BR';
@@ -409,6 +437,60 @@ export function calcResgAplicSplit(
     else aplicacoes += Math.abs(v);
   }
   return { resgates, aplicacoes };
+}
+
+/**
+ * Soma a coluna "Transf" do FC Diário Banco de uma empresa (chaves
+ * sim_transf_{empresa}_{banco}_{data}). Usado no bloco 4 da DFC Consolidada
+ * (Empréstimos/Mútuos). Mesmo critério de calcResgAplicTotal: positivo = entrou
+ * no caixa, negativo = saiu.
+ */
+export function calcTransfTotal(
+  companyId: string,
+  manualValues: Record<string, number>,
+): number {
+  let total = 0;
+  for (const [key, val] of Object.entries(manualValues ?? {})) {
+    if (!key.startsWith('sim_transf_')) continue;
+    const parts = key.split('_');
+    if (parts[2] === companyId) total += Number(val) || 0;
+  }
+  return total;
+}
+
+/**
+ * Capex (Investimentos): pagamento com investmentDescription preenchido, OU
+ * categoria "Investimento", OU fluxo de Investimento N2 401–405 (sem 40002, 40003, 40013).
+ * Critério único — usado na DFC Consolidada e na página principal do
+ * Demonstrativo, para os dois sempre baterem.
+ */
+const CAPEX_N3_EXCLUIDOS = new Set(['40002', '40003', '40013']);
+const CAPEX_N3 = new Set(['40001','40004','40005','40006','40007','40008','40009','40010','40011','40012','40014','40015']);
+
+export function isCapexTransaction(t: Transaction): boolean {
+  if (t.type !== TransactionType.PAYABLE) return false;
+  if (t.investmentDescription && t.investmentDescription.trim() !== '') return true;
+  if (t.category === 'Investimento') return true;
+  const n2 = String(t.flowTypeLevel2 ?? '').trim();
+  const code = String(t.flowTypeCode ?? '').trim();
+  // Fluxos de Investimento do cadastro (Tipo de Fluxo): N2 401 a 405 e seus N3.
+  // FORA do Capex (grupo 400): 40002 Correção Monetária IPC/BTNF,
+  // 40003 Direito de Uso Telefone e 40013 Semoventes.
+  // O N3 cobre o lançamento que vier sem N2; "401" cru mantido por compatibilidade.
+  if (CAPEX_N3_EXCLUIDOS.has(code)) return false;
+  return /^40[1-5]$/.test(n2) || CAPEX_N3.has(code) || code === '401';
+}
+
+/**
+ * Distribuição de Lucros: N2 217 do cadastro. Palavra-chave (lucro/dividendo)
+ * só como fallback para lançamento SEM N2 cadastrado.
+ */
+export function isDistribLucrosTransaction(t: Transaction): boolean {
+  if (t.type !== TransactionType.PAYABLE) return false;
+  const n2 = String(t.flowTypeLevel2 ?? '').trim();
+  if (n2) return n2 === '217';
+  const text = ((t.category || '') + ' ' + (t.description || '')).toLowerCase();
+  return text.includes('lucro') || text.includes('dividendo');
 }
 
 // ─── 8. ORDENAÇÃO ─────────────────────────────────────────────────────────────

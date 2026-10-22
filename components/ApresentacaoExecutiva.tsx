@@ -9,10 +9,10 @@ import html2canvas from "html2canvas";
 import { PPTExportAlternative } from './PPTExportAlternative';
 import { generatePayablesSlide, generateReceivablesSlide } from '../services/pptxNativeSlides';
 import { drawPayablesPage, drawReceivablesPage } from '../services/pdfNativeSlides';
-import { formatCurrency, parseDate, COMPANIES, BANKS_MAPPING } from '../utils/finance';
+import { formatCurrency, parseDate, COMPANIES, BANKS_MAPPING, isCapexTransaction } from '../utils/finance';
 
 // ── Gráficos dos quadros de Pontos Críticos ──────────────────────────────────
-const RiskDonut: React.FC<{ pct: number; color: string; caption?: string; small?: boolean; track?: string }> = ({ pct, color, caption, small, track }) => {
+const RiskDonut: React.FC<{ pct: number; color: string; caption?: string; small?: boolean; track?: string; pctFontSize?: string }> = ({ pct, color, caption, small, track, pctFontSize }) => {
   const p = Math.max(0, Math.min(100, pct));
   const data = [{ value: p }, { value: 100 - p }];
   return (
@@ -26,7 +26,7 @@ const RiskDonut: React.FC<{ pct: number; color: string; caption?: string; small?
         </PieChart>
       </ResponsiveContainer>
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-        <span className={`${small ? 'text-xl' : 'text-3xl'} font-bold`} style={{ color }}>{p.toFixed(0)}%</span>
+        <span className={`${pctFontSize ? '' : (small ? 'text-xl' : 'text-3xl')} font-bold`} style={{ color, ...(pctFontSize ? { fontSize: pctFontSize } : {}) }}>{p.toFixed(0)}%</span>
         {caption && <span className="text-[10px] text-slate-500 mt-0.5 px-2 text-center">{caption}</span>}
       </div>
     </div>
@@ -152,11 +152,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   // com investmentDescription preenchido, OU categoria "Investimento", OU fluxo 401.
   const totalCapex = useMemo(() => {
       return transactions
-          .filter(t => t.type === TransactionType.PAYABLE && t.status === 'PREVISTO' && (
-              (t.investmentDescription && t.investmentDescription.trim() !== '') ||
-              t.category === 'Investimento' ||
-              t.flowTypeCode === '401'
-          ))
+          .filter(t => t.type === TransactionType.PAYABLE && t.status === 'PREVISTO' && isCapexTransaction(t))
           .reduce((s, t) => s + (Number(t.value) || 0), 0);
   }, [transactions]);
 
@@ -217,7 +213,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
     const a = Math.abs(v);
     if (a >= 1e6) return 'R$ ' + (v / 1e6).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' mi';
     if (a >= 1e3) return 'R$ ' + (v / 1e3).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' mil';
-    return 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   };
 
   // ── SUGESTÃO DE APLICAÇÃO / RESGATE POR EMPRESA (previsão) ──────────────────
@@ -621,27 +617,30 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
         </div>
 
         {/* PÁGINA 1: DEMONSTRATIVO FINANCEIRO CONSOLIDADO */}
-        <div className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-8 gap-6 border border-slate-800">
-            {/* CABEÇALHO INSTITUCIONAL */}
-            <header className="flex justify-between items-end pb-4 border-b border-slate-800 shrink-0">
+        <div className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-8 gap-6 border border-slate-800" style={{ containerType: 'inline-size' as any, padding: '2.5cqw', gap: '1.6cqw' }}>
+            {/* CABEÇALHO INSTITUCIONAL — tamanhos em cqw (escala com a página) */}
+            <header className="flex justify-between items-end border-b border-slate-800 shrink-0" style={{ paddingBottom: '1.1cqw' }}>
                 <div>
-                    <h2 className="text-sm font-medium text-slate-400 uppercase tracking-widest mb-1">
+                    <h2 className="font-medium text-slate-400 uppercase tracking-widest" style={{ fontSize: 'clamp(8px, 1.05cqw, 16px)', marginBottom: '0.3cqw' }}>
                         Rede Gazeta
                     </h2>
-                    <h1 className="text-3xl font-semibold text-slate-100 tracking-tight uppercase leading-none">
+                    <h1 className="font-semibold text-slate-100 tracking-tight uppercase leading-none" style={{ fontSize: 'clamp(14px, 2.3cqw, 40px)' }}>
                         Demonstrativo Financeiro Consolidado
                     </h1>
                 </div>
                 <div className="text-right flex flex-col items-end">
-                    <p className="text-lg font-semibold text-slate-300 uppercase tracking-tight">{dateRange}</p>
+                    <p className="font-semibold text-slate-300 uppercase tracking-tight whitespace-nowrap" style={{ fontSize: 'clamp(10px, 1.4cqw, 24px)' }}>{dateRange}</p>
                 </div>
             </header>
 
-            {/* CORPO — MODELO (slide 3): 2 caixas (com centavos) + 2 donuts (top 5) + Análise */}
-            <div className="flex-1 flex flex-col gap-4 min-h-0">
+            {/* CORPO — MODELO (slide 3): 2 caixas + 2 donuts (top 5) + Análise, meio a meio */}
+            <div className="flex-1 flex flex-col min-h-0" style={{ gap: '1.2cqw' }}>
                 {(() => {
-                    // Caixas pedem valor CHEIO com centavos (o geral do app é sem decimais).
-                    const fmtC = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+                    // Valores das caixas SEM casas decimais (só exibição).
+                    const fmtC = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v);
+                    // Fontes em cqw: crescem/encolhem com a largura da página (16:9),
+                    // então o que cabe na tela cabe igual na exportação.
+                    const F = { boxTitle: 'clamp(8px, 1.2cqw, 22px)', row: 'clamp(8px, 1.12cqw, 21px)', donutTitle: 'clamp(7px, 0.95cqw, 18px)', list: 'clamp(7px, 0.92cqw, 17px)', pct: 'clamp(11px, 1.9cqw, 36px)' };
                     const saidasOperac = summary.totalOutflow - totalCapex;      // Saídas sem o Capex
                     const aplicResgNet = totalManualResgates - totalManualAplicacoes; // (-/+)
                     const hasSnapshot = applicationSnapshots.length >= 1;
@@ -663,11 +662,11 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                         { l: 'SD Final',      v: appClosing,           c: '#283848', b: true, tot: true },
                     ];
                     const Box = ({ title, rows }: { title: string; rows: any[] }) => (
-                        <div style={{ background: '#fff', border: '1px solid #BFD3D8', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                            <div style={{ background: '#1F6F7A', color: '#fff', fontWeight: 700, textAlign: 'center', fontSize: 13, padding: '7px' }}>{title}</div>
-                            <div style={{ padding: '8px 13px', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ background: '#fff', border: '1px solid #BFD3D8', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+                            <div style={{ background: '#1F6F7A', color: '#fff', fontWeight: 700, textAlign: 'center', fontSize: F.boxTitle, padding: '0.55cqw' }}>{title}</div>
+                            <div style={{ padding: '0.6cqw 1.1cqw', display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', flex: 1, minHeight: 0 }}>
                                 {rows.map((r, i) => (
-                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 12.5, borderTop: r.tot ? '1px solid #BFD3D8' : 'none', marginTop: r.tot ? 2 : 0, paddingTop: r.tot ? 6 : 3 }}>
+                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '0.25cqw 0', fontSize: F.row, borderTop: r.tot ? '1px solid #BFD3D8' : 'none', paddingTop: r.tot ? '0.5cqw' : '0.25cqw', whiteSpace: 'nowrap' }}>
                                         <span style={{ color: r.b ? '#283848' : '#5C6C77', fontWeight: r.b ? 800 : 400 }}>{r.l}</span>
                                         <span style={{ fontWeight: 700, color: r.c }}>{fmtC(r.v)}</span>
                                     </div>
@@ -676,22 +675,22 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                         </div>
                     );
                     const DonutCard = ({ title, pct, color, list }: { title: string; pct: number; color: string; list: { name: string; value: number }[] }) => (
-                        <div style={{ background: '#334457', borderRadius: 10, display: 'flex', flexDirection: 'column', padding: 12, border: '1px solid #44586d' }}>
-                            <div style={{ background: '#44586d', color: '#EAF2F8', fontWeight: 700, fontSize: 10.5, textAlign: 'center', borderRadius: 6, padding: '4px 8px', lineHeight: 1.2 }}>{title} · {pct.toFixed(0)}%</div>
-                            {/* Donut QUADRADO (fica redondo) e centralizado, % compacto */}
-                            <div style={{ width: 96, height: 96, margin: '8px auto 4px' }}><RiskDonut pct={pct} color={color} small track="#51657b" /></div>
-                            <div style={{ borderTop: '1px solid #44586d', paddingTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <div style={{ background: '#334457', borderRadius: 10, display: 'flex', flexDirection: 'column', padding: '0.8cqw', border: '1px solid #44586d', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+                            <div style={{ background: '#44586d', color: '#EAF2F8', fontWeight: 700, fontSize: F.donutTitle, textAlign: 'center', borderRadius: 6, padding: '0.3cqw 0.6cqw', lineHeight: 1.2, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+                            {/* Donut ocupa o espaço que sobra entre o título e a lista (sempre redondo) */}
+                            <div style={{ flex: 1, minHeight: 0, margin: '0.4cqw 0' }}><RiskDonut pct={pct} color={color} small track="#51657b" pctFontSize={F.pct} /></div>
+                            <div style={{ borderTop: '1px solid #44586d', paddingTop: '0.35cqw', display: 'flex', flexDirection: 'column', gap: '0.2cqw', flexShrink: 0 }}>
                                 {list.length ? list.map((e, i) => (
-                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5 }}>
-                                        <span style={{ color: '#D6E2EC', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{e.name}</span>
-                                        <span style={{ color: '#FFFFFF', fontWeight: 700 }}>{formatCurrency(e.value)}</span>
+                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: F.list, lineHeight: 1.3 }}>
+                                        <span style={{ color: '#D6E2EC', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{e.name}</span>
+                                        <span style={{ color: '#FFFFFF', fontWeight: 700, whiteSpace: 'nowrap' }}>{formatCurrency(e.value)}</span>
                                     </div>
-                                )) : <span style={{ color: '#9DB0C2', fontSize: 9.5, fontStyle: 'italic', textAlign: 'center' }}>Sem registros.</span>}
+                                )) : <span style={{ color: '#9DB0C2', fontSize: F.list, fontStyle: 'italic', textAlign: 'center' }}>Sem registros.</span>}
                             </div>
                         </div>
                     );
                     return (
-                        <div className="grid grid-cols-4 gap-4 shrink-0">
+                        <div className="grid grid-cols-4" style={{ flex: '1 1 0', minHeight: 0, gap: '1.2cqw' }}>
                             <Box title="Contas Correntes + Caixa" rows={caixaRows} />
                             <Box title="Aplicações" rows={aplicRows} />
                             <DonutCard title="Recebimentos — 5 MAIORES CLIENTES" pct={custConcPct} color="#E0A526" list={top5Customers} />
@@ -701,9 +700,9 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                 })()}
 
                 {/* Análise do Período (automática + editável) */}
-                <div className="flex-1 border border-slate-800 bg-slate-950/50 rounded-lg p-5 flex flex-col relative group min-h-0">
-                    <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-3 shrink-0">
-                        <h3 className="text-lg font-semibold text-slate-200">Análise do Período</h3>
+                <div className="border border-slate-800 bg-slate-950/50 rounded-lg flex flex-col relative group min-h-0" style={{ flex: '1 1 0', padding: '1.1cqw 1.4cqw' }}>
+                    <div className="flex justify-between items-center border-b border-slate-800 shrink-0" style={{ paddingBottom: '0.6cqw', marginBottom: '0.7cqw' }}>
+                        <h3 className="font-semibold text-slate-200" style={{ fontSize: 'clamp(9px, 1.3cqw, 24px)' }}>Análise do Período</h3>
                         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">
                             {isEditingAnalise ? (
                                 <button onClick={() => setIsEditingAnalise(false)} className="p-1.5 text-emerald-400 hover:bg-slate-800 rounded-md transition-colors" title="Salvar"><Check className="w-4 h-4" /></button>
@@ -718,9 +717,9 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                     </div>
                     <div className="flex-1 min-h-0">
                         {isEditingAnalise ? (
-                            <textarea value={analiseText} onChange={(e) => setAnaliseText(e.target.value)} className="w-full h-full p-4 text-sm font-normal text-slate-300 bg-slate-900 border border-slate-700 rounded-md focus:outline-none focus:border-slate-500 resize-none custom-scrollbar" placeholder="Insira a análise do período aqui..." />
+                            <textarea value={analiseText} onChange={(e) => setAnaliseText(e.target.value)} style={{ fontSize: 'clamp(8px, 1.08cqw, 20px)' }} className="w-full h-full p-4 font-normal text-slate-300 bg-slate-900 border border-slate-700 rounded-md focus:outline-none focus:border-slate-500 resize-none custom-scrollbar" placeholder="Insira a análise do período aqui..." />
                         ) : (
-                            <div className="h-full overflow-y-auto pr-4 text-sm font-normal text-slate-300 leading-relaxed text-justify whitespace-pre-wrap custom-scrollbar">
+                            <div className="h-full overflow-y-auto pr-4 font-normal text-slate-300 leading-relaxed text-justify whitespace-pre-wrap custom-scrollbar" style={{ fontSize: 'clamp(8px, 1.08cqw, 20px)' }}>
                                 {analiseText || <span className="text-slate-500 italic">Nenhuma análise gerada. Utilize os controles para adicionar.</span>}
                             </div>
                         )}
@@ -731,18 +730,19 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
 
         {/* Páginas "Resumo Financeiro" removida (segue no app). O antigo "Fluxo de
             Caixa (DFC)" foi TROCADO pela visão "DFC Consolidada" (mais resumida). */}
-        <div className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-8 gap-6 border border-slate-800">
-            <header className="flex justify-between items-end pb-4 border-b border-slate-800 shrink-0">
+        <div className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto border border-slate-800" style={{ containerType: 'inline-size' as any, padding: '2cqw 2.5cqw', gap: '1.2cqw' }}>
+            {/* Tamanhos em cqw: a tabela inteira escala com a página e cabe no 16:9 */}
+            <header className="flex justify-between items-end border-b border-slate-800 shrink-0" style={{ paddingBottom: '0.8cqw' }}>
                 <div>
-                    <h2 className="text-sm font-medium text-slate-400 uppercase tracking-widest mb-1">
+                    <h2 className="font-medium text-slate-400 uppercase tracking-widest" style={{ fontSize: 'clamp(8px, 1.05cqw, 16px)', marginBottom: '0.3cqw' }}>
                         Rede Gazeta
                     </h2>
-                    <h1 className="text-3xl font-semibold text-slate-100 tracking-tight uppercase leading-none">
+                    <h1 className="font-semibold text-slate-100 tracking-tight uppercase leading-none" style={{ fontSize: 'clamp(14px, 2.3cqw, 40px)' }}>
                         DFC Consolidada
                     </h1>
                 </div>
                 <div className="text-right flex flex-col items-end">
-                    <p className="text-lg font-semibold text-slate-300 uppercase tracking-tight">{dateRange}</p>
+                    <p className="font-semibold text-slate-300 uppercase tracking-tight whitespace-nowrap" style={{ fontSize: 'clamp(10px, 1.4cqw, 24px)' }}>{dateRange}</p>
                 </div>
             </header>
             <div className="flex-1 overflow-hidden min-h-0">

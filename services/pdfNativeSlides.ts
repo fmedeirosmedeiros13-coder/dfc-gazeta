@@ -8,7 +8,7 @@
  */
 import type jsPDF from 'jspdf';
 import { Transaction, TransactionType } from '../types';
-import { classifyTax } from '../utils/finance';
+import { classifyTax, buildVlDiaList } from '../utils/finance';
 
 // ─── PALETA ───────────────────────────────────────────────────────────────────
 const BG           = [15, 23, 42];     // #0f172a
@@ -43,7 +43,7 @@ const COMPANIES_MAP: Record<string, string> = {
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const fmtVal = (v: number) => Math.round(v).toLocaleString('pt-BR');
-const fmtFull = (v: number) => v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtFull = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const trunc = (s: string, max: number) => s.length > max ? s.substring(0, max-1)+'…' : s;
 const normalizeCategory = (cat?: string) => (cat||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
 
@@ -259,9 +259,8 @@ export function drawPayablesPage(
   chartPayables.forEach(t=>{const code=String(t.companyCode||'').trim();const k=COMPANIES_MAP[code]||(code?`Emp ${code}`:'N/D');companyMap[k]=(companyMap[k]||0)+(Number(t.value)||0);});
   const companyData=Object.entries(companyMap).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
 
-  const dailyMap:Record<string,number>={};
-  allPayables.forEach(t=>{dailyMap[t.date]=(dailyMap[t.date]||0)+(Number(t.value)||0);});
-  const vlDia=Object.entries(dailyMap).map(([date,value])=>({date,value})).sort((a,b)=>b.value-a.value);
+  // VL DIA em ordem CRESCENTE de data (mesma regra da tela)
+  const vlDia = buildVlDiaList(allPayables);
 
   const catInvest=agg.filter(it=>{const p=allPayables.find(pp=>(pp.supplierCode||pp.supplier||pp.description||'Desconhecido')===it.id);return p?(normalizeCategory(p.category).includes('INVESTIMENTO')||normalizeCategory(p.category).includes('OBRA')):false;}).sort((a,b)=>b.value-a.value);
   const catImpost=agg.filter(it=>{const p=allPayables.find(pp=>(pp.supplierCode||pp.supplier||pp.description||'Desconhecido')===it.id);return p?classifyTax(p)!==null:false;}).sort((a,b)=>b.value-a.value);
@@ -326,9 +325,8 @@ export function drawReceivablesPage(
   allRec.forEach(t=>{const code=String(t.companyCode||'').trim();const k=COMPANIES_MAP[code]||(code?`Emp ${code}`:'N/D');companyMap[k]=(companyMap[k]||0)+(Number(t.value)||0);});
   const companyData=Object.entries(companyMap).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
 
-  const dailyMap:Record<string,number>={};
-  allRec.forEach(t=>{dailyMap[t.date]=(dailyMap[t.date]||0)+(Number(t.value)||0);});
-  const vlDia=Object.entries(dailyMap).map(([date,value])=>({date,value})).sort((a,b)=>b.value-a.value);
+  // VL DIA em ordem CRESCENTE de data (mesma regra da tela)
+  const vlDia = buildVlDiaList(allRec);
 
   // ── Desenho ─────────────────────────────────────────────────────────────
   drawHeader(pdf, 'CONTAS A RECEBER', dateRange);

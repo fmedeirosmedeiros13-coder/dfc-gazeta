@@ -23,7 +23,7 @@ export const ResumoExecutivoSlide: React.FC<ResumoExecutivoSlideProps> = ({
     if (Math.abs(val) >= 1000) {
       return (val / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + 'k';
     }
-    return val.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+    return val.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   };
 
   const chartData = useMemo(() => {

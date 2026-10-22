@@ -1,6 +1,6 @@
 import React, { useRef, useState, useMemo } from 'react';
 import { Transaction, TransactionType, FinancialSummary, AIAnalysisResult, DashboardViewType, ManualValues } from '../types';
-import { parseDate, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell, calcInitialBalance, calcResgAplicTotal, getStartDate, getLatestExtractDate } from '../utils/finance';
+import { parseDate, buildVlDiaList, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell, calcInitialBalance, calcResgAplicTotal, calcTransfTotal, isCapexTransaction, isDistribLucrosTransaction, getStartDate, getLatestExtractDate } from '../utils/finance';
 import { FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS } from '../utils/flowDePara';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, PieChart, Pie, LabelList, AreaChart, Area, LineChart, Line } from 'recharts';
 import { TrendingUp, TrendingDown, Wallet, AlertCircle, RefreshCw, Briefcase, ChevronRight, ArrowUpCircle, BrainCircuit, ShieldCheck, Lightbulb, Table2, Scale, Upload, Trash2, AlertTriangle, CheckCircle2, FileX, Tag, ArrowLeft, Layers, CalendarRange, DollarSign, Calendar, ArrowDownRight, ArrowUpRight, Printer, Calculator, Target, LayoutGrid, ListFilter, Landmark } from 'lucide-react';
@@ -44,7 +44,7 @@ const ListItem: React.FC<{ label: string; value: number; max: number; compact?: 
                      {label}
                  </span>
                  <span className={`font-semibold text-slate-200 ${compact ? 'text-[11px]' : 'text-xs'}`}>
-                     {value.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                     {value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                  </span>
              </div>
         </div>
@@ -258,9 +258,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
       const barChartData = Object.entries(companyData).map(([code, value]) => ({ name: COMPANIES_MAP[code] || (code !== 'N/D' ? `Empresa ${code}` : code), value })).sort((a,b) => b.value - a.value);
 
       // Daily Data
-      const dailyData: Record<string, number> = {};
-      allReceivables.forEach(t => dailyData[t.date] = (dailyData[t.date] || 0) + (Number(t.value) || 0));
-      const vlDiaList = Object.entries(dailyData).map(([date, value]) => ({ date, value })).sort((a,b) => parseDate(a.date) - parseDate(b.date));
+      // VL DIA: soma por dia, datas normalizadas (dd/mm/aaaa) e em ordem CRESCENTE.
+      const vlDiaList = buildVlDiaList(allReceivables);
 
       return (
         <div className={`flex flex-col ${isSlide ? 'gap-3 pb-0 h-full' : 'gap-6 pb-10'} animate-fadeIn`}>
@@ -393,7 +392,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                          </div>
                          <div className="flex-1 overflow-auto custom-scrollbar p-2 space-y-2 min-h-0">
                              {vlDiaList.map((d, idx) => {
-                                 const valStr = d.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                                 const valStr = d.value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
                                  const fontSizeClass = valStr.length > 12 ? 'text-[10px]' : valStr.length > 9 ? 'text-xs' : 'text-sm';
                                  return (
                                      <div key={idx} className="bg-slate-700/50 p-2 rounded-lg border border-slate-600/50 hover:bg-slate-700 transition-colors flex flex-col items-end">
@@ -714,12 +713,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                       const val = matrix[`${rowKey}_${c.id}`];
                       return (
                           <td key={c.id} className={`${isSlide ? 'p-0.5' : 'p-1'} border-r border-slate-700 text-right text-slate-400`}>
-                              {val ? val.toLocaleString('pt-BR', {minimumFractionDigits: 0}) : '-'}
+                              {val ? val.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}
                           </td>
                       );
                   })}
                   <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right font-bold text-slate-200 bg-slate-900/50`}>
-                      {rowTotal ? rowTotal.toLocaleString('pt-BR', {minimumFractionDigits: 0}) : '-'}
+                      {rowTotal ? rowTotal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}
                   </td>
               </tr>
               {isOpen && n3List.map(({ n3 }) => (
@@ -732,12 +731,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                           const val = n3Matrix[`${rowKey}_N3_${n3}_${c.id}`];
                           return (
                               <td key={c.id} className={`${isSlide ? 'p-0.5' : 'p-1'} border-r border-slate-800 text-right`}>
-                                  {val ? val.toLocaleString('pt-BR', {minimumFractionDigits: 0}) : '-'}
+                                  {val ? val.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}
                               </td>
                           );
                       })}
                       <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right text-slate-300 bg-slate-900/70`}>
-                          {(n3Totals[`${rowKey}_N3_${n3}`] || 0).toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                          {(n3Totals[`${rowKey}_N3_${n3}`] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </td>
                   </tr>
               ))}
@@ -754,11 +753,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                   <td className={`${isSlide ? 'p-0.5' : 'p-1'} border-r border-slate-600 uppercase`}>{label}</td>
                   {colValues.map((v, i) => (
                       <td key={i} className={`${isSlide ? 'p-0.5' : 'p-1'} border-r border-slate-600 text-right`}>
-                          {v ? v.toLocaleString('pt-BR', {minimumFractionDigits: 0}) : '-'}
+                          {v ? v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}
                       </td>
                   ))}
                   <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right`}>
-                      {total ? total.toLocaleString('pt-BR', {minimumFractionDigits: 0}) : '-'}
+                      {total ? total.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}
                   </td>
               </tr>
           );
@@ -836,21 +835,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                              {COLS.map(c => (
                                  <td key={c.id} className={`${isSlide ? 'p-0.5' : 'p-1'} text-right border-r border-slate-700 font-bold text-emerald-300`}>
                                      {/* Display calculated value instead of input */}
-                                     {getSimulationInitialBalance(c.id).toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                                     {getSimulationInitialBalance(c.id).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                  </td>
                              ))}
                              <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right`}>
-                                 {COLS.reduce((acc, c) => acc + getSimulationInitialBalance(c.id), 0).toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                                 {COLS.reduce((acc, c) => acc + getSimulationInitialBalance(c.id), 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                              </td>
                          </tr>
                          <tr className={`bg-amber-900/30 font-bold ${isSlide ? 'text-[8px]' : 'text-[11px]'} border-b border-slate-700 text-amber-400`}>
                              <td className={`${isSlide ? 'p-0.5' : 'p-1'} border-r border-slate-700`}>ATIVIDADES OPERACIONAIS</td>
                              {COLS.map(c => {
                                  const val = getInflowTotal(c.id) - getOutflowTotal(c.id);
-                                 return <td key={c.id} className={`${isSlide ? 'p-0.5' : 'p-1'} text-right border-r border-slate-700`}>{val.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
+                                 return <td key={c.id} className={`${isSlide ? 'p-0.5' : 'p-1'} text-right border-r border-slate-700`}>{val.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
                              })}
                              <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right`}>
-                                 {COLS.reduce((acc, c) => acc + (getInflowTotal(c.id) - getOutflowTotal(c.id)), 0).toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                                 {COLS.reduce((acc, c) => acc + (getInflowTotal(c.id) - getOutflowTotal(c.id)), 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                              </td>
                          </tr>
                          {renderTotalRow('1 ENTRADAS', getInflowTotal, 'bg-slate-800', 'text-blue-400')}
@@ -862,10 +861,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                              <td className={`${isSlide ? 'p-0.5' : 'p-1'} border-r border-slate-700`}>ATIVIDADES DE INVESTIMENTO</td>
                              {COLS.map(c => {
                                  const val = getInvestTotal(c.id);
-                                 return <td key={c.id} className={`${isSlide ? 'p-0.5' : 'p-1'} text-right border-r border-slate-700`}>{val.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
+                                 return <td key={c.id} className={`${isSlide ? 'p-0.5' : 'p-1'} text-right border-r border-slate-700`}>{val.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
                              })}
                              <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right`}>
-                                 {COLS.reduce((acc, c) => acc + getInvestTotal(c.id), 0).toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                                 {COLS.reduce((acc, c) => acc + getInvestTotal(c.id), 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                              </td>
                          </tr>
                          {sortedInvestRows.map(r => renderDataRow(r, 'INV'))}
@@ -1061,17 +1060,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
   // --- LOGICA DFC (DFC CONSOLIDADO - MODELO IMAGEM) ---
   if (viewType === DashboardViewType.DFC) {
       const DFC_COLS = [
-          { id: '1', label: 'S/A' },
-          { id: '2', label: 'TVG' },
-          { id: '3', label: 'TVC' },
-          { id: '4', label: 'TVN' },
-          { id: '5', label: 'MIX' },
-          { id: '6', label: 'FM102' },
-          { id: '14', label: 'TNR' },
-          { id: '17', label: 'DIF' },
-          { id: '18', label: 'CID' },
-          { id: '22', label: 'FMLIN' },
-          { id: '23', label: 'NGER' },
+          // Nomes como no modelo da DFC Consolidada (mesma ordem das empresas)
+          { id: '1',  label: 'A GAZ' },
+          { id: '2',  label: 'TV GAZ' },
+          { id: '3',  label: 'TV SUL' },
+          { id: '4',  label: 'TV NORT' },
+          { id: '5',  label: 'RD MIX' },
+          { id: '6',  label: 'LIT VIX' },
+          { id: '14', label: 'TV NORO' },
+          { id: '17', label: 'LIT SUL' },
+          { id: '18', label: 'LIT NOR' },
+          { id: '22', label: 'GAZ FM' },
+          { id: '23', label: 'LIT NORO' },
       ];
 
       // Padroniza o código de empresa: "1" e "001" são a mesma empresa. Sem
@@ -1080,6 +1080,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
       // exatamente essa a causa de Entradas/Saídas/Aplicações aparecerem
       // zeradas na DFC Consolidada mesmo com lançamentos existindo.
       const normCompany = (c: unknown): string => String(c ?? '').trim().replace(/^0+(?=\d)/, '');
+
+      // ── Aparência da tabela (tela e slide) ────────────────────────────────
+      // Slide: tudo em cqw (escala com a página 16:9 do Demonstrativo), para
+      // as ~29 linhas caberem sem estourar. Tela: fontes fixas maiores.
+      // Valores CENTRALIZADOS e SEM casas decimais.
+      const TF  = isSlide ? { fontSize: 'clamp(6px, 0.91cqw, 18px)', lineHeight: 1.2 } : undefined;   // linha comum
+      const TFb = isSlide ? { fontSize: 'clamp(6px, 0.96cqw, 19px)', lineHeight: 1.2 } : undefined;   // totais/blocos
+      const TP  = isSlide ? { padding: '0.1cqw 0.35cqw' } : undefined;
+      const tfCls  = isSlide ? '' : 'text-[12px]';
+      const tfbCls = isSlide ? '' : 'text-[13px]';
+      const tpCls  = isSlide ? '' : 'p-1';
+      const fmt0 = (v: number) => { const r = Math.round(v); return r === 0 ? '-' : r.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); };
 
       const getTotalBy = (compId: string, type: TransactionType, catFilter?: string | string[], useInvestmentField?: boolean, excludeFilters?: string[]) => {
           // console.log("getTotalBy chamado", { compId, type, catFilter, useInvestmentField });
@@ -1146,26 +1158,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           const total = rowValues.reduce((acc, v) => acc + v, 0);
 
           return (
-              <tr className={`border-b border-slate-700 ${params?.bgColor || 'bg-slate-800'} ${isSlide ? 'text-[8px]' : 'text-[10px]'}`}>
-                  <td className={`${isSlide ? 'p-0.5' : 'p-1'} border-r border-slate-700 font-bold ${params?.textColor || 'text-slate-300'} min-w-[200px] whitespace-normal break-words max-w-[300px]`}>
+              <tr className={`border-b border-slate-700 ${params?.bgColor || 'bg-slate-800'} ${tfCls}`} style={TF}>
+                  <td className={`${tpCls} border-r border-slate-700 font-bold ${params?.textColor || 'text-slate-300'} whitespace-nowrap`} style={TP}>
                       {label}
                   </td>
                   {DFC_COLS.map((c, i) => (
-                      <td key={c.id} className={`${isSlide ? 'p-0.5' : 'p-1'} border-r border-slate-700 text-right ${params?.textColor || 'text-slate-400'}`}>
+                      <td key={c.id} className={`${tpCls} border-r border-slate-700 text-center ${params?.textColor || 'text-slate-400'}`} style={TP}>
                           {type === 'INPUT' ? (
                              <CurrencyInput
-                                className="w-full h-full bg-transparent text-right outline-none text-slate-200"
+                                className="w-full h-full bg-transparent text-center outline-none text-slate-200"
                                 value={dfcManualValues?.[`${params?.manualKey}_${c.id}`]}
                                 onCommit={(v) => onManualValueChange && onManualValueChange(`${params?.manualKey}_${c.id}`, v)}
                                 placeholder="-"
                              />
-                          ) : (
-                             rowValues[i] !== 0 ? rowValues[i].toLocaleString('pt-BR', {minimumFractionDigits: 0}) : '-'
-                          )}
+                          ) : fmt0(rowValues[i])}
                       </td>
                   ))}
-                  <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right font-bold ${params?.textColor || 'text-slate-200'} bg-slate-900/50`}>
-                      {total !== 0 ? total.toLocaleString('pt-BR', {minimumFractionDigits: 0}) : '-'}
+                  <td className={`${tpCls} text-center font-bold ${params?.textColor || 'text-slate-200'} bg-slate-900/50`} style={TP}>
+                      {fmt0(total)}
                   </td>
               </tr>
           );
@@ -1184,7 +1194,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           // Executivo). Usa só o movimento real do período: prevResg já é o
           // líquido de aportes/resgates lançados no FC Diário (positivo = voltou
           // pro caixa, negativo = saiu pro investimento).
-          const finalBalance = opBalance + prevResg;
+          // Bloco 4 (Empréstimos/Mútuos) = coluna Transf do FC Diário. Entra no
+          // SLD Final igual ao FC Diário (sdParcial = ini - pagtos + resg + transf).
+          const transf = calcTransfTotal(cId, dfcManualValues ?? {});
+          const finalBalance = opBalance + transf + prevResg;
           // Saldo Após Aplic/Resg = Saldo Atual + a previsão manual digitada na
           // linha logo acima. Antes, essa linha simplesmente repetia "Saldo
           // Atual" — o campo de previsão existia na tela mas não afetava nada.
@@ -1196,7 +1209,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           // dois de volta (antes, repetia o mesmo valor do SLD Final de Caixa,
           // como se as aplicações não existissem).
           const totalDisponibilidades = finalBalance + saldoAposAplicResg;
-          return { initial, inflows, outflows, investment, opBalance, prevResg, finalBalance, saldoAposAplicResg, totalDisponibilidades };
+          return { initial, inflows, outflows, investment, opBalance, transf, prevResg, finalBalance, saldoAposAplicResg, totalDisponibilidades };
       }
 
       const renderSummaryRow = (label: string, field: keyof ReturnType<typeof getColumnSummary>, bgColor: string, textColor: string) => {
@@ -1204,29 +1217,152 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
          const total = rowVals.reduce((acc, v) => acc + v, 0);
          
          return (
-             <tr className={`${bgColor} border-b border-slate-700 ${isSlide ? 'text-[9px]' : 'text-[11px]'}`}>
-                 <td className={`${isSlide ? 'p-0.5' : 'p-1'} border-r border-slate-700 font-bold uppercase ${textColor}`}>{label}</td>
+             <tr className={`${bgColor} border-b border-slate-700 ${tfbCls}`} style={TFb}>
+                 <td className={`${tpCls} border-r border-slate-700 font-bold uppercase whitespace-nowrap ${textColor}`} style={TP}>{label}</td>
                  {rowVals.map((v, i) => (
-                     <td key={i} className={`${isSlide ? 'p-0.5' : 'p-1'} border-r border-slate-700 text-right font-bold ${textColor}`}>
-                         {v.toLocaleString('pt-BR', {minimumFractionDigits: 0}) as string}
-                     </td>
+                     <td key={i} className={`${tpCls} border-r border-slate-700 text-center font-bold ${textColor}`} style={TP}>{fmt0(v)}</td>
                  ))}
-                 <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right font-bold ${textColor} bg-opacity-20 bg-black`}>
-                     {total.toLocaleString('pt-BR', {minimumFractionDigits: 0}) as string}
-                 </td>
+                 <td className={`${tpCls} text-center font-bold ${textColor} bg-opacity-20 bg-black`} style={TP}>{fmt0(total)}</td>
              </tr>
          )
       };
 
+      // ─── DFC CONSOLIDADA EM 5 BLOCOS ─────────────────────────────────────
+      // Cada lançamento cai em EXATAMENTE um lugar (nada conta duas vezes):
+      //   Recebimento → bloco 1 (Entradas, por categoria; Aluguéis = N3 11404)
+      //   Pagamento PREVISTO → Capex (bloco 2) > Lucros N2 217 (bloco 3) >
+      //                        Saídas operacionais (bloco 1, por categoria)
+      //   Bloco 4 = coluna Transf do FC Diário; Bloco 5 = coluna Resg Aplic.
+      // SLD FINAL = SLD INICIAL + soma dos 5 blocos.
+      type CategoryDef = { label: string; codes: string[]; n3Codes?: string[]; keywords: string[] };
+      // Linhas do MODELO, na ordem do modelo. Classificação: N3 exato > N2 > palavra-chave.
+      const INFLOW_CATS: CategoryDef[] = [
+          { label: '(+) Publicidade/Projetos', codes: ['101','102','103','104','105','106','108'], keywords: ['publicidade','projeto','ative'] },
+          { label: '(+) Globo',                codes: ['109','112'],                               keywords: ['globo'] },
+          { label: '(+) Serviços',             codes: ['110','111'],                               keywords: ['serviço','servico','produção','producao'] },
+          { label: '(+) Aluguéis/Venda Imob',  codes: [], n3Codes: ['11404'],                      keywords: ['aluguel','aluguéis','alugueis','locação','locacao','venda imob'] },
+          { label: '(+) Financ e Tribut',      codes: ['113'],                                     keywords: ['rendimento','renda aplica','aplicação financeira','aplicacao financeira'] },
+          { label: '(+) Assinaturas',          codes: ['107'],                                     keywords: ['assinatura'] },
+      ];
+      // Fornecedores é a 1ª linha do modelo e recebe tudo que não cair nas outras.
+      const OUTFLOW_CATS: CategoryDef[] = [
+          { label: '(-) Fornecedores',      codes: [],            keywords: [] },
+          { label: '(-) Pessoal',           codes: ['201','202'], keywords: ['pessoal','folha','salário','salario','benefício','beneficio'] },
+          { label: '(-) Impostos',          codes: ['209','215'], keywords: ['imposto','tribut'] },
+          { label: '(-) Oper Prog + Globo', codes: ['204'],       keywords: ['programa','direitos autorais','convênio operacional','convenio operacional','cobertura'] },
+          { label: '(-) Comissões',         codes: ['218'],       keywords: ['comiss'] },
+          { label: '(-) Judiciais',         codes: ['214'],       keywords: ['judicial','trabalhista','causas'] },
+          { label: '(-) Financ e Tribut',   codes: ['208'],       keywords: ['juros','iof','tarifa banc'] },
+      ];
+      const FORNEC_IDX = 0;
+      const classifyCat = (t: Transaction, cats: CategoryDef[]): number => {
+          const n3 = String(t.flowTypeCode ?? '').trim();
+          // 1ª: N3 exato (ex.: 11404 Aluguéis, que está dentro do N2 114)
+          if (n3) {
+              const byN3 = cats.findIndex(c => c.n3Codes?.includes(n3));
+              if (byN3 !== -1) return byN3;
+          }
+          // 2ª: grupo N2 do cadastro
+          const n2 = String(t.flowTypeLevel2 || '').trim();
+          if (n2) {
+              const byCode = cats.findIndex(c => c.codes.includes(n2));
+              if (byCode !== -1) return byCode;
+          }
+          // 3ª: palavra-chave
+          const text = ((t.category || '') + ' ' + (t.description || '')).toLowerCase();
+          return cats.findIndex(c => c.keywords.some(k => text.includes(k)));
+      };
+      const zeroByCol = (): Record<string, number> => Object.fromEntries(DFC_COLS.map(c => [c.id, 0]));
+      const inflowCat: Record<string, number>[]  = [...INFLOW_CATS, null].map(() => zeroByCol());   // último = Outras Entradas (só aparece se tiver valor)
+      const outflowCat: Record<string, number>[] = OUTFLOW_CATS.map(() => zeroByCol());
+      const inflowTotal = zeroByCol();
+      const opOutflowTotal = zeroByCol();
+      const capexByCol = zeroByCol();
+      const lucrosByCol = zeroByCol();
+
+      transactions.forEach(t => {
+          const compId = normCompany(t.companyCode);
+          const col = DFC_COLS.find(c => normCompany(c.id) === compId);
+          if (!col) return;
+          const val = Number(t.value) || 0;
+          if (t.type === TransactionType.RECEIVABLE) {
+              const idx = classifyCat(t, INFLOW_CATS);
+              inflowCat[idx === -1 ? INFLOW_CATS.length : idx][col.id] += val;
+              inflowTotal[col.id] += val;
+          } else if (t.type === TransactionType.PAYABLE && t.status === 'PREVISTO') {
+              if (isCapexTransaction(t)) { capexByCol[col.id] += val; return; }
+              if (isDistribLucrosTransaction(t)) { lucrosByCol[col.id] += val; return; }
+              const idx = classifyCat(t, OUTFLOW_CATS);
+              outflowCat[idx === -1 ? FORNEC_IDX : idx][col.id] += val;
+              opOutflowTotal[col.id] += val;
+          }
+      });
+
+      const initialByCol = zeroByCol(), opFlowByCol = zeroByCol(), transfByCol = zeroByCol(), resgByCol = zeroByCol(), finalByCol = zeroByCol();
+      DFC_COLS.forEach(c => {
+          initialByCol[c.id] = getSimulationInitialBalance(c.id);
+          opFlowByCol[c.id]  = inflowTotal[c.id] - opOutflowTotal[c.id];
+          transfByCol[c.id]  = calcTransfTotal(c.id, dfcManualValues ?? {});
+          resgByCol[c.id]    = getSimulationResgAplicTotal(c.id);
+          finalByCol[c.id]   = initialByCol[c.id] + opFlowByCol[c.id] - capexByCol[c.id] - lucrosByCol[c.id] + transfByCol[c.id] + resgByCol[c.id];
+      });
+      // Recebimento sem linha no modelo (ex.: 100 Antecipações, 114 exceto Aluguéis,
+      // 115-117) não some: aparece em "Outras Entradas" só quando existir.
+      const hasOutrasEntradas = DFC_COLS.some(c => Math.round(inflowCat[INFLOW_CATS.length][c.id]) !== 0);
+      const capexNeg = zeroByCol(), lucrosNeg = zeroByCol();
+      DFC_COLS.forEach(c => { capexNeg[c.id] = -capexByCol[c.id]; lucrosNeg[c.id] = -lucrosByCol[c.id]; });
+      const sumCols = (r: Record<string, number>) => DFC_COLS.reduce((a, c) => a + (r[c.id] || 0), 0);
+      // Linha de BLOCO (1 a 5): o título já traz o saldo do bloco, como no modelo.
+      const renderBlockRow = (label: string, data: Record<string, number>) => (
+          <tr className={`bg-slate-800 text-indigo-300 font-bold border-b border-slate-700 ${tfbCls}`} style={TFb}>
+              <td className={`${tpCls} border-r border-slate-700 whitespace-nowrap`} style={TP}>{label}</td>
+              {DFC_COLS.map(c => <td key={c.id} className={`${tpCls} border-r border-slate-700 text-center`} style={TP}>{fmt0(data[c.id] || 0)}</td>)}
+              <td className={`${tpCls} text-center bg-black/20`} style={TP}>{fmt0(sumCols(data))}</td>
+          </tr>
+      );
+      const renderValRow = (label: string, data: Record<string, number>, kind: 'item' | 'sub' | 'total' = 'item', textColor = 'text-slate-300') => {
+          const rowCls = kind === 'total' ? `bg-[#1e3a8a] text-white font-bold uppercase ${tfbCls}`
+                       : kind === 'sub'   ? `bg-slate-900 ${textColor} font-bold ${tfCls}`
+                       :                    `${textColor} ${tfCls}`;
+          const indent = kind === 'item' ? (isSlide ? '1.6cqw' : '24px') : kind === 'sub' ? (isSlide ? '0.9cqw' : '14px') : undefined;
+          const labelStyle = { ...(TP || {}), ...(indent ? { paddingLeft: indent } : {}) };
+          return (
+              <tr className={`${rowCls} border-b border-slate-700`} style={kind === 'total' ? TFb : TF}>
+                  <td className={`${tpCls} border-r border-slate-700 whitespace-nowrap`} style={labelStyle}>{label}</td>
+                  {DFC_COLS.map(c => (
+                      <td key={c.id} className={`${tpCls} border-r border-slate-700 text-center`} style={TP}>{fmt0(data[c.id] || 0)}</td>
+                  ))}
+                  <td className={`${tpCls} text-center font-bold bg-black/20`} style={TP}>{fmt0(sumCols(data))}</td>
+              </tr>
+          );
+      };
+
+      // Linhas do PDF — mesmos números da tela (antes o PDF tinha cálculo próprio).
+      const pdfRow = (label: string, type: 'DATA' | 'SUBTOTAL' | 'TOTAL', data: Record<string, number>, indent = 0) => {
+          const values = DFC_COLS.map(c => data[c.id] || 0);
+          return { label, type, values, total: values.reduce((a, v) => a + v, 0), indent };
+      };
+      const pdfSpacer = () => ({ label: '', type: 'SPACER' as const, values: [] as number[], total: 0 });
+      const dfcPdfRows = [
+          pdfRow('SLD INICIAL DE CAIXA', 'TOTAL', initialByCol),
+          pdfSpacer(),
+          pdfRow('1 - ATIVIDADES OPERACIONAIS', 'SUBTOTAL', opFlowByCol),
+          pdfRow('Entradas', 'SUBTOTAL', inflowTotal, 1),
+          ...INFLOW_CATS.map((c, i) => pdfRow(c.label, 'DATA', inflowCat[i], 2)),
+          ...(hasOutrasEntradas ? [pdfRow('(+) Outras Entradas', 'DATA', inflowCat[INFLOW_CATS.length], 2)] : []),
+          pdfRow('Saídas', 'SUBTOTAL', opOutflowTotal, 1),
+          ...OUTFLOW_CATS.map((c, i) => pdfRow(c.label, 'DATA', outflowCat[i], 2)),
+          pdfRow('2 - INVESTIMENTOS/CAPEX', 'SUBTOTAL', capexNeg),
+          pdfRow('3 - DISTRIB DE LUCROS', 'SUBTOTAL', lucrosNeg),
+          pdfRow('4 - EMPRÉSTIMOS/MÚTUOS', 'SUBTOTAL', transfByCol),
+          pdfRow('5 - MOV APLICAÇÕES', 'SUBTOTAL', resgByCol),
+          pdfSpacer(),
+          pdfRow('SLD FINAL DE CAIXA', 'TOTAL', finalByCol),
+      ];
+
       const handleExportPDF = async () => {
         try {
-          const rows = buildDFCRows({
-            columns: DFC_COLS,
-            getTotal: (cId, type, filter, useInv, excl) =>
-              getTotalBy(cId, type as TransactionType, filter, useInv, excl),
-            getInitialBalance: getSimulationInitialBalance,
-            getResgAplicTotal: getSimulationResgAplicTotal,
-          });
+          const rows = dfcPdfRows;
 
           await exportDFCPdf({
             rows,
@@ -1244,10 +1380,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
 
       return (
          <div id="dfc-export-container" className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 overflow-hidden flex flex-col h-full animate-fadeIn">
-            <div className="bg-[#0f172a] p-3 flex justify-between items-center text-white border-b-4 border-slate-800">
+            <div className={`bg-[#0f172a] ${isSlide ? '' : 'p-3'} flex justify-between items-center text-white border-b-4 border-slate-800`} style={isSlide ? { padding: '0.5cqw 0.8cqw' } : undefined}>
                  <div className="flex items-center gap-2">
                      <Table2 className="w-5 h-5 text-indigo-400" />
-                     <h2 className="text-sm font-bold uppercase tracking-wider">DFC - DEMONSTRATIVO DE FLUXO DE CAIXA</h2>
+                     <h2 className={`${isSlide ? '' : 'text-sm'} font-bold uppercase tracking-wider`} style={isSlide ? { fontSize: 'clamp(7px, 0.95cqw, 16px)' } : undefined}>DFC - DEMONSTRATIVO DE FLUXO DE CAIXA</h2>
                  </div>
                  <div className="flex gap-2" data-html2canvas-ignore>
                      <span className="px-2 py-1 bg-slate-800 border border-slate-700 rounded text-[10px] font-bold uppercase text-slate-300">CONSOLIDADO</span>
@@ -1260,151 +1396,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
             <div className="flex-1 overflow-auto custom-scrollbar bg-slate-900">
                 <table className="w-full border-collapse">
                     <thead className="sticky top-0 z-20">
-                        <tr className={`bg-[#1e3a8a] text-white ${isSlide ? 'text-[8px]' : 'text-[10px]'} uppercase font-bold`}>
-                             <th className={`${isSlide ? 'p-1' : 'p-2'} text-left min-w-[200px] border-r border-slate-700`}>FLUXO DE CAIXA - DFC</th>
-                             {DFC_COLS.map(c => <th key={c.id} className={`${isSlide ? 'p-1' : 'p-2'} text-right min-w-[70px] border-r border-slate-700`}>{c.label}</th>)}
-                             <th className={`${isSlide ? 'p-1' : 'p-2'} text-right min-w-[80px] bg-red-900`}>TOTAL</th>
+                        <tr className={`bg-[#1e3a8a] text-white ${tfbCls} uppercase font-bold`} style={TFb}>
+                             <th className={`${isSlide ? '' : 'p-2 min-w-[220px]'} text-left border-r border-slate-700 whitespace-nowrap`} style={TP}>FLUXO DE CAIXA - DFC</th>
+                             {DFC_COLS.map(c => <th key={c.id} className={`${isSlide ? '' : 'p-2 min-w-[80px]'} text-center border-r border-slate-700`} style={TP}>{c.label}</th>)}
+                             <th className={`${isSlide ? '' : 'p-2 min-w-[90px]'} text-center bg-red-900`} style={TP}>TOTAL</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {renderRow('SLD INICIAL DE CAIXA', 'CALC', { // Changed to CALC type logic via customFn
-                            bgColor: 'bg-[#1e3a8a]', 
-                            textColor: 'text-white',
-                            customValueFn: getSimulationInitialBalance
-                        })}
+                        {renderValRow('SLD INICIAL DE CAIXA', initialByCol, 'total')}
 
-                        <tr className={`bg-slate-800 text-indigo-300 font-bold ${isSlide ? 'text-[8px]' : 'text-[10px]'} border-b border-slate-700`}>
-                            <td className={`${isSlide ? 'p-0.5' : 'p-1'}`} colSpan={DFC_COLS.length + 2}>1 - ATIVIDADES OPERACIONAIS</td>
-                        </tr>
-                        {(() => {
-                            // Classificação EXCLUSIVA: cada lançamento cai em EXATAMENTE uma
-                            // categoria (ou no residual "Outras/Fornecedores"), nunca em mais
-                            // de uma. Antes, cada categoria era calculada por getTotalBy()
-                            // independente com filtro OR (categoria bate código do grupo OU
-                            // palavra-chave em texto) — uma mesma transação podia bater em
-                            // duas categorias ao mesmo tempo (ex.: texto contendo "Publicidade
-                            // e Serviços"), inflando a soma das categorias nomeadas e fazendo
-                            // o residual (Outras Entradas / Fornecedores-Outros) ficar
-                            // NEGATIVO. Com exclusividade, a soma das categorias + residual
-                            // bate exatamente com o total, e o residual nunca fica negativo.
-                            type CategoryDef = { label: string; codes: string[]; keywords: string[] };
-                            const INFLOW_CATS: CategoryDef[] = [
-                                { label: '(+) Publicidade/Projetos', codes: ['101','102','103','104','105','106','108','109','112'], keywords: ['publicidade','projeto','ative'] },
-                                { label: '(+) Serviços',              codes: ['110','111','113'],                                    keywords: ['serviço','servico','produção','producao','financeira'] },
-                                { label: '(+) Assinaturas',           codes: ['107'],                                                 keywords: ['assinatura'] },
-                            ];
-                            const OUTFLOW_CATS: CategoryDef[] = [
-                                { label: '(-) Distr Lucro/capital', codes: [],              keywords: ['lucro','dividendo'] },
-                                { label: '(-) Pessoal',             codes: ['201','202'],    keywords: ['pessoal','folha','salário','salario','benefício','beneficio'] },
-                                { label: '(-) Comissões',           codes: ['218'],          keywords: ['comiss'] },
-                                { label: '(-) Impostos',            codes: ['209','215'],    keywords: ['imposto','tribut'] },
-                            ];
+                        {renderBlockRow('1 - ATIVIDADES OPERACIONAIS', opFlowByCol)}
+                        {renderValRow('Entradas', inflowTotal, 'sub', 'text-slate-300')}
+                        {INFLOW_CATS.map((cat, i) => <React.Fragment key={cat.label}>{renderValRow(cat.label, inflowCat[i])}</React.Fragment>)}
+                        {hasOutrasEntradas && renderValRow('(+) Outras Entradas', inflowCat[INFLOW_CATS.length])}
+                        {renderValRow('Saídas', opOutflowTotal, 'sub', 'text-red-400')}
+                        {OUTFLOW_CATS.map((cat, i) => <React.Fragment key={cat.label}>{renderValRow(cat.label, outflowCat[i], 'item', 'text-red-400')}</React.Fragment>)}
 
-                            const classify = (t: Transaction, cats: CategoryDef[]): number => {
-                                const n2 = String(t.flowTypeLevel2 || '').trim();
-                                // 1ª prioridade: código de GRUPO (N2) do cadastro — exato, sem
-                                // ambiguidade. Só passa pra palavra-chave se nenhum código bateu.
-                                if (n2) {
-                                    const byCode = cats.findIndex(c => c.codes.includes(n2));
-                                    if (byCode !== -1) return byCode;
-                                }
-                                const text = ((t.category || '') + ' ' + (t.description || '')).toLowerCase();
-                                return cats.findIndex(c => c.keywords.some(k => text.includes(k)));
-                            };
+                        {renderBlockRow('2 - INVESTIMENTOS/CAPEX', capexNeg)}
+                        {renderBlockRow('3 - DISTRIB DE LUCROS', lucrosNeg)}
+                        {renderBlockRow('4 - EMPRÉSTIMOS/MÚTUOS', transfByCol)}
+                        {renderBlockRow('5 - MOV APLICAÇÕES', resgByCol)}
 
-                            const buildExclusiveTotals = (type: TransactionType, cats: CategoryDef[]) => {
-                                const perCompany: Record<string, number[]> = {};   // [categoria0, categoria1, ..., residual]
-                                const companyTotal: Record<string, number> = {};
-                                DFC_COLS.forEach(c => { perCompany[c.id] = new Array(cats.length + 1).fill(0); companyTotal[c.id] = 0; });
+                        {renderValRow('SLD FINAL DE CAIXA', finalByCol, 'total')}
 
-                                transactions.forEach(t => {
-                                    if (t.type !== type) return;
-                                    if (type === TransactionType.PAYABLE && t.status !== 'PREVISTO') return;
-                                    const compId = normCompany(t.companyCode);
-                                    const col = DFC_COLS.find(c => normCompany(c.id) === compId);
-                                    if (!col) return;
-                                    const idx = classify(t, cats);
-                                    const val = Number(t.value) || 0;
-                                    perCompany[col.id][idx === -1 ? cats.length : idx] += val;
-                                    companyTotal[col.id] += val;
-                                });
-                                return { perCompany, companyTotal };
-                            };
-
-                            const inflow = buildExclusiveTotals(TransactionType.RECEIVABLE, INFLOW_CATS);
-                            const outflow = buildExclusiveTotals(TransactionType.PAYABLE, OUTFLOW_CATS);
-
-                            const renderHeaderTotalsRow = (label: string, data: Record<string, number>, bg: string, textColor: string) => (
-                                <tr className={`${bg} ${textColor} font-bold ${isSlide ? 'text-[8px]' : 'text-[10px]'}`}>
-                                    <td className={`${isSlide ? 'p-0.5 pl-2' : 'p-1 pl-4'}`}>{label}</td>
-                                    {DFC_COLS.map(c => (
-                                        <td key={c.id} className={`${isSlide ? 'p-0.5' : 'p-1'} text-right`}>
-                                            {(data[c.id] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
-                                        </td>
-                                    ))}
-                                    <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right bg-black/20`}>
-                                        {DFC_COLS.reduce((acc, c) => acc + (data[c.id] || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
-                                    </td>
-                                </tr>
-                            );
-
-                            const renderExclusiveRow = (label: string, perCompany: Record<string, number[]>, catIndex: number, textColor?: string) => {
-                                const rowValues = DFC_COLS.map(c => perCompany[c.id][catIndex] || 0);
-                                const total = rowValues.reduce((a, v) => a + v, 0);
-                                return (
-                                    <tr className={`${isSlide ? 'text-[8px]' : 'text-[10px]'} ${textColor || 'text-slate-300'}`}>
-                                        <td className={`${isSlide ? 'p-0.5 pl-4' : 'p-1 pl-6'}`}>{label}</td>
-                                        {rowValues.map((v, i) => (
-                                            <td key={i} className={`${isSlide ? 'p-0.5' : 'p-1'} text-right`}>{v.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</td>
-                                        ))}
-                                        <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right font-bold`}>{total.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</td>
-                                    </tr>
-                                );
-                            };
-
-                            return (
-                                <>
-                                    {renderHeaderTotalsRow('Entradas', inflow.companyTotal, 'bg-slate-900', 'text-slate-300')}
-                                    {INFLOW_CATS.map((cat, i) => renderExclusiveRow(cat.label, inflow.perCompany, i))}
-                                    {renderExclusiveRow('(+) Outras Entradas', inflow.perCompany, INFLOW_CATS.length)}
-
-                                    {renderHeaderTotalsRow('Saídas', outflow.companyTotal, 'bg-slate-900', 'text-red-400')}
-                                    {OUTFLOW_CATS.map((cat, i) => renderExclusiveRow(cat.label, outflow.perCompany, i, 'text-red-400'))}
-                                    {renderExclusiveRow('(-) Fornecedores / Outros', outflow.perCompany, OUTFLOW_CATS.length, 'text-red-400')}
-                                </>
-                            );
-                        })()}
-                        <tr className={`bg-slate-800 text-indigo-300 font-bold ${isSlide ? 'text-[8px]' : 'text-[10px]'} border-b border-slate-700 mt-2`}>
-                            <td className={`${isSlide ? 'p-0.5' : 'p-1'}`} colSpan={DFC_COLS.length + 2}>2 - ATIVIDADES DE INVESTIMENTO</td>
-                        </tr>
-                        {renderRow('(-) Investimentos (Capex)', 'DATA', { tType: TransactionType.PAYABLE, useInvestmentField: true, textColor: 'text-slate-400' })}
-
-                        <tr className={`bg-slate-800 text-indigo-300 font-bold ${isSlide ? 'text-[8px]' : 'text-[10px]'} border-b border-slate-700 mt-2`}>
-                            <td className={`${isSlide ? 'p-0.5' : 'p-1'}`} colSpan={DFC_COLS.length + 2}>3 - ATIVIDADES DE FINANCIAMENTO</td>
-                        </tr>
-
-                        {renderSummaryRow('SLD DE CAIXA ANTES DA APL/RESG', 'opBalance', 'bg-[#1e3a8a]', 'text-white')}
-                        {renderRow('(+/-) Previsão de Resg/Aplic', 'CALC', { 
-                            bgColor: 'bg-amber-900/30', 
-                            textColor: 'text-amber-200',
-                            customValueFn: getSimulationResgAplicTotal 
-                        })}
-                        {renderSummaryRow('SLD FINAL DE CAIXA', 'finalBalance', 'bg-[#1e3a8a]', 'text-white')}
-
-                        <tr className={`bg-red-900/20 text-red-400 font-bold ${isSlide ? 'text-[8px]' : 'text-[10px]'} border-b border-red-900/30 mt-4 border-t-4 border-slate-800`}>
-                             <td className={`${isSlide ? 'p-0.5' : 'p-1'} border-r border-red-900/30`}>APLICAÇÕES (SLD BRUTO)</td>
-                             {DFC_COLS.map(c => <td key={c.id} className={`${isSlide ? 'p-0.5' : 'p-1'} text-right border-r border-red-900/30 font-bold`}>{c.label}</td>)}
-                             <td className={`${isSlide ? 'p-0.5' : 'p-1'} text-right font-bold`}>TOTAL</td>
+                        <tr className={`bg-red-900/20 text-red-400 font-bold ${tfbCls} border-b border-red-900/30 border-t-4 border-slate-800`} style={TFb}>
+                             <td className={`${tpCls} border-r border-red-900/30 whitespace-nowrap`} style={TP}>APLICAÇÕES (SLD BRUTO)</td>
+                             {DFC_COLS.map(c => <td key={c.id} className={`${tpCls} text-center border-r border-red-900/30 font-bold`} style={TP}>{c.label}</td>)}
+                             <td className={`${tpCls} text-center font-bold`} style={TP}>TOTAL</td>
                         </tr>
                         {renderRow('Fundo de Invest - BTG Pactual', 'DATA', { tType: TransactionType.APPLICATION, filter: 'FUNDOS' })}
                         {renderRow('CDB - Banestes', 'DATA', { tType: TransactionType.APPLICATION, filter: 'CDB' })}
-                        {renderRow('Ebricks', 'DATA', { tType: TransactionType.APPLICATION, filter: 'Ebricks' })}
+                        {/* Ebricks não está no modelo: só aparece se tiver saldo (o Saldo Atual continua somando tudo) */}
+                        {DFC_COLS.some(c => Math.round(getTotalBy(c.id, TransactionType.APPLICATION, 'Ebricks')) !== 0) &&
+                            renderRow('Ebricks', 'DATA', { tType: TransactionType.APPLICATION, filter: 'Ebricks' })}
 
                         {renderSummaryRow('SALDO ATUAL', 'investment', 'bg-[#1e3a8a]', 'text-white')}
                         {renderRow('(+/-) Previsão de Aplic/Resg', 'INPUT', { manualKey: 'dfc_prev_aplic', bgColor: 'bg-amber-900/30', textColor: 'text-amber-200' })}
                         {renderSummaryRow('SALDO APÓS APLIC/RESG', 'saldoAposAplicResg', 'bg-[#1e3a8a]', 'text-white')}
 
-                        <tr className="h-4 bg-slate-900"></tr>
+                        <tr className={`${isSlide ? '' : 'h-4'} bg-slate-900`} style={isSlide ? { height: '0.6cqw' } : undefined}></tr>
 
                         {renderSummaryRow('TOTAL DE DISPONIBILIDADES', 'totalDisponibilidades', 'bg-[#0f172a]', 'text-white')}
                     </tbody>

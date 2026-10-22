@@ -45,7 +45,7 @@ export async function downloadPPTX(summary: FinancialSummary, transactions: Tran
         const a = Math.abs(v);
         if (a >= 1e6) return "R$ " + (v / 1e6).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " mi";
         if (a >= 1e3) return "R$ " + (v / 1e3).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " mil";
-        return "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     };
     const parseD = (s?: string): Date | null => {
         if (!s) return null;
@@ -190,7 +190,7 @@ export async function downloadPPTX(summary: FinancialSummary, transactions: Tran
         x: 2, y: 2.5, w: 6, fontSize: 18, color: "64748B", align: "center"
     });
 
-    slide4.addText(`R$ ${totalInv.toLocaleString("pt-BR", {minimumFractionDigits: 2})}`, {
+    slide4.addText(`R$ ${totalInv.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, {
         x: 2, y: 3.2, w: 6, fontSize: 40, color: "1e40af", bold: true, align: "center"
     });
 

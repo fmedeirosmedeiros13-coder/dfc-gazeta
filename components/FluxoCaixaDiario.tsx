@@ -50,7 +50,7 @@ export const CurrencyInput: React.FC<{
 
   const hasValue = value !== undefined && value !== null && !Number.isNaN(value);
   const display = hasValue
-    ? value!.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    ? value!.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
     : '';
 
   return (
@@ -692,13 +692,13 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                  <div key={`${w.companyId}_${w.date}_${i}`} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 bg-slate-900/50 rounded px-2 py-1.5">
                                      <span className="text-slate-300">
                                          <span className="font-medium text-slate-100">{w.companyName}</span> em {w.date}:
-                                         {' '}saldo negativo de <span className="text-red-400 font-medium">{w.deficit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                                         {' '}saldo negativo de <span className="text-red-400 font-medium">{w.deficit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                      </span>
                                      {w.aplicacaoDisponivel > 0 ? (
                                          <span className={cobre ? 'text-emerald-400' : 'text-amber-400'}>
                                              {cobre
-                                                 ? `→ Resgate de aplicação cobre o déficit (disponível ${w.aplicacaoDisponivel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})`
-                                                 : `→ Resgate de aplicação cobre só parte (disponível ${w.aplicacaoDisponivel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}) — falta aporte de ${(w.deficit - w.aplicacaoDisponivel).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`}
+                                                 ? `→ Resgate de aplicação cobre o déficit (disponível ${w.aplicacaoDisponivel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 })})`
+                                                 : `→ Resgate de aplicação cobre só parte (disponível ${w.aplicacaoDisponivel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 })}) — falta aporte de ${(w.deficit - w.aplicacaoDisponivel).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                                          </span>
                                      ) : (
                                          <span className="text-orange-400">→ Sem saldo em aplicações — aporte necessário</span>
@@ -774,25 +774,25 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                      {group.days.map((day, i) => isVisibleIdx(i) && (
                                          <React.Fragment key={i}>
                                              <td className="border border-slate-700 p-1 bg-slate-900/50 border-l-4 border-l-slate-700 text-center font-medium text-slate-300">
-                                                 {day.sdInicial.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                                                 {day.sdInicial.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                              </td>
                                              <td className="border border-slate-700 p-1 text-center text-red-400 font-medium">
-                                                 {day.pagtos.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                                                 {day.pagtos.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                              </td>
                                              <td className="border border-slate-700 p-1 text-center text-blue-400 font-medium bg-amber-900/10">
-                                                 {day.resg.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                                                 {day.resg.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                              </td>
                                              <td className="border border-slate-700 p-1 text-center text-purple-400 font-medium bg-amber-900/10">
-                                                 {day.transf.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                                                 {day.transf.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                              </td>
                                              <td className="border border-slate-600 p-1 text-center font-bold text-slate-200 bg-slate-800">
-                                                 {day.sdParcial.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                                                 {day.sdParcial.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                              </td>
                                              <td className="border border-slate-700 p-1 text-center text-emerald-400 font-medium">
-                                                 {day.receb.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                                                 {day.receb.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                              </td>
                                              <td className={`border border-slate-600 p-1 text-center font-bold bg-slate-800 ${day.sdFinal < 0 ? 'text-red-400' : 'text-blue-400'}`}>
-                                                 {day.sdFinal.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                                                 {day.sdFinal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                              </td>
                                          </React.Fragment>
                                      ))}
@@ -815,7 +815,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                                      />
                                                  </td>
                                                  <td className="border border-slate-800 p-1 text-center text-slate-500 text-[10px]">
-                                                     {day.pagtos !== 0 ? day.pagtos.toLocaleString('pt-BR', {minimumFractionDigits: 0}) : '-'}
+                                                     {day.pagtos !== 0 ? day.pagtos.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}
                                                  </td>
                                                  <td className="border border-slate-800 p-0 bg-amber-900/5">
                                                      <CurrencyInput
@@ -832,13 +832,13 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                                      />
                                                  </td>
                                                  <td className="border border-slate-700 p-1 text-center font-medium text-slate-400 bg-slate-800/50 text-[10px]">
-                                                     {day.sdParcial.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                                                     {day.sdParcial.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                                  </td>
                                                  <td className="border border-slate-800 p-1 text-center text-slate-500 text-[10px]">
-                                                     {day.receb !== 0 ? day.receb.toLocaleString('pt-BR', {minimumFractionDigits: 0}) : '-'}
+                                                     {day.receb !== 0 ? day.receb.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}
                                                  </td>
                                                  <td className={`border border-slate-700 p-1 text-center font-medium bg-slate-800/50 text-[10px] ${day.sdFinal < 0 ? 'text-red-500/70' : 'text-blue-500/70'}`}>
-                                                     {day.sdFinal.toLocaleString('pt-BR', {minimumFractionDigits: 0})}
+                                                     {day.sdFinal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                                  </td>
                                              </React.Fragment>
                                          ))}
@@ -852,13 +852,13 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                              <td className="sticky left-0 z-30 bg-[#0f172a] border border-slate-700 p-2 text-center uppercase text-[11px]">TOTAL</td>
                              {companyTotals.map((t, i) => isVisibleIdx(i) && (
                                  <React.Fragment key={i}>
-                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] border-l-4 border-l-slate-600">{t.sumInicial.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
-                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] text-red-400">{t.sumPagtos.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
-                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] text-blue-400">{t.sumResg.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
-                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] text-purple-400">{t.sumTransf.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
-                                     <td className="border border-slate-700 p-1 text-center bg-[#0f172a]">{t.sumParcial.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
-                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] text-emerald-400">{t.sumReceb.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
-                                     <td className={`border border-slate-700 p-1 text-center bg-[#0f172a] ${t.sumFinal < 0 ? 'text-red-400' : 'text-blue-400'}`}>{t.sumFinal.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
+                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] border-l-4 border-l-slate-600">{t.sumInicial.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] text-red-400">{t.sumPagtos.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] text-blue-400">{t.sumResg.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] text-purple-400">{t.sumTransf.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                                     <td className="border border-slate-700 p-1 text-center bg-[#0f172a]">{t.sumParcial.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                                     <td className="border border-slate-700 p-1 text-center bg-[#1e293b] text-emerald-400">{t.sumReceb.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                                     <td className={`border border-slate-700 p-1 text-center bg-[#0f172a] ${t.sumFinal < 0 ? 'text-red-400' : 'text-blue-400'}`}>{t.sumFinal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
                                  </React.Fragment>
                              ))}
                          </tr>

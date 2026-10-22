@@ -11,7 +11,7 @@
  */
 import PptxGenJS from 'pptxgenjs';
 import { Transaction, TransactionType } from '../types';
-import { classifyTax } from '../utils/finance';
+import { classifyTax, buildVlDiaList } from '../utils/finance';
 
 // ─── PALETA & CONSTANTES (mutáveis por tema — applyTheme define escuro/claro) ───
 let BG           = '0f172a';
@@ -75,7 +75,7 @@ const COMPANIES_MAP: Record<string, string> = {
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const fmtVal = (v: number) => Math.round(v).toLocaleString('pt-BR');
-const fmtFull = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtFull = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const trunc  = (s: string, max: number) => s.length > max ? s.substring(0, max - 1) + '…' : s;
 
 const normalizeCategory = (cat?: string) => {
@@ -486,9 +486,8 @@ export function generatePayablesSlide(
   const companyData = Object.entries(companyMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 
   // VL Dia
-  const dailyMap: Record<string, number> = {};
-  allPayables.forEach(t => { dailyMap[t.date] = (dailyMap[t.date] || 0) + (Number(t.value) || 0); });
-  const vlDia = Object.entries(dailyMap).map(([date, value]) => ({ date, value })).sort((a, b) => b.value - a.value);
+  // VL DIA em ordem CRESCENTE de data (mesma regra da tela)
+  const vlDia = buildVlDiaList(allPayables);
 
   // Mini-cards de categoria
   const catInvest = agg.filter(it => {
@@ -622,9 +621,8 @@ export function generateReceivablesSlide(
   const companyData = Object.entries(companyMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 
   // VL Dia
-  const dailyMap: Record<string, number> = {};
-  allRec.forEach(t => { dailyMap[t.date] = (dailyMap[t.date] || 0) + (Number(t.value) || 0); });
-  const vlDia = Object.entries(dailyMap).map(([date, value]) => ({ date, value })).sort((a, b) => b.value - a.value);
+  // VL DIA em ordem CRESCENTE de data (mesma regra da tela)
+  const vlDia = buildVlDiaList(allRec);
 
   // ── Desenho ─────────────────────────────────────────────────────────────
   drawHeader(slide, pres, 'CONTAS A RECEBER', dateRange);

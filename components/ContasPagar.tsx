@@ -3,7 +3,7 @@ import { Transaction, TransactionType } from '../types';
 import { BarChart, Bar, Tooltip, ResponsiveContainer, Cell, LabelList, XAxis, YAxis } from 'recharts';
 import { Briefcase, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { FinanceLayout } from './FinanceLayout';
-import { formatCurrency, classifyTax, parseDate } from '../utils/finance';
+import { formatCurrency, classifyTax, parseDate, buildVlDiaList } from '../utils/finance';
 
 interface ContasPagarProps {
   transactions: Transaction[];
@@ -18,7 +18,7 @@ export const ContasPagar: React.FC<ContasPagarProps> = ({
 
   isSlide = false 
 }) => {
-  const formatFullCurrency = (val: number) => val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formatFullCurrency = (val: number) => val.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
   const COMPANIES_MAP: Record<string, string> = {
     '1': 'S.A. A GAZETA',
@@ -137,9 +137,8 @@ export const ContasPagar: React.FC<ContasPagarProps> = ({
   const highValue = aggregatedPayables.filter(t => (Number(t.value) || 0) > 35000).sort((a,b) => b.value - a.value);
   const lowValue = aggregatedPayables.filter(t => (Number(t.value) || 0) <= 35000).sort((a,b) => b.value - a.value);
   
-  const dailyData: Record<string, number> = {};
-  allPayables.forEach(t => dailyData[t.date] = (dailyData[t.date] || 0) + (Number(t.value) || 0));
-  const vlDiaList = Object.entries(dailyData).map(([date, value]) => ({ date, value })).sort((a,b) => parseDate(a.date) - parseDate(b.date));
+  // VL DIA: soma por dia, datas normalizadas (dd/mm/aaaa) e em ordem CRESCENTE.
+  const vlDiaList = buildVlDiaList(allPayables);
 
   return (
     <div className={`flex flex-col ${isSlide ? 'gap-3 pb-0 h-full' : 'gap-6 pb-10'} animate-fadeIn`}>
@@ -295,7 +294,7 @@ export const ContasPagar: React.FC<ContasPagarProps> = ({
                      </div>
                      <div className="flex-1 overflow-auto custom-scrollbar p-2 space-y-2 min-h-0">
                          {vlDiaList.map((d, idx) => {
-                             const valStr = d.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                             const valStr = d.value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
                              const fontSizeClass = valStr.length > 12 ? 'text-[10px]' : valStr.length > 9 ? 'text-xs' : 'text-sm';
                              return (
                                  <div key={idx} className="bg-slate-700/50 p-2 rounded-lg border border-slate-600/50 hover:bg-slate-700 transition-colors flex flex-col items-end">
