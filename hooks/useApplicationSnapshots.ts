@@ -27,7 +27,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Transaction } from '../types';
-import { DB_NAME, DB_VERSION, ensureAllStores } from '../utils/idb';
+import { DB_NAME, DB_VERSION, ensureAllStores, warnDbBlocked, releaseOnUpgrade } from '../utils/idb';
 
 export interface ApplicationSnapshot {
   id:          string;   // = dateISO (uma posição por dia; reimportar no mesmo dia substitui)
@@ -53,7 +53,8 @@ function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => ensureAllStores(req.result);
-    req.onsuccess = () => resolve(req.result);
+    req.onblocked = () => warnDbBlocked();
+    req.onsuccess = () => resolve(releaseOnUpgrade(req.result));
     req.onerror   = () => reject(req.error);
   });
 }

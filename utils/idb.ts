@@ -28,3 +28,23 @@ export function ensureAllStores(db: IDBDatabase): void {
     st.createIndex('sessionId', 'sessionId');
   }
 }
+
+// ─── Outra aba aberta segurando o banco ───────────────────────────────────────
+// Se uma aba ANTIGA do app estiver aberta, o navegador não deixa a aba nova usar
+// o banco até a antiga ser fechada — e nesse meio tempo NADA é salvo (os valores
+// se perdem ao recarregar). Avisa o usuário uma vez para fechar as outras abas.
+let blockedWarned = false;
+export function warnDbBlocked(): void {
+  if (blockedWarned) return;
+  blockedWarned = true;
+  console.warn('[idb] Banco bloqueado por outra aba do app.');
+  try {
+    alert('Há outra aba do DFC Gestão aberta.\n\nFeche as OUTRAS abas do sistema e deixe só esta — enquanto houver outra aberta, o que você digitar NÃO fica salvo.');
+  } catch { /* ignore */ }
+}
+
+/** Ao abrir o banco: se uma versão mais nova do app pedir, esta aba libera na hora. */
+export function releaseOnUpgrade(db: IDBDatabase): IDBDatabase {
+  db.onversionchange = () => db.close();
+  return db;
+}

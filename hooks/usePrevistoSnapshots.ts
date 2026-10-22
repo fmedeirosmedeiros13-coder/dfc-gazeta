@@ -24,7 +24,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Transaction, TransactionType } from '../types';
 import { parseDate } from '../utils/finance';
-import { DB_NAME, DB_VERSION, ensureAllStores } from '../utils/idb';
+import { DB_NAME, DB_VERSION, ensureAllStores, warnDbBlocked, releaseOnUpgrade } from '../utils/idb';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -59,7 +59,8 @@ function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => ensureAllStores(req.result);
-    req.onsuccess = () => resolve(req.result);
+    req.onblocked = () => warnDbBlocked();
+    req.onsuccess = () => resolve(releaseOnUpgrade(req.result));
     req.onerror   = () => reject(req.error);
   });
 }

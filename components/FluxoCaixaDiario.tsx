@@ -732,7 +732,19 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
              )}
 
              <div className="flex-1 min-w-0 overflow-auto custom-scrollbar bg-slate-900 relative">
-                 <table className="border-collapse text-[10px] table-fixed">
+                 {/* Clique em QUALQUER ponto da célula entra no campo. O campo ocupava
+                     só a faixa do meio (11px de 24px): clicar acima/abaixo do número
+                     não abria o cursor. */}
+                 <table
+                     className="border-collapse text-[10px] table-fixed"
+                     onMouseDown={(e) => {
+                         const target = e.target as HTMLElement;
+                         if (target.tagName === 'INPUT') return;
+                         const cell = target.closest('td');
+                         const field = cell?.querySelector('input') as HTMLInputElement | null;
+                         if (field) { e.preventDefault(); field.focus(); }
+                     }}
+                 >
                      <thead className="sticky top-0 z-20 shadow-lg">
                          <tr className="bg-slate-800">
                              <th className="sticky left-0 z-30 bg-slate-800 border border-slate-700 p-2 w-[200px] min-w-[200px] text-left align-top h-[50px]">

@@ -37,7 +37,8 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { Transaction, ManualValues } from '../types';
-import { DB_NAME, DB_VERSION, ensureAllStores } from '../utils/idb';
+import type { Dispatch, SetStateAction } from 'react';
+import { DB_NAME, DB_VERSION, ensureAllStores, warnDbBlocked, releaseOnUpgrade } from '../utils/idb';
 
 // ─── Configuração do banco ────────────────────────────────────────────────────
 
@@ -59,7 +60,8 @@ function openDB(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
 
     req.onupgradeneeded = () => ensureAllStores(req.result);
-    req.onsuccess = () => resolve(req.result);
+    req.onblocked = () => warnDbBlocked();
+    req.onsuccess = () => resolve(releaseOnUpgrade(req.result));
     req.onerror   = () => reject(req.error);
   });
 }
@@ -105,9 +107,9 @@ interface UsePersistenceParams {
   transactions:         Transaction[];
   realizedTransactions: Transaction[];
   manualValues:         ManualValues;
-  setTransactions:         (ts: Transaction[]) => void;
-  setRealizedTransactions: (ts: Transaction[]) => void;
-  setManualValues:         (mv: ManualValues)  => void;
+  setTransactions:         Dispatch<SetStateAction<Transaction[]>>;
+  setRealizedTransactions: Dispatch<SetStateAction<Transaction[]>>;
+  setManualValues:         Dispatch<SetStateAction<ManualValues>>;
 }
 
 interface UsePersistenceResult {
@@ -173,9 +175,13 @@ export function usePersistence({
         const isExemplo = (t: Transaction) =>
           t.id === '1' && t.description === 'Exemplo Previsto' && t.supplierCode === '1464' && Number(t.value) === 500;
         const cleanTx = (savedTx ?? []).filter(t => !isExemplo(t));
-        if (cleanTx.length > 0) setTransactions(cleanTx);
-        if (savedReal && savedReal.length  > 0) setRealizedTransactions(savedReal);
-        if (savedMV   && Object.keys(savedMV).length > 0) setManualValues(savedMV);
+        // A restauração pode chegar ATRASADA (ex.: banco liberado só depois que
+        // outra aba fechou). Nunca apaga o que já foi digitado/importado nesta
+        // sessão: valores digitados têm prioridade sobre os salvos; lançamentos
+        // só são restaurados se a sessão ainda não tem nenhum.
+        if (cleanTx.length > 0) setTransactions((prev: Transaction[]) => (prev.length > 0 ? prev : cleanTx));
+        if (savedReal && savedReal.length  > 0) setRealizedTransactions((prev: Transaction[]) => (prev.length > 0 ? prev : savedReal));
+        if (savedMV   && Object.keys(savedMV).length > 0) setManualValues((prev: ManualValues) => ({ ...savedMV, ...prev }));
       } catch (err) {
         console.warn('[usePersistence] IndexedDB não disponível — funcionando sem persistência.', err);
         isDBAvailable.current = false;
@@ -191,11 +197,12 @@ export function usePersistence({
 
   // ── Auto-save com debounce ────────────────────────────────────────────────
   useEffect(() => {
-    // Não salvar na primeira renderização (é a restauração chegando)
-    if (isFirstRender.current) {
-      if (isReady) isFirstRender.current = false;
-      return;
-    }
+    // Só salva depois que o banco foi lido (evita gravar o estado vazio do
+    // início por cima do que já estava salvo). A 1ª gravação após a leitura
+    // salva o estado JUNTADO (salvo + o que foi digitado antes da leitura
+    // terminar) — antes ela era pulada e o que se digitou nesse intervalo
+    // se perdia ao recarregar.
+    if (!isReady) return;
     if (!isDBAvailable.current) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
