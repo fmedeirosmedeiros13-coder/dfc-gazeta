@@ -473,6 +473,53 @@ export function calcResgAplicByFund(
 }
 
 /**
+ * Saldo de aplicação IMPORTADO (relatório de Aplicações do TOTVS em Cadastro e
+ * Lançamento) de uma empresa, por fundo — mesmo critério das linhas da DFC
+ * Consolidada: "Fundo de Invest - BTG Pactual" (FUNDOS) e "CDB - Banestes" (CDB).
+ */
+export function calcAplicSaldoImportado(
+  transactions: Transaction[],
+  companyId: string,
+): { btg: number; banestes: number } {
+  const norm = (c: unknown) => String(c ?? '').trim().replace(/^0+(?=\d)/, '');
+  const cid = norm(companyId);
+  const has = (t: Transaction, f: string) =>
+    (t.category ?? '').toLowerCase().includes(f) || (t.description ?? '').toLowerCase().includes(f);
+  let btg = 0, banestes = 0;
+  for (const t of transactions ?? []) {
+    if (t.type !== TransactionType.APPLICATION || norm(t.companyCode) !== cid) continue;
+    const v = Number(t.value) || 0;
+    if (has(t, 'fundos')) btg += v;
+    else if (has(t, 'cdb')) banestes += v;
+  }
+  return { btg, banestes };
+}
+
+export type ResgCheck =
+  | { status: 'ok'; fundo: string; saldo: number; lancado: number; sobra: number }
+  | { status: 'insuficiente'; fundo: string; saldo: number; lancado: number; falta: number }
+  | { status: 'sem-aplicacao'; fundo: string; saldo: 0; lancado: number };
+
+/**
+ * Consulta prévia do resgate: o fundo escolhido tem saldo importado para cobrir
+ * TODOS os resgates lançados no FC Diário (mesma empresa e fundo, líquido das
+ * aplicações)? Só avisa — não bloqueia.
+ */
+export function checkResgateSaldo(
+  transactions: Transaction[],
+  manualValues: Record<string, number>,
+  companyId: string,
+  fund: 'btg' | 'banestes',
+): ResgCheck {
+  const fundo = fund === 'btg' ? 'Fundo BTG' : 'CDB Banestes';
+  const saldo = calcAplicSaldoImportado(transactions, companyId)[fund];
+  const lancado = calcResgAplicByFund(companyId, manualValues)[fund];
+  if (saldo <= 0) return { status: 'sem-aplicacao', fundo, saldo: 0, lancado };
+  if (lancado > saldo) return { status: 'insuficiente', fundo, saldo, lancado, falta: lancado - saldo };
+  return { status: 'ok', fundo, saldo, lancado, sobra: saldo - lancado };
+}
+
+/**
  * Soma a coluna "Transf" do FC Diário Banco de uma empresa (chaves
  * sim_transf_{empresa}_{banco}_{data}). Usado no bloco 4 da DFC Consolidada
  * (Empréstimos/Mútuos). Mesmo critério de calcResgAplicTotal: positivo = entrou

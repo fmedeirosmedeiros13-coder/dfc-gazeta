@@ -1224,7 +1224,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                  {rowVals.map((v, i) => (
                      <td key={i} className={`${tpCls} border-r border-slate-700 text-center font-bold ${textColor}`} style={TP}>{fmt0(v)}</td>
                  ))}
-                 <td className={`${tpCls} text-center font-bold ${textColor} bg-opacity-20 bg-black`} style={TP}>{fmt0(total)}</td>
+                 {/* TOTAL com a MESMA cor da linha (antes bg-black, que no tema claro virava fundo claro com letra branca = invisível) */}
+                 <td className={`${tpCls} text-center font-bold ${textColor}`} style={TP}>{fmt0(total)}</td>
              </tr>
          )
       };
@@ -1341,7 +1342,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                   {DFC_COLS.map(c => (
                       <td key={c.id} className={`${tpCls} border-r border-slate-700 text-center`} style={TP}>{fmt0(data[c.id] || 0)}</td>
                   ))}
-                  <td className={`${tpCls} text-center font-bold bg-black/20`} style={TP}>{fmt0(sumCols(data))}</td>
+                  <td className={`${tpCls} text-center font-bold ${kind === 'total' ? '' : 'bg-black/20'}`} style={TP}>{fmt0(sumCols(data))}</td>
               </tr>
           );
       };
@@ -1408,7 +1409,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                         <tr className={`bg-[#1e3a8a] text-white ${tfbCls} uppercase font-bold`} style={TFb}>
                              <th className={`${isSlide ? '' : 'p-2 min-w-[220px]'} text-left border-r border-slate-700 whitespace-nowrap`} style={TP}>FLUXO DE CAIXA - DFC</th>
                              {DFC_COLS.map(c => <th key={c.id} className={`${isSlide ? '' : 'p-2 min-w-[80px]'} text-center border-r border-slate-700`} style={TP}>{c.label}</th>)}
-                             <th className={`${isSlide ? '' : 'p-2 min-w-[90px]'} text-center bg-red-900`} style={TP}>TOTAL</th>
+                             <th className={`${isSlide ? '' : 'p-2 min-w-[90px]'} text-center`} style={TP}>TOTAL</th>
                         </tr>
                     </thead>
                     <tbody>

@@ -10,7 +10,7 @@ import { detectBank } from '../engines/bankExtratoDetector';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 import { Transaction, TransactionType, ManualValues } from '../types';
-import { parseDate, BANKS_MAPPING, byDate, moveToNextBusinessDay, COMPANIES, getLatestCloseBefore, calcResgAplicTotal } from '../utils/finance';
+import { parseDate, BANKS_MAPPING, byDate, moveToNextBusinessDay, COMPANIES, getLatestCloseBefore, calcResgAplicTotal, checkResgateSaldo, ResgCheck } from '../utils/finance';
 import { Calculator, AlertTriangle, Trash2 } from 'lucide-react';
 
 // Data canônica em ISO (yyyy-mm-dd), independente do formato de exibição.
@@ -54,6 +54,14 @@ export function parseTypedNumber(raw: string): number | null {
   return negative ? -Math.abs(n) : n;
 }
 
+const fmtBRL0 = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+/** Texto da consulta prévia de saldo do resgate (tooltip e resumo). */
+export function resgCheckText(c: ResgCheck): string {
+  if (c.status === 'ok') return `✓ Resgate possível — ${c.fundo} importado: ${fmtBRL0(c.saldo)} · resgates lançados: ${fmtBRL0(c.lancado)} · sobra: ${fmtBRL0(c.sobra)}`;
+  if (c.status === 'insuficiente') return `⚠ Sem saldo suficiente — ${c.fundo} importado: ${fmtBRL0(c.saldo)} · resgates lançados: ${fmtBRL0(c.lancado)} · falta: ${fmtBRL0(c.falta)}`;
+  return `⚠ Sem aplicação importada — não há ${c.fundo} na base de Aplicações desta empresa (resgates lançados: ${fmtBRL0(c.lancado)})`;
+}
+
 export const CurrencyInput: React.FC<{
   value: number | undefined;
   onCommit: (v: number) => void;
@@ -63,6 +71,14 @@ export const CurrencyInput: React.FC<{
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
   const justFocused = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Seleciona o valor DEPOIS que o campo troca para o texto de edição
+  // ("600.000" → "600000"): selecionar antes disso se perdia na troca e o que
+  // se digitava grudava no valor antigo (ex.: "600" + "900000").
+  useEffect(() => {
+    if (editing) inputRef.current?.select();
+  }, [editing]);
 
   const hasValue = value !== undefined && value !== null && !Number.isNaN(value);
   const display = hasValue
@@ -71,6 +87,7 @@ export const CurrencyInput: React.FC<{
 
   return (
     <input
+      ref={inputRef}
       type="text"
       inputMode="decimal"
       className={className}
@@ -549,6 +566,36 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
           return max;
       }, [dfcManualValues]);
 
+      // Consulta prévia + BLOQUEIO do resgate: simula a mudança e, se o fundo de
+      // origem não tiver saldo importado para cobrir os resgates, recusa e avisa.
+      // Só barra quando o resgate AUMENTA (diminuir/zerar sempre é permitido,
+      // para conseguir corrigir um valor já lançado).
+      const resgateAllowed = (
+          companyId: string, companyName: string, fund: 'btg' | 'banestes',
+          change: Record<string, number>, oldValue: number, newValue: number,
+      ): boolean => {
+          if (!(newValue > 0) || newValue <= oldValue) return true;
+          const chk = checkResgateSaldo(transactions, { ...(dfcManualValues || {}), ...change }, companyId, fund);
+          if (chk.status === 'ok') return true;
+          const motivo = chk.status === 'insuficiente'
+              ? `${chk.fundo} importado: ${fmtBRL0(chk.saldo)}\nResgates com este lançamento: ${fmtBRL0(chk.lancado)}\nFalta: ${fmtBRL0(chk.falta)}`
+              : `Não há ${chk.fundo} desta empresa na base de Aplicações importada.`;
+          alert(`RESGATE NÃO PERMITIDO — ${companyName}\n\n${motivo}\n\nAjuste o valor, troque a aplicação (BTG/BAN) ou importe a base de Aplicações atualizada em Cadastro e Lançamento.`);
+          return false;
+      };
+
+      // Resgates lançados que o fundo de origem NÃO cobre (por empresa e fundo).
+      const resgAlerts = useMemo(() => {
+          const out: { companyName: string; chk: ResgCheck }[] = [];
+          COMPANIES.forEach(co => {
+              (['btg', 'banestes'] as const).forEach(f => {
+                  const chk = checkResgateSaldo(transactions, dfcManualValues || {}, co.id, f);
+                  if (chk.lancado > 0 && chk.status !== 'ok') out.push({ companyName: co.name, chk });
+              });
+          });
+          return out;
+      }, [transactions, dfcManualValues]);
+
       const negativeWarnings = useMemo(() => {
           const warnings: { companyId: string; companyName: string; date: string; deficit: number; aplicacaoDisponivel: number; }[] = [];
           const minTime = latestImportedDateISO
@@ -703,6 +750,24 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
              )}
 
              {/* Avisos de saldo negativo: sugere resgate (se tem aplicação) ou aporte */}
+             {resgAlerts.length > 0 && (
+                 <div className="mx-2 mt-2 bg-red-950/40 border border-red-800/60 rounded-lg p-3 text-[11px]">
+                     <p className="text-red-300 font-bold flex items-center gap-1.5 mb-2">
+                         <AlertTriangle className="w-3.5 h-3.5" />
+                         {resgAlerts.length} resgate(s) sem saldo na aplicação
+                     </p>
+                     <div className="space-y-1">
+                         {resgAlerts.map((a, i) => (
+                             <div key={i} className="bg-slate-900/50 rounded px-2 py-1 text-slate-300">
+                                 <span className="font-medium text-slate-100">{a.companyName}</span> — {a.chk.fundo}: resgate {fmtBRL0(a.chk.lancado)}
+                                 {a.chk.status === 'insuficiente'
+                                     ? <>, saldo importado {fmtBRL0(a.chk.saldo)} <span className="text-red-400 font-medium">→ falta {fmtBRL0(a.chk.falta)}</span></>
+                                     : <span className="text-orange-400">, nenhuma aplicação importada</span>}
+                             </div>
+                         ))}
+                     </div>
+                 </div>
+             )}
              {negativeWarnings.length > 0 && (
                  <div className="mx-2 mt-2 bg-red-950/40 border border-red-800/60 rounded-lg p-3 text-[11px]">
                      <p className="text-red-300 font-bold flex items-center gap-1.5 mb-2">
@@ -855,9 +920,11 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                                  </td>
                                                  <td className="border border-slate-800 p-0 bg-amber-900/5">
                                                      {(() => {
-                                                         // Linha do Banestes com Resg Aplic: escolhe de qual aplicação
-                                                         // sai (resgate) ou para qual vai (aplicação). Padrão: Fundo BTG.
-                                                         const showFund = bRow.bank.id === 'BANESTES' && Number(day.resg) !== 0;
+                                                         // Linha do Banestes: escolhe de qual aplicação sai (resgate) ou
+                                                         // para qual vai (aplicação). Padrão: Fundo BTG.
+                                                         // Seletor SEMPRE visível na linha do Banestes: com o bloqueio de
+                                                         // saldo, é preciso escolher o fundo ANTES de digitar o resgate.
+                                                         const showFund = bRow.bank.id === 'BANESTES';
                                                          const keyFund = day.keyResg.replace(/^sim_resg_/, 'sim_fund_');
                                                          const isBanestesFund = Number(dfcManualValues?.[keyFund]) === 1;
                                                          return (
@@ -865,13 +932,38 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                                                  <CurrencyInput
                                                                      className="flex-1 min-w-0 h-full bg-transparent text-center px-1 text-blue-500/70 text-[10px] outline-none"
                                                                      value={day.resg}
-                                                                     onCommit={(v) => onManualValueChange && onManualValueChange(day.keyResg, v)}
+                                                                     onCommit={(v) => {
+                                                                         // BLOQUEIO: resgate maior do que o saldo importado do fundo
+                                                                         // não é aceito (o campo volta ao valor anterior).
+                                                                         const fund = bRow.bank.id === 'BANESTES' && isBanestesFund ? 'banestes' : 'btg';
+                                                                         if (!resgateAllowed(group.entity.id, group.entity.name, fund, { [day.keyResg]: v }, Number(day.resg) || 0, v)) return;
+                                                                         onManualValueChange && onManualValueChange(day.keyResg, v);
+                                                                     }}
                                                                  />
+                                                                 {Number(day.resg) > 0 && (() => {
+                                                                     // Consulta prévia: o fundo de origem tem saldo importado?
+                                                                     const fund = bRow.bank.id === 'BANESTES' && isBanestesFund ? 'banestes' : 'btg';
+                                                                     const chk = checkResgateSaldo(transactions, dfcManualValues || {}, group.entity.id, fund);
+                                                                     const ok = chk.status === 'ok';
+                                                                     return (
+                                                                         <span
+                                                                             title={resgCheckText(chk)}
+                                                                             className={`shrink-0 mr-0.5 text-[10px] font-extrabold cursor-help ${ok ? 'text-emerald-400' : 'text-red-400'}`}
+                                                                         >
+                                                                             {ok ? '✓' : '⚠'}
+                                                                         </span>
+                                                                     );
+                                                                 })()}
                                                                  {showFund && (
                                                                      <button
                                                                          type="button"
                                                                          title={`${Number(day.resg) > 0 ? 'Resgate do' : 'Aplicação no'} ${isBanestesFund ? 'CDB Banestes' : 'Fundo BTG'} — clique para trocar`}
-                                                                         onClick={() => onManualValueChange && onManualValueChange(keyFund, isBanestesFund ? 0 : 1)}
+                                                                         onClick={() => {
+                                                                             // Trocar o fundo de um RESGATE também passa pela consulta de saldo.
+                                                                             const newFund = isBanestesFund ? 'btg' : 'banestes';
+                                                                             if (Number(day.resg) > 0 && !resgateAllowed(group.entity.id, group.entity.name, newFund, { [keyFund]: isBanestesFund ? 0 : 1 }, 0, Number(day.resg))) return;
+                                                                             onManualValueChange && onManualValueChange(keyFund, isBanestesFund ? 0 : 1);
+                                                                         }}
                                                                          className={`shrink-0 mr-0.5 px-1 rounded text-[8px] font-bold leading-[14px] border ${isBanestesFund ? 'bg-amber-600 text-white border-amber-500' : 'bg-indigo-700 text-white border-indigo-500'}`}
                                                                      >
                                                                          {isBanestesFund ? 'BAN' : 'BTG'}
