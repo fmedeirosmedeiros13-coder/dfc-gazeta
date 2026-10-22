@@ -27,6 +27,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Transaction } from '../types';
+import { DB_NAME, DB_VERSION, ensureAllStores } from '../utils/idb';
 
 export interface ApplicationSnapshot {
   id:          string;   // = dateISO (uma posição por dia; reimportar no mesmo dia substitui)
@@ -46,23 +47,12 @@ export interface UseApplicationSnapshotsResult {
   clear:     () => Promise<void>;
 }
 
-const DB_NAME    = 'dfc-gazeta';
-const DB_VERSION = 5; // sincronizado com usePrevistoSnapshots/useRealizadoSnapshots
 const STORE      = 'application-positions';
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains('transactions'))       db.createObjectStore('transactions');
-      if (!db.objectStoreNames.contains('realized'))           db.createObjectStore('realized');
-      if (!db.objectStoreNames.contains('manual-values'))      db.createObjectStore('manual-values');
-      if (!db.objectStoreNames.contains('snapshots'))          db.createObjectStore('snapshots', { keyPath: 'id' });
-      if (!db.objectStoreNames.contains('previsto-periods'))   db.createObjectStore('previsto-periods', { keyPath: 'id' });
-      if (!db.objectStoreNames.contains('realizado-periods'))  db.createObjectStore('realizado-periods', { keyPath: 'id' });
-      if (!db.objectStoreNames.contains(STORE))                db.createObjectStore(STORE, { keyPath: 'id' });
-    };
+    req.onupgradeneeded = () => ensureAllStores(req.result);
     req.onsuccess = () => resolve(req.result);
     req.onerror   = () => reject(req.error);
   });

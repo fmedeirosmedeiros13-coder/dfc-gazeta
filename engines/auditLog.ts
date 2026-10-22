@@ -1,3 +1,4 @@
+import { DB_NAME, DB_VERSION, ensureAllStores } from '../utils/idb';
 /**
  * engines/auditLog.ts
  * ─────────────────────────────────────────────────────────────────────────────
@@ -101,27 +102,12 @@ export interface AuditStats {
 
 // ─── IndexedDB helpers ────────────────────────────────────────────────────────
 
-const DB_NAME    = 'dfc-gazeta';
-const DB_VERSION = 3;
 const STORE      = 'audit-log';
 
 function openAuditDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = (e.target as IDBOpenDBRequest).result;
-      // Garantir stores das fases anteriores
-      for (const s of ['transactions', 'realized', 'manual-values', 'snapshots']) {
-        if (!db.objectStoreNames.contains(s)) db.createObjectStore(s);
-      }
-      if (!db.objectStoreNames.contains(STORE)) {
-        const store = db.createObjectStore(STORE, { keyPath: 'id' });
-        store.createIndex('timestamp',  'timestamp');
-        store.createIndex('action',     'action');
-        store.createIndex('subject',    'subject');
-        store.createIndex('sessionId',  'sessionId');
-      }
-    };
+    req.onupgradeneeded = () => ensureAllStores(req.result);
     req.onsuccess = () => resolve(req.result);
     req.onerror   = () => reject(req.error);
   });

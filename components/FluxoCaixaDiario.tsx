@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useState, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { parseBanestesExtrato, type BanestesExtratoParseResult } from '../engines/banestesExtratoParser';
@@ -39,6 +39,21 @@ interface FluxoCaixaDiarioProps {
 // exibir separador de milhar (limitação do próprio HTML, não é bug de conta).
 // Ao focar, mostra um texto simples (vírgula decimal) fácil de editar; ao
 // sair do campo, reformata e envia o valor numérico pra cima.
+/**
+ * Lê o número digitado no padrão brasileiro: "1.500", "1500", "-800",
+ * "2.000,50", "(800)" ou "800-" (negativo). Retorna null se não houver número.
+ */
+export function parseTypedNumber(raw: string): number | null {
+  let t = raw.trim();
+  const negative = /^\(.*\)$/.test(t) || /-/.test(t);
+  t = t.replace(/[^\d.,]/g, '');
+  if (!t) return null;
+  t = t.replace(/\./g, '').replace(',', '.');
+  const n = parseFloat(t);
+  if (Number.isNaN(n)) return null;
+  return negative ? -Math.abs(n) : n;
+}
+
 export const CurrencyInput: React.FC<{
   value: number | undefined;
   onCommit: (v: number) => void;
@@ -47,6 +62,7 @@ export const CurrencyInput: React.FC<{
 }> = ({ value, onCommit, className, placeholder }) => {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
+  const justFocused = useRef(false);
 
   const hasValue = value !== undefined && value !== null && !Number.isNaN(value);
   const display = hasValue
@@ -62,17 +78,22 @@ export const CurrencyInput: React.FC<{
       value={editing ? text : display}
       onFocus={(e) => {
         setEditing(true);
-        setText(hasValue ? String(value).replace('.', ',') : '');
+        // Campo zerado começa VAZIO: antes o "0" ficava no campo e o que se
+        // digitava ia para depois dele ("0-800" → virava 0, e o negativo de
+        // mútuo/aplicação não entrava).
+        setText(hasValue && value !== 0 ? String(value).replace('.', ',') : '');
         e.target.select();
+        justFocused.current = true;
       }}
+      // O "soltar" do clique desfazia a seleção feita no foco: bloqueia só esse 1º.
+      onMouseUp={(e) => { if (justFocused.current) { e.preventDefault(); justFocused.current = false; } }}
       onChange={(e) => setText(e.target.value)}
       onBlur={() => {
         setEditing(false);
         const raw = text.trim();
         if (raw === '') return; // campo deixado vazio: não altera o valor existente
-        const normalized = raw.replace(/\./g, '').replace(',', '.');
-        const parsed = parseFloat(normalized);
-        if (!Number.isNaN(parsed)) onCommit(parsed);
+        const parsed = parseTypedNumber(raw);
+        if (parsed !== null) onCommit(parsed);
       }}
     />
   );

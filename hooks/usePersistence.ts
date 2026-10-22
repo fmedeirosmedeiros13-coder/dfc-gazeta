@@ -37,11 +37,10 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { Transaction, ManualValues } from '../types';
+import { DB_NAME, DB_VERSION, ensureAllStores } from '../utils/idb';
 
 // ─── Configuração do banco ────────────────────────────────────────────────────
 
-const DB_NAME    = 'dfc-gazeta';
-const DB_VERSION = 1;
 
 const STORES = {
   transactions:  'transactions',
@@ -59,17 +58,7 @@ function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
 
-    req.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-
-      // Criar stores na primeira abertura (ou upgrade)
-      for (const storeName of Object.values(STORES)) {
-        if (!db.objectStoreNames.contains(storeName)) {
-          db.createObjectStore(storeName);
-        }
-      }
-    };
-
+    req.onupgradeneeded = () => ensureAllStores(req.result);
     req.onsuccess = () => resolve(req.result);
     req.onerror   = () => reject(req.error);
   });

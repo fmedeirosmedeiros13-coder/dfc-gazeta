@@ -37,6 +37,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Transaction, TransactionType, FinancialSummary } from '../types';
 import { parseDate, COMPANIES } from '../utils/finance';
 import type { Alert, AlertSeverity } from '../engines/alerts';
+import { DB_NAME, DB_VERSION, ensureAllStores } from '../utils/idb';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -107,23 +108,12 @@ export interface UseSnapshotsResult {
 
 // ─── IndexedDB helpers ────────────────────────────────────────────────────────
 
-const DB_NAME    = 'dfc-gazeta';
-const DB_VERSION = 2;   // bump para criar a store de snapshots
 const STORE      = 'snapshots';
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = (e.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains('transactions'))  db.createObjectStore('transactions');
-      if (!db.objectStoreNames.contains('realized'))      db.createObjectStore('realized');
-      if (!db.objectStoreNames.contains('manual-values')) db.createObjectStore('manual-values');
-      if (!db.objectStoreNames.contains(STORE)) {
-        const store = db.createObjectStore(STORE, { keyPath: 'id' });
-        store.createIndex('capturedAt', 'capturedAt');
-      }
-    };
+    req.onupgradeneeded = () => ensureAllStores(req.result);
     req.onsuccess = () => resolve(req.result);
     req.onerror   = () => reject(req.error);
   });
