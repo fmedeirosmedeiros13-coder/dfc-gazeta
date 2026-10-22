@@ -179,7 +179,12 @@ export function usePersistence({
 
         if (cancelled) return;
 
-        if (savedTx   && savedTx.length   > 0) setTransactions(savedTx);
+        // Remove o antigo lançamento de EXEMPLO (R$ 500, "Exemplo Previsto") que
+        // ficou salvo em navegadores que já usaram o app. Só ele: mesma assinatura exata.
+        const isExemplo = (t: Transaction) =>
+          t.id === '1' && t.description === 'Exemplo Previsto' && t.supplierCode === '1464' && Number(t.value) === 500;
+        const cleanTx = (savedTx ?? []).filter(t => !isExemplo(t));
+        if (cleanTx.length > 0) setTransactions(cleanTx);
         if (savedReal && savedReal.length  > 0) setRealizedTransactions(savedReal);
         if (savedMV   && Object.keys(savedMV).length > 0) setManualValues(savedMV);
       } catch (err) {

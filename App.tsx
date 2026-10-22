@@ -61,22 +61,9 @@ import { auditLog }                               from './engines/auditLog';
 
 // ─── Dado inicial ─────────────────────────────────────────────────────────────
 
-const INITIAL_DATA: Transaction[] = [
-  {
-    id:              '1',
-    date:            '2025-12-23',
-    description:     'Exemplo Previsto',
-    supplier:        'PRECIS1464',
-    supplierCode:    '1464',
-    companyCode:     '1',
-    value:           500.00,
-    type:            TransactionType.PAYABLE,
-    status:          'PREVISTO',
-    category:        'Fornecedores',
-    businessUnit:    '100',
-    businessUnitCode:'1',
-  },
-];
+// Começa vazio. (Antes havia um lançamento de exemplo — "Exemplo Previsto",
+// R$ 500 em 23/12/2025 — que aparecia em Contas a Pagar a cada teste.)
+const INITIAL_DATA: Transaction[] = [];
 
 // ─── Config de views ──────────────────────────────────────────────────────────
 
