@@ -938,6 +938,15 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                                                          // não é aceito (o campo volta ao valor anterior).
                                                                          const fund = bRow.bank.id === 'BANESTES' && isBanestesFund ? 'banestes' : 'btg';
                                                                          const oldV = Number(day.resg) || 0;
+                                                                         // APLICAÇÃO (negativo) precisa de CAIXA no banco do dia:
+                                                                         // SD Inicial − Pagamentos + Transf (sem contar a própria aplicação).
+                                                                         if (v < 0 && v < oldV) {
+                                                                             const caixa = (Number(day.sdInicial) || 0) - (Number(day.pagtos) || 0) + (Number(day.transf) || 0);
+                                                                             if (-v > caixa) {
+                                                                                 alert(`APLICAÇÃO NÃO PERMITIDA — ${group.entity.name} › ${bRow.bank.id}\n\nCaixa disponível no dia: ${fmtBRL0(caixa)}\nAplicação: ${fmtBRL0(-v)}\nFalta: ${fmtBRL0(-v - caixa)}\n\nLembrete: POSITIVO = resgate (aplicação → caixa) · NEGATIVO = aplicação (caixa → aplicação).`);
+                                                                                 return;
+                                                                             }
+                                                                         }
                                                                          // Linha do Banestes, fundo atual sem saldo mas o OUTRO tem:
                                                                          // oferece lançar pelo outro (o seletor só aparece depois do valor).
                                                                          if (bRow.bank.id === 'BANESTES' && !resgateAllowed(group.entity.id, group.entity.name, fund, { [day.keyResg]: v }, oldV, v, true)) {
@@ -957,6 +966,14 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                                                          onManualValueChange && onManualValueChange(day.keyResg, v);
                                                                      }}
                                                                  />
+                                                                 {Number(day.resg) !== 0 && (
+                                                                     <span
+                                                                         title={Number(day.resg) > 0 ? 'Resgate: sai da aplicação e entra no caixa' : 'Aplicação: sai do caixa e vai para a aplicação'}
+                                                                         className={`shrink-0 mr-0.5 px-0.5 rounded text-[7px] font-extrabold leading-[12px] ${Number(day.resg) > 0 ? 'bg-emerald-700/80 text-emerald-50' : 'bg-purple-700/80 text-purple-50'}`}
+                                                                     >
+                                                                         {Number(day.resg) > 0 ? 'RESG' : 'APLIC'}
+                                                                     </span>
+                                                                 )}
                                                                  {Number(day.resg) > 0 && (() => {
                                                                      // Consulta prévia: o fundo de origem tem saldo importado?
                                                                      const fund = bRow.bank.id === 'BANESTES' && isBanestesFund ? 'banestes' : 'btg';
