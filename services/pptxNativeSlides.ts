@@ -100,9 +100,13 @@ function aggregate(txs: Transaction[], keyFn: (t: Transaction) => string, nameFn
 function drawHeader(slide: PptxGenJS.Slide, pres: PptxGenJS, title: string, dateRange: string) {
   slide.background = { color: BG };
 
+  // Faixa colorida no topo (identidade da capa "DFC Gestão")
+  ['38BDF8', 'A78BFA', 'F472B6'].forEach((c, i) => slide.addShape(pres.ShapeType.rect, {
+    x: i * 10 / 3, y: 0, w: 10 / 3 + 0.01, h: 0.045, fill: { color: c }, line: { color: c },
+  }));
   slide.addText('REDE GAZETA', {
     x: PAD, y: 0.15, w: 4, h: 0.18,
-    fontSize: 7, color: TXT_MUTED, fontFace: FONT, bold: false,
+    fontSize: 7, color: '0284C7', fontFace: FONT, bold: true, charSpacing: 2,
   });
   slide.addText(title, {
     x: PAD, y: 0.28, w: 6, h: 0.26,
@@ -117,6 +121,8 @@ function drawHeader(slide: PptxGenJS.Slide, pres: PptxGenJS, title: string, date
     x: PAD, y: 0.64, w: 10 - 2 * PAD, h: 0.008,
     fill: { color: BORDER },
   });
+  slide.addShape(pres.ShapeType.rect, { x: PAD, y: 0.632, w: 0.35, h: 0.024, fill: { color: '38BDF8' }, line: { color: '38BDF8' } });
+  slide.addShape(pres.ShapeType.rect, { x: PAD + 0.35, y: 0.632, w: 0.35, h: 0.024, fill: { color: 'F472B6' }, line: { color: 'F472B6' } });
 }
 
 function drawKpis(

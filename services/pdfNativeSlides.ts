@@ -95,12 +95,16 @@ function drawHeader(pdf: jsPDF, title: string, dateRange: string) {
   setFill(pdf, BG);
   pdf.rect(0, 0, 10, 5.625, 'F');
 
-  textInBox(pdf,'REDE GAZETA', PAD, 0.15, 4, 0.18, {size:7, color:TXT_MUTED});
+  // Faixa colorida no topo (identidade da capa "DFC Gestão")
+  ([[56,189,248],[167,139,250],[244,114,182]] as RGB[]).forEach((c, i) => { setFill(pdf, c); pdf.rect(i * 10 / 3, 0, 10 / 3 + 0.01, 0.045, 'F'); });
+  textInBox(pdf,'REDE GAZETA', PAD, 0.15, 4, 0.18, {size:7, color:[2,132,199] as RGB, bold:true});
   textInBox(pdf, title, PAD, 0.28, 6, 0.26, {size:15, color:TXT_WHITE, bold:true});
   textInBox(pdf, dateRange, 6.5, 0.33, 3.2, 0.22, {size:9, color:TXT_LIGHT, align:'right'});
 
   setFill(pdf, BORDER);
   pdf.rect(PAD, 0.64, 10-2*PAD, 0.008, 'F');
+  setFill(pdf, [56,189,248] as RGB); pdf.rect(PAD, 0.632, 0.35, 0.024, 'F');
+  setFill(pdf, [244,114,182] as RGB); pdf.rect(PAD + 0.35, 0.632, 0.35, 0.024, 'F');
 }
 
 function drawKpis(pdf: jsPDF, kpis:{label:string;value:number}[], bgColor:RGB, borderColor:RGB) {

@@ -497,6 +497,20 @@ export default function App() {
                   ]);
                   applicationSnapshots.capture(novasApp);
                   if (outras.length > 0) previstoSnapshots.capture(outras);
+                } else if (ts.some(t => t.type === TransactionType.CALENDAR)) {
+                  // Calendário é CADASTRO FIXO: reimportar SUBSTITUI o anterior.
+                  // Antes somava — o cadastro antigo (sem a coluna MÊS) continuava
+                  // gerando obrigações fora do mês (ex.: 13º em outubro). Saem o
+                  // calendário antigo e os pagamentos que ele tinha gerado.
+                  setTransactions(p => {
+                    const oldCalIds = new Set(p.filter(t => t.type === TransactionType.CALENDAR).map(t => t.id));
+                    return [
+                      ...p.filter(t => t.type !== TransactionType.CALENDAR
+                        && !(t.generatedFromCalendarId && oldCalIds.has(t.generatedFromCalendarId))),
+                      ...ts,
+                    ];
+                  });
+                  previstoSnapshots.capture(ts.filter(t => t.type !== TransactionType.CALENDAR));
                 } else {
                   setTransactions(p => [...p, ...ts]);
                   previstoSnapshots.capture(ts);

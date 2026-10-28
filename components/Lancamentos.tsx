@@ -171,7 +171,7 @@ export const Lancamentos: React.FC<LancamentosProps> = ({ transactions, onEdit, 
       if (t.type === TransactionType.PAYABLE) {
           return (
             <>
-              <td className="px-2 py-2 border-r border-slate-800/50 text-slate-300">{t.date}</td>
+              <td className="px-2 py-2 border-r border-slate-800/50 text-slate-300 whitespace-nowrap" style={t.generatedFromCalendarId ? { boxShadow: 'inset 4px 0 0 #fbbf24' } : undefined}>{t.date}{t.generatedFromCalendarId && <span className="ml-1.5 px-1 rounded text-[9px] font-bold bg-amber-400 text-slate-900 align-middle" title="Gerado pelo Calendário">CAL</span>}</td>
               <td className="px-2 py-2 border-r border-slate-800/50 text-center text-slate-300">{t.companyCode}</td>
               <td className="px-2 py-2 border-r border-slate-800/50 text-center text-slate-300">{t.supplierCode}</td>
               <td className="px-2 py-2 border-r border-slate-800/50 font-medium truncate max-w-[200px] text-slate-300" title={t.supplier}>{t.supplier}</td>
@@ -303,7 +303,7 @@ export const Lancamentos: React.FC<LancamentosProps> = ({ transactions, onEdit, 
           <tr
             key={t.id}
             title={t.generatedFromCalendarId ? 'Gerado pelo Calendário (criado após a importação do previsto)' : undefined}
-            className={`transition-colors ${t.generatedFromCalendarId ? 'bg-violet-500/10 hover:bg-violet-500/20 border-l-2 border-violet-400/50' : 'hover:bg-slate-800/40'}`}
+            className={`transition-colors ${t.generatedFromCalendarId ? 'bg-amber-400/20 hover:bg-amber-400/30' : 'hover:bg-slate-800/40'}`}
           >
             {renderRow(t)}
             <td className="px-2 py-2 text-center min-w-[60px]">

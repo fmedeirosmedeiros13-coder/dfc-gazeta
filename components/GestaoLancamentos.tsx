@@ -1035,14 +1035,20 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
   // GUARDA: importar o Calendário sem nenhum Pagamento REAL no sistema apenas SALVA
   // as obrigações — não gera previsões (senão geraria tudo, sem ter contra o que casar).
   const commitImport = (newTransactions: Transaction[], missingColsWarning: string) => {
+      // Reimportar o Calendário SUBSTITUI o anterior (cadastro fixo): a geração
+      // usa só o calendário novo e ignora os pagamentos gerados pelo antigo
+      // (que o App remove ao gravar).
+      const newCalendar = newTransactions.filter(t => t.type === TransactionType.CALENDAR);
+      const replacingCalendar = newCalendar.length > 0;
+      const oldCalIds = new Set(transactions.filter(t => t.type === TransactionType.CALENDAR).map(t => t.id));
       const importPayables = [
-          ...transactions.filter(t => t.type === TransactionType.PAYABLE),
+          ...transactions.filter(t => t.type === TransactionType.PAYABLE
+              && !(replacingCalendar && t.generatedFromCalendarId && oldCalIds.has(t.generatedFromCalendarId))),
           ...newTransactions.filter(t => t.type === TransactionType.PAYABLE),
       ];
-      const importCalendar = [
-          ...transactions.filter(t => t.type === TransactionType.CALENDAR),
-          ...newTransactions.filter(t => t.type === TransactionType.CALENDAR),
-      ];
+      const importCalendar = replacingCalendar
+          ? newCalendar
+          : transactions.filter(t => t.type === TransactionType.CALENDAR);
 
       // Pagamento REAL = não foi gerado pelo próprio Calendário.
       const hasRealPayables = importPayables.some(p => !p.generatedFromCalendarId);
