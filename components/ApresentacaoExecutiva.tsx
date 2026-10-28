@@ -78,7 +78,7 @@ const COVER_BG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAQDAwM
 // sobre a outra no PDF/PPTX. Na CÓPIA usada para a captura, sobe o texto das
 // células 0,3 da altura da letra. A tela não é alterada.
 const fixTableTextForCapture = (root: HTMLElement) => {
-  root.querySelectorAll<HTMLElement>('table[data-capture-fix] td, table[data-capture-fix] th').forEach(cell => {
+  root.querySelectorAll<HTMLElement>('table[data-capture-fix] td, table[data-capture-fix] th, [data-capture-text] span, [data-capture-text] div').forEach(cell => {
     if (cell.children.length > 0) return;          // só célula com texto puro
     const txt = cell.textContent ?? '';
     if (!txt.trim()) return;
@@ -707,13 +707,13 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                         </div>
                     );
                     const DonutCard = ({ title, pct, color, list }: { title: string; pct: number; color: string; list: { name: string; value: number }[] }) => (
-                        <div style={{ background: 'linear-gradient(135deg,#0b1430,#1b1f5e)', borderRadius: 10, display: 'flex', flexDirection: 'column', padding: '0.8cqw', border: '1px solid #2a3478', height: '100%', minHeight: 0, overflow: 'hidden' }}>
-                            <div style={{ background: 'rgba(56,189,248,0.14)', color: '#7dd3fc', fontWeight: 700, fontSize: F.donutTitle, textAlign: 'center', borderRadius: 6, padding: '0.3cqw 0.6cqw', lineHeight: 1.2, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+                        <div data-capture-text="" style={{ background: 'linear-gradient(135deg,#0b1430,#1b1f5e)', borderRadius: 10, display: 'flex', flexDirection: 'column', padding: '0.8cqw', border: '1px solid #2a3478', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+                            <div style={{ background: 'rgba(56,189,248,0.14)', color: '#7dd3fc', fontWeight: 700, fontSize: F.donutTitle, textAlign: 'center', borderRadius: 6, padding: '0.4cqw 0.6cqw', lineHeight: 1.4, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
                             {/* Donut ocupa o espaço que sobra entre o título e a lista (sempre redondo) */}
                             <div style={{ flex: 1, minHeight: 0, margin: '0.4cqw 0' }}><RiskDonut pct={pct} color={color} small track="#51657b" pctFontSize={F.pct} /></div>
-                            <div style={{ borderTop: '1px solid #2a3478', paddingTop: '0.35cqw', display: 'flex', flexDirection: 'column', gap: '0.2cqw', flexShrink: 0 }}>
+                            <div style={{ borderTop: '1px solid #2a3478', paddingTop: '0.4cqw', display: 'flex', flexDirection: 'column', gap: '0.15cqw', flexShrink: 0 }}>
                                 {list.length ? list.map((e, i) => (
-                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: F.list, lineHeight: 1.3 }}>
+                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: F.list, lineHeight: 1.5 }}>
                                         <span style={{ color: '#D6E2EC', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{e.name}</span>
                                         <span style={{ color: '#FFFFFF', fontWeight: 700, whiteSpace: 'nowrap' }}>{formatCurrency(e.value)}</span>
                                     </div>
