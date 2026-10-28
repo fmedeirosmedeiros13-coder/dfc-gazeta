@@ -1087,7 +1087,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
       // Valores CENTRALIZADOS e SEM casas decimais.
       const TF  = isSlide ? { fontSize: 'clamp(6px, 0.91cqw, 18px)', lineHeight: 1.2 } : undefined;   // linha comum
       const TFb = isSlide ? { fontSize: 'clamp(6px, 0.96cqw, 19px)', lineHeight: 1.2 } : undefined;   // totais/blocos
-      const TP  = isSlide ? { padding: '0.1cqw 0.35cqw' } : undefined;
+      const TP  = isSlide ? { padding: '0.115cqw 0.35cqw' } : undefined;
       const tfCls  = isSlide ? '' : 'text-[12px]';
       const tfbCls = isSlide ? '' : 'text-[13px]';
       const tpCls  = isSlide ? '' : 'p-1';
@@ -1174,7 +1174,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                           ) : fmt0(rowValues[i])}
                       </td>
                   ))}
-                  <td className={`${tpCls} text-center font-bold ${params?.textColor || 'text-slate-200'} bg-slate-900/50`} style={TP}>
+                  <td className={`${tpCls} text-center font-bold ${params?.textColor || 'text-slate-200'}`} style={TP}>
                       {fmt0(total)}
                   </td>
               </tr>
@@ -1327,7 +1327,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           <tr className={`bg-slate-800 text-indigo-300 font-bold border-b border-slate-700 ${tfbCls}`} style={TFb}>
               <td className={`${tpCls} border-r border-slate-700 whitespace-nowrap`} style={TP}>{label}</td>
               {DFC_COLS.map(c => <td key={c.id} className={`${tpCls} border-r border-slate-700 text-center`} style={TP}>{fmt0(data[c.id] || 0)}</td>)}
-              <td className={`${tpCls} text-center bg-black/20`} style={TP}>{fmt0(sumCols(data))}</td>
+              <td className={`${tpCls} text-center`} style={TP}>{fmt0(sumCols(data))}</td>
           </tr>
       );
       const renderValRow = (label: string, data: Record<string, number>, kind: 'item' | 'sub' | 'total' = 'item', textColor = 'text-slate-300') => {
@@ -1342,7 +1342,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                   {DFC_COLS.map(c => (
                       <td key={c.id} className={`${tpCls} border-r border-slate-700 text-center`} style={TP}>{fmt0(data[c.id] || 0)}</td>
                   ))}
-                  <td className={`${tpCls} text-center font-bold ${kind === 'total' ? '' : 'bg-black/20'}`} style={TP}>{fmt0(sumCols(data))}</td>
+                  {/* coluna TOTAL sem tarja: mesma cor da linha */}
+                  <td className={`${tpCls} text-center font-bold`} style={TP}>{fmt0(sumCols(data))}</td>
               </tr>
           );
       };
@@ -1404,7 +1405,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
             </div>
             
             <div className="flex-1 overflow-auto custom-scrollbar bg-slate-900">
-                <table className="w-full border-collapse">
+                <table className="w-full border-collapse" data-capture-fix="dfc">
                     <thead className="sticky top-0 z-20">
                         <tr className={`bg-[#1e3a8a] text-white ${tfbCls} uppercase font-bold`} style={TFb}>
                              <th className={`${isSlide ? '' : 'p-2 min-w-[220px]'} text-left border-r border-slate-700 whitespace-nowrap`} style={TP}>FLUXO DE CAIXA - DFC</th>

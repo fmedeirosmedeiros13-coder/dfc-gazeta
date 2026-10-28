@@ -439,6 +439,34 @@ export function calcResgAplicSplit(
   return { resgates, aplicacoes };
 }
 
+// ─── Calendário: coluna MÊS ("Todos" ou meses específicos) ─────────────────────
+const MESES_PT = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+
+/**
+ * Lê a coluna MÊS do Calendário. "Todos" (ou vazio) = todos os meses → undefined.
+ * Aceita nomes ("Novembro"), abreviações ("nov"), números ("11") e listas
+ * ("Abril, Outubro" / "4;10" / "Abril e Outubro").
+ */
+export function parseCalendarMonths(raw: unknown): number[] | undefined {
+  const txt = String(raw ?? '').trim().toLowerCase();
+  if (!txt || txt === 'todos' || txt === 'todo' || txt === 'mensal' || txt === 'todos os meses') return undefined;
+  const norm = (w: string) => w.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const out = new Set<number>();
+  txt.split(/[,;/|]|\s+e\s+|\s+/).map(w => w.trim()).filter(Boolean).forEach(w => {
+    const n = Number(w);
+    if (Number.isInteger(n) && n >= 1 && n <= 12) { out.add(n); return; }
+    const idx = MESES_PT.findIndex(m => norm(m) === norm(w) || norm(m).slice(0, 3) === norm(w).slice(0, 3) && norm(w).length >= 3);
+    if (idx >= 0) out.add(idx + 1);
+  });
+  return out.size > 0 && out.size < 12 ? [...out].sort((a, b) => a - b) : undefined;
+}
+
+/** Texto da coluna MÊS para exibir: "Todos" ou "Novembro", "Abril, Outubro"… */
+export function formatCalendarMonths(m?: number[]): string {
+  if (!m || m.length === 0) return 'Todos';
+  return m.map(n => MESES_PT[n - 1].charAt(0).toUpperCase() + MESES_PT[n - 1].slice(1)).join(', ');
+}
+
 /** Chave da aplicação de origem/destino do Resg Aplic de uma célula do FC Diário.
  *  Valor: 1 = CDB Banestes; ausente/0 = Fundo BTG (padrão). */
 export function keyResgFund(companyId: string, bankId: string, dateBR: string): string {

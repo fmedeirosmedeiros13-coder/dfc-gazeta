@@ -115,6 +115,8 @@ export interface Transaction {
   // Status de verificação do Calendário (obrigações recorrentes):
   // 'OK' = já presente nos pagamentos importados; 'GERADO' = pagamento gerado pelo sistema.
   calendarStatus?: 'OK' | 'GERADO';
+  /** Calendário: meses em que a obrigação vence (1–12). Vazio/ausente = TODOS os meses. */
+  calendarMonths?: number[];
   // Quando calendarStatus === 'OK': o valor real (ou soma, no caso de
   // Comissão) se afasta da média do calendário em mais de 30%. Sinaliza
   // pra revisão, sem invalidar o match.

@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { Lancamentos } from './Lancamentos';
 import { MultiSelect } from './MultiSelect';
 import { useTransactionFilters } from '../hooks/useTransactionFilters';
-import { parseDate, formatCurrency, moveToNextBusinessDay } from '../utils/finance';
+import { parseDate, formatCurrency, moveToNextBusinessDay, parseCalendarMonths, formatCalendarMonths } from '../utils/finance';
 import { resolveFlowFromConta, FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS } from '../utils/flowDePara';
 import { resolveCompanyFromCCPadrao } from '../utils/ccPadraoDePara';
 import { COMPANIES } from '../utils/finance';
@@ -131,6 +131,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
   const [fluxoN2, setFluxoN2] = useState(''); 
   
   // Calendar Specific
+  const [mesCalendario, setMesCalendario] = useState('Todos');
 
   const resetForm = () => {
     setValorOriginal('');
@@ -147,6 +148,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
     setConta('');
     setFluxoN2('');
     setDtPrevPagt('');
+    setMesCalendario('Todos');
     setEditingId(null);
   };
 
@@ -183,6 +185,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           setTipoFluxoCod(t.flowTypeCode || '');
           setFluxoN2(t.flowTypeLevel2 || '');
           setValorOriginal(String(Number(t.value) || 0));
+          setMesCalendario(formatCalendarMonths(t.calendarMonths));
       } else if (targetTab === 'RECEBIMENTOS') {
           setDtPrevPagt(t.date);
           setCustomer(t.customer || '');
@@ -265,6 +268,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
 
       customer: activeTab === 'RECEBIMENTOS' ? customer : undefined,
       portfolio: activeTab === 'RECEBIMENTOS' ? carteira : undefined,
+      calendarMonths: activeTab === 'CALENDARIO' ? parseCalendarMonths(mesCalendario) : undefined,
     };
 
     if (editingId && onUpdateTransaction) {
@@ -290,7 +294,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           example = '114101;10001;100;Antecipações - Cliente;Analítica;Entrada';
           filename = 'Modelo_Tipo_Fluxo.csv';
       } else if (activeTab === 'CALENDARIO') {
-          headers = 'DT PREV PAGT;EMPRESA;FORNECEDOR;NOME FORNECEDOR;ESPECIE;TITULO;TIPO DE FLUXO;VALOR;FLUXO N2';
+          headers = 'DT PREV PAGT;EMPRESA;FORNECEDOR;NOME FORNECEDOR;ESPECIE;TITULO;TIPO DE FLUXO;VALOR;FLUXO N2;MÊS';
           example = 'Folha de pagamento (quinzena) - Débito;;BANESTES S.A;15;50000.00;';
           filename = 'Modelo_Calendario.csv';
       } else if (activeTab === 'RECEBIMENTOS') {
@@ -684,6 +688,8 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                }
                const dataPrev  = getVal(['DT PREV PAGT', 'DATA PAGAMENTO', 'DT PREVISAO', 'DATA', 'DIA']);
                const valor     = getVal(['VALOR', 'VLR', 'R$']);
+               // Coluna MÊS: "Todos" = mensal; ou meses específicos (ex.: Novembro).
+               const mesCal    = getVal(['MÊS', 'MES', 'MESES', 'MÊS REFERÊNCIA', 'MES REFERENCIA']);
 
                if (despesas || nomeForn || fornecCod) {
                    tr = {
@@ -702,6 +708,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                        documentNumber: tit,
                        flowTypeCode: fluxoCodFinal,
                        flowTypeLevel2: fluxo2,
+                       calendarMonths: parseCalendarMonths(mesCal),
                    } as Transaction;
                }
           } else if (type === TransactionType.FLOW_TYPE) {
@@ -1263,22 +1270,27 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
       // Data da linha a gerar (dd/mm/aaaa) a partir do dia do calendário:
       // - com janela: procura a ocorrência do dia DENTRO do intervalo importado; se não cair, retorna null (não gera);
       // - sem janela: completa com o mês/ano de referência.
-      const occurrenceInWindow = (calDate: string): string | null => {
+      const occurrenceInWindow = (calDate: string, months?: number[]): string | null => {
+          // Coluna MÊS do Calendário: só gera nos meses indicados (vazio = todos).
+          const monthOk = (m: number) => !months || months.length === 0 || months.includes(m);
           const raw = String(calDate || '').trim();
           const parts = raw.split('/');
           if (parts.length === 3 && parts[2].length === 4) {
+              if (!monthOk(Number(parts[1]))) return null;
               if (!hasWindow) return raw;
               const n = toNum(raw);
               return (n >= minN && n <= maxN) ? raw : null;
           }
           const dayNum = parseInt(parts[0] || '1', 10) || 1;
           if (!hasWindow) {
+              if (!monthOk(Number(refMM))) return null;
               const last = new Date(Number(refYYYY), Number(refMM), 0).getDate();
               return `${String(Math.min(dayNum, last)).padStart(2, '0')}/${refMM}/${refYYYY}`;
           }
           let y = Math.floor(minN / 10000), m = Math.floor((minN % 10000) / 100);
           const ey = Math.floor(maxN / 10000), em = Math.floor((maxN % 10000) / 100);
           while (y < ey || (y === ey && m <= em)) {
+              if (!monthOk(m)) { m++; if (m > 12) { m = 1; y++; } continue; }
               const last = new Date(y, m, 0).getDate();
               const day = Math.min(dayNum, last);
               const cand = y * 10000 + m * 100 + day;
@@ -1326,8 +1338,15 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
 
           // Fora do match real: sempre limpa linhas obsoletas (dia solto).
           staleLinked.forEach(g => deletions.push(g.id));
+          // Gerados em mês que a coluna MÊS não prevê (ex.: mudou de "Todos" para "Novembro"): remove.
+          if (cal.calendarMonths && cal.calendarMonths.length > 0) {
+              validLinked.forEach(g => {
+                  const mm = Number(String(g.date).split('/')[1]);
+                  if (!cal.calendarMonths!.includes(mm)) deletions.push(g.id);
+              });
+          }
 
-          const occ = occurrenceInWindow(cal.date);
+          const occ = occurrenceInWindow(cal.date, cal.calendarMonths);
           if (!occ) return;  // recorrente não cai na janela do previsto importado -> não gera
 
           const already = validLinked.some(g => g.date === occ);
@@ -1933,6 +1952,10 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fluxo N2</label>
                        <input type="text" value={fluxoN2} onChange={(e) => setFluxoN2(e.target.value)} className="w-full p-2 border border-slate-700 bg-slate-800 text-slate-100 rounded text-xs" placeholder="Ex: 201" />
                    </div>
+                </div>
+                <div>
+                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mês</label>
+                   <input type="text" value={mesCalendario} onChange={(e) => setMesCalendario(e.target.value)} className="w-full p-2 border border-slate-700 bg-slate-800 text-slate-100 rounded text-xs" placeholder="Todos, ou ex.: Novembro / Abril, Outubro" />
                 </div>
                 <div>
                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Valor (R$)</label>
