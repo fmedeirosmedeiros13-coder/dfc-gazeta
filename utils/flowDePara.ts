@@ -1,3 +1,4 @@
+import { OFFICIAL_N3_TO_N2 } from './flowCadastroOficial';
 // GERADO de Tipo_de_Fluxo.xlsx (Tab_Tipo de Fluxo). De-Para Conta TOTVS -> Fluxo N3.
 // Usado SÓ como fallback: quando a planilha importada não traz o código de fluxo.
 export interface FlowMapping { n3: string; n2: string; desc: string; secao: string; fluxo: string; }
@@ -420,10 +421,16 @@ export const FLOW_DEPARA_AMBIGUOUS: Record<string, FlowMapping[]> = {
 const N3_TO_N2: Record<string, string> = (() => {
   const m: Record<string, string> = {};
   Object.values(FLOW_DEPARA).forEach(f => { if (f.n3 && f.n2 && !m[f.n3]) m[f.n3] = f.n2; });
+  // Fluxos que só aparecem na lista de contas ambíguas (ex.: 21508 "Comissões
+  // Liberadas" → N2 218) também entram — senão o N2 saía pelo começo do
+  // código (215 = Impostos) e as comissões caíam em Impostos na DFC.
+  Object.values(FLOW_DEPARA_AMBIGUOUS).forEach(list => list.forEach(f => { if (f.n3 && f.n2 && !m[f.n3]) m[f.n3] = f.n2; }));
   return m;
 })();
 export function n2FromN3(n3: string | undefined | null): string | undefined {
-  return N3_TO_N2[String(n3 ?? '').trim()];
+  const k = String(n3 ?? '').trim();
+  // 1º o cadastro OFICIAL da Tesouraria; depois o de-para de contas.
+  return OFFICIAL_N3_TO_N2[k] || N3_TO_N2[k];
 }
 
 export function resolveFlowFromConta(conta: string | undefined | null): FlowMapping | "AMBIGUOUS" | null {

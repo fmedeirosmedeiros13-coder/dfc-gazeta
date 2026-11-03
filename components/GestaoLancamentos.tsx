@@ -960,7 +960,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               // Prioridade 1: N2 do cadastro de Tipo de Fluxo (oficial) — prevalece
               // sobre a coluna "Fluxo N2" do arquivo quando o N3 é conhecido.
               if (flowCode) {
-                  const n2Cadastro = flowN2Map.get(String(flowCode).trim()) || n2FromN3(flowCode);
+                  const n2Cadastro = n2FromN3(flowCode) || flowN2Map.get(String(flowCode).trim());   // cadastro oficial primeiro
                   if (n2Cadastro) flowLevel2 = n2Cadastro;
               }
               // Prioridade 2: Fallback por truncamento do código

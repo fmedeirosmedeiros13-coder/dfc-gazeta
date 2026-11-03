@@ -1253,7 +1253,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           { label: '(-) Pessoal',           codes: ['201','202'], keywords: ['pessoal','folha','salário','salario','benefício','beneficio'] },
           { label: '(-) Impostos',          codes: ['209','215'], keywords: ['imposto','tribut'] },
           { label: '(-) Oper Prog + Globo', codes: ['204'],       keywords: ['programa','direitos autorais','convênio operacional','convenio operacional','cobertura'] },
-          { label: '(-) Comissões',         codes: ['218'],       keywords: ['comiss'] },
+          { label: '(-) Comissões',         codes: ['218'], n3Codes: ['21508', '21801', '21802'], keywords: ['comiss'] },   // 21508 Comissões Liberadas (código no grupo 215, mas é comissão)
           { label: '(-) Judiciais',         codes: ['214'],       keywords: ['judicial','trabalhista','causas'] },
           { label: '(-) Financ e Tribut',   codes: ['208'],       keywords: ['juros','iof','tarifa banc'] },
       ];
