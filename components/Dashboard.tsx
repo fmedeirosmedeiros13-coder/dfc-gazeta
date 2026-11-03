@@ -1,7 +1,7 @@
 import React, { useRef, useState, useMemo } from 'react';
 import { Transaction, TransactionType, FinancialSummary, AIAnalysisResult, DashboardViewType, ManualValues } from '../types';
 import { parseDate, buildVlDiaList, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell, calcInitialBalance, calcResgAplicTotal, calcResgAplicByFund, calcTransfTotal, isCapexTransaction, isDistribLucrosTransaction, getStartDate, getLatestExtractDate } from '../utils/finance';
-import { FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS } from '../utils/flowDePara';
+import { FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS, n2FromN3 } from '../utils/flowDePara';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, PieChart, Pie, LabelList, AreaChart, Area, LineChart, Line } from 'recharts';
 import { TrendingUp, TrendingDown, Wallet, AlertCircle, RefreshCw, Briefcase, ChevronRight, ArrowUpCircle, BrainCircuit, ShieldCheck, Lightbulb, Table2, Scale, Upload, Trash2, AlertTriangle, CheckCircle2, FileX, Tag, ArrowLeft, Layers, CalendarRange, DollarSign, Calendar, ArrowDownRight, ArrowUpRight, Printer, Calculator, Target, LayoutGrid, ListFilter, Landmark } from 'lucide-react';
 import { FluxoCaixaDiario, CurrencyInput }      from './FluxoCaixaDiario';
@@ -1265,8 +1265,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
               const byN3 = cats.findIndex(c => c.n3Codes?.includes(n3));
               if (byN3 !== -1) return byN3;
           }
-          // 2ª: grupo N2 do cadastro
-          const n2 = String(t.flowTypeLevel2 || '').trim();
+          // 2ª: grupo N2 — pelo CADASTRO do N3 (oficial); a coluna "Fluxo N2" do
+          // arquivo só vale se o N3 não estiver no cadastro. Ex.: Comissões
+          // (N3 21802 → N2 218) vinham com outro N2 no arquivo e caíam em Impostos.
+          const n2 = String(n2FromN3(n3) || t.flowTypeLevel2 || '').trim();
           if (n2) {
               const byCode = cats.findIndex(c => c.codes.includes(n2));
               if (byCode !== -1) return byCode;

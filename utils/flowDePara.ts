@@ -416,6 +416,16 @@ export const FLOW_DEPARA_AMBIGUOUS: Record<string, FlowMapping[]> = {
 
 // Resolve o fluxo a partir da Conta TOTVS. Retorna o mapeamento único,
 // "AMBIGUOUS" quando a conta tem vários N3, ou null se não existir.
+/** N3 (Tipo de Fluxo) → N2 pelo cadastro oficial. Cada N3 tem um único N2. */
+const N3_TO_N2: Record<string, string> = (() => {
+  const m: Record<string, string> = {};
+  Object.values(FLOW_DEPARA).forEach(f => { if (f.n3 && f.n2 && !m[f.n3]) m[f.n3] = f.n2; });
+  return m;
+})();
+export function n2FromN3(n3: string | undefined | null): string | undefined {
+  return N3_TO_N2[String(n3 ?? '').trim()];
+}
+
 export function resolveFlowFromConta(conta: string | undefined | null): FlowMapping | "AMBIGUOUS" | null {
   if (!conta) return null;
   const raw = String(conta).trim();

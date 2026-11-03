@@ -6,7 +6,7 @@ import { Lancamentos } from './Lancamentos';
 import { MultiSelect } from './MultiSelect';
 import { useTransactionFilters } from '../hooks/useTransactionFilters';
 import { parseDate, formatCurrency, moveToNextBusinessDay, parseCalendarMonths, formatCalendarMonths, planWeeklyPrevistoImport } from '../utils/finance';
-import { resolveFlowFromConta, FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS } from '../utils/flowDePara';
+import { resolveFlowFromConta, FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS, n2FromN3 } from '../utils/flowDePara';
 import { resolveCompanyFromCCPadrao } from '../utils/ccPadraoDePara';
 import { COMPANIES } from '../utils/finance';
 import { ApplicationEvolutionPanel } from './ApplicationEvolutionPanel';
@@ -957,9 +957,10 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               }
               if (!categoryVal) categoryVal = 'Geral';
               
-              // Prioridade 1: Lookup no cadastro de Tipo de Fluxo
-              if (!flowLevel2 && flowCode) {
-                  const n2Cadastro = flowN2Map.get(String(flowCode).trim());
+              // Prioridade 1: N2 do cadastro de Tipo de Fluxo (oficial) — prevalece
+              // sobre a coluna "Fluxo N2" do arquivo quando o N3 é conhecido.
+              if (flowCode) {
+                  const n2Cadastro = flowN2Map.get(String(flowCode).trim()) || n2FromN3(flowCode);
                   if (n2Cadastro) flowLevel2 = n2Cadastro;
               }
               // Prioridade 2: Fallback por truncamento do código
