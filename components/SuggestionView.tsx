@@ -49,7 +49,11 @@ export const SuggestionView: React.FC<Props> = ({ transactions, dfcManualValues,
       const excedente = projetado - reserva;
       // Posição em aplicações menos o que já foi resgatado no FC Diário (e mais o
       // que já foi aplicado), para não sugerir resgatar o mesmo dinheiro duas vezes.
-      const aplicacoes = Number(aplicPorEmpresa[co.id] ?? aplicPorEmpresa[norm(co.id)] ?? 0)
+      // Posição ATUAL das aplicações (reflete edições de valor); sem lançamentos, usa a foto da importação.
+      const appCo = transactions.filter(t => t.type === TransactionType.APPLICATION && norm(t.companyCode) === norm(co.id));
+      const aplicacoes = (appCo.length > 0
+        ? appCo.reduce((acc, t) => acc + (Number(t.value) || 0), 0)
+        : Number(aplicPorEmpresa[co.id] ?? aplicPorEmpresa[norm(co.id)] ?? 0))
         - calcResgAplicTotal(co.id, dfcManualValues || {});
       return { id: co.id, name: co.name, banco, receber, pagar, projetado, reserva, excedente, aplicacoes };
     });

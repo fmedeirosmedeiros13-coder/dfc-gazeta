@@ -271,7 +271,10 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
       const projetado = banco + receber - pagar;
       const reserva = Number(dfcManualValues?.[`reserva_min_${co.id}`]) || 0;
       const excedente = projetado - reserva;
-      const aplicacoes = Number(aplicPorEmpresa[co.id] ?? aplicPorEmpresa[norm(co.id)] ?? 0);
+      const appCo = transactions.filter(t => t.type === TransactionType.APPLICATION && norm(t.companyCode) === norm(co.id));
+      const aplicacoes = appCo.length > 0
+        ? appCo.reduce((acc, t) => acc + (Number(t.value) || 0), 0)
+        : Number(aplicPorEmpresa[co.id] ?? aplicPorEmpresa[norm(co.id)] ?? 0);
       return { id: co.id, name: co.name, banco, receber, pagar, projetado, reserva, excedente, aplicacoes };
     });
   }, [transactions, dfcManualValues, applicationSnapshots]);
@@ -295,26 +298,26 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   const generateAutoSummary = () => {
       const coberturaPct = summary.totalOutflow > 0 ? (summary.totalInflow / summary.totalOutflow) * 100 : 0;
       const resultadoTexto = operatingResult >= 0
-          ? `resultado operacional positivo de ${formatCurrency(operatingResult)}, indicando que os recebimentos do período cobriram integralmente as saídas`
-          : `resultado operacional negativo de ${formatCurrency(Math.abs(operatingResult))}, com os recebimentos cobrindo ${coberturaPct.toFixed(0)}% dos pagamentos — a diferença foi suportada pelo saldo em caixa`;
+          ? `resultado do caixa operacional positivo de ${formatCurrency(operatingResult)}, indicando que os recebimentos previstos devem cobrir integralmente as saídas`
+          : `resultado do caixa operacional negativo de ${formatCurrency(Math.abs(operatingResult))}, com os recebimentos previstos cobrindo ${coberturaPct.toFixed(0)}% dos pagamentos — a diferença deverá ser suportada pelo saldo em caixa`;
 
       // Concentração no maior fornecedor: se ele sozinho responde por uma fatia
       // grande das saídas, vale um alerta específico e acionável — não só o
       // percentual genérico de cobertura.
       const supplierSharePct = topSupplier && summary.totalOutflow > 0 ? (topSupplier.value / summary.totalOutflow) * 100 : 0;
       const concentracaoTexto = (topSupplier && supplierSharePct >= 15)
-          ? ` Chama atenção a concentração em ${topSupplier.name} (${supplierSharePct.toFixed(1)}% das saídas) — recomenda-se negociar prazo ou parcelamento com esse fornecedor específico, já que ele sozinho pressiona o caixa do período.`
-          : (topSupplier ? ` O maior fornecedor do período foi ${topSupplier.name}, com ${formatCurrency(topSupplier.value)} (${supplierSharePct.toFixed(1)}% das saídas).` : '');
+          ? ` Chama atenção a concentração em ${topSupplier.name} (${supplierSharePct.toFixed(1)}% das saídas) — recomenda-se negociar prazo ou parcelamento com esse fornecedor específico, já que ele sozinho deve pressionar o caixa do período.`
+          : (topSupplier ? ` O maior fornecedor do período será ${topSupplier.name}, com ${formatCurrency(topSupplier.value)} (${supplierSharePct.toFixed(1)}% das saídas).` : '');
 
       const aplicacaoTexto = (totalManualAplicacoes > 0 || totalManualResgates > 0)
-          ? `As aplicações financeiras tiveram efeito líquido de ${formatCurrency(cashFlowImpact)} sobre o caixa (${formatCurrency(totalManualAplicacoes)} aplicados e ${formatCurrency(totalManualResgates)} resgatados).`
-          : `A posição em aplicações segue em ${formatCurrency(summary.totalInvested)}, funcionando como colchão de segurança caso o caixa operacional continue negativo.`;
+          ? `As aplicações financeiras previstas terão efeito líquido de ${formatCurrency(cashFlowImpact)} sobre o caixa (${formatCurrency(totalManualAplicacoes)} a aplicar e ${formatCurrency(totalManualResgates)} a resgatar).`
+          : `A posição em aplicações segue em ${formatCurrency(summary.totalInvested)}, funcionando como colchão de segurança caso o caixa operacional fique negativo.`;
 
       const fechamentoTexto = netPeriodResult >= initialBalance
-          ? `A posição consolidada avançou de ${formatCurrency(initialBalance)} para ${formatCurrency(netPeriodResult)}, uma evolução favorável no período.`
-          : `A posição consolidada recuou de ${formatCurrency(initialBalance)} para ${formatCurrency(netPeriodResult)}. Recomenda-se acompanhar a tendência nos próximos períodos e avaliar a necessidade de reforço de caixa.`;
+          ? `A posição consolidada deve avançar de ${formatCurrency(initialBalance)} para ${formatCurrency(netPeriodResult)}, uma evolução favorável no período.`
+          : `A posição consolidada deve recuar de ${formatCurrency(initialBalance)} para ${formatCurrency(netPeriodResult)}. Recomenda-se acompanhar a tendência nos próximos períodos e avaliar a necessidade de reforço de caixa.`;
 
-      const text = `No período de ${dateRange}, a Rede Gazeta apresentou ${resultadoTexto}.${concentracaoTexto} ${aplicacaoTexto} ${fechamentoTexto}`;
+      const text = `No período de ${dateRange}, a Rede Gazeta deve apresentar ${resultadoTexto}.${concentracaoTexto} ${aplicacaoTexto} ${fechamentoTexto}`;
       setBoardSummary(text);
   };
 
@@ -323,23 +326,28 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   const generateAutoAnalise = () => {
       const cobertura = summary.totalOutflow > 0 ? ((summary.totalInflow / summary.totalOutflow) * 100).toFixed(0) : '0';
       const parts: string[] = [];
-      parts.push(`Os recebimentos do período (${formatCurrency(summary.totalInflow)}) cobriram ${cobertura}% dos pagamentos realizados (${formatCurrency(summary.totalOutflow)}), resultando em um resultado operacional ${formatCurrency(operatingResult)}.`);
+      parts.push(`Os recebimentos previstos para o período (${formatCurrency(summary.totalInflow)}) cobrem ${cobertura}% dos pagamentos previstos (${formatCurrency(summary.totalOutflow)}), o que deve gerar um resultado do caixa operacional de ${formatCurrency(operatingResult)}.`);
       if (topSupplier || topCustomer) {
           let p2 = '';
           if (topSupplier && summary.totalOutflow > 0) {
-              p2 += `O maior desembolso individual foi para ${topSupplier.name}, ${formatCurrency(topSupplier.value)} — sozinho, ${((topSupplier.value / summary.totalOutflow) * 100).toFixed(1)}% de tudo que foi pago no período. `;
+              p2 += `O maior desembolso individual previsto é para ${topSupplier.name}, ${formatCurrency(topSupplier.value)} — sozinho, ${((topSupplier.value / summary.totalOutflow) * 100).toFixed(1)}% de tudo que está previsto para pagamento no período. `;
           }
           if (topCustomer && summary.totalInflow > 0) {
-              p2 += `Do lado das entradas, ${topCustomer.name} foi a maior fonte de receita, ${formatCurrency(topCustomer.value)} (${((topCustomer.value / summary.totalInflow) * 100).toFixed(1)}% do recebido)${(topCustomer.value / summary.totalInflow) > 0.3 ? ' — uma concentração alta, vale ficar de olho se esse cliente atrasar.' : '.'}`;
+              p2 += `Do lado das entradas, ${topCustomer.name} deve ser a maior fonte de receita, ${formatCurrency(topCustomer.value)} (${((topCustomer.value / summary.totalInflow) * 100).toFixed(1)}% do previsto a receber)${(topCustomer.value / summary.totalInflow) > 0.3 ? ' — uma concentração alta, vale ficar de olho se esse cliente atrasar.' : '.'}`;
           }
           if (p2.trim()) parts.push(p2.trim());
       }
+      // Aplicações/resgates vêm do FC Diário (previsão) — texto no futuro.
       if (totalManualAplicacoes > 0 || totalManualResgates > 0) {
-          parts.push(`As movimentações de aplicações somaram ${formatCurrency(totalManualAplicacoes)} em aportes e ${formatCurrency(totalManualResgates)} em resgates, um efeito líquido de ${formatCurrency(cashFlowImpact)} sobre o caixa.`);
+          const itens: string[] = [];
+          if (totalManualResgates > 0) itens.push(`${formatCurrency(totalManualResgates)} em resgates`);
+          if (totalManualAplicacoes > 0) itens.push(`${formatCurrency(totalManualAplicacoes)} em aplicações`);
+          const efeito = cashFlowImpact >= 0 ? `um reforço líquido de ${formatCurrency(cashFlowImpact)} no caixa` : `uma saída líquida de ${formatCurrency(Math.abs(cashFlowImpact))} do caixa para as aplicações`;
+          parts.push(`Estão previstos ${itens.join(' e ')} no período, ${efeito}.`);
       } else {
-          parts.push('Não houve movimentação de aplicações ou resgates registrada neste período.');
+          parts.push('Não estão previstas aplicações ou resgates para o período.');
       }
-      parts.push(`A posição consolidada encerra o período em ${formatCurrency(netPeriodResult)},${netPeriodResult >= initialBalance ? ' um avanço frente ao saldo inicial.' : ' uma retração frente ao saldo inicial — vale acompanhar a tendência nos próximos períodos.'}`);
+      parts.push(`A posição consolidada deve encerrar o período em ${formatCurrency(netPeriodResult)},${netPeriodResult >= initialBalance ? ' um avanço frente ao saldo inicial.' : ' uma retração frente ao saldo inicial — vale acompanhar a tendência nos próximos períodos.'}`);
       setAnaliseText(parts.join('\n\n'));
   };
 
@@ -681,8 +689,14 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                     const F = { boxTitle: 'clamp(8px, 1.2cqw, 22px)', row: 'clamp(8px, 1.12cqw, 21px)', donutTitle: 'clamp(7px, 0.95cqw, 18px)', list: 'clamp(7px, 0.92cqw, 17px)', pct: 'clamp(11px, 1.9cqw, 36px)' };
                     const saidasOperac = summary.totalOutflow - totalCapex;      // Saídas sem o Capex
                     const aplicResgNet = totalManualResgates - totalManualAplicacoes; // (-/+)
-                    const hasSnapshot = applicationSnapshots.length >= 1;
-                    const appOpening = hasSnapshot ? applicationSnapshots[applicationSnapshots.length - 1].totalGeral : 0;
+                    // SD Inicial = posição ATUAL das aplicações (lançamentos da aba
+                    // Aplicações — a mesma base do "Saldo Atual" da DFC Consolidada).
+                    // Antes vinha da foto tirada na importação e não refletia as
+                    // alterações de valor feitas depois.
+                    const appTx = transactions.filter(t => t.type === TransactionType.APPLICATION);
+                    const lastSnapTotal = applicationSnapshots.length
+                        ? [...applicationSnapshots].sort((a, b) => (a.dateISO < b.dateISO ? 1 : -1))[0].totalGeral : 0;
+                    const appOpening = appTx.length > 0 ? appTx.reduce((acc, t) => acc + (Number(t.value) || 0), 0) : lastSnapTotal;
                     const appClosing = appOpening + totalManualAplicacoes - totalManualResgates;
 
                     const caixaRows = [
