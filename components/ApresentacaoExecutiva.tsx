@@ -331,7 +331,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
       const mil = (v: number) => {
           const a = Math.abs(v);
           if (a >= 1e7) { const m = a / 1e6;   // ≥ 10 milhões em "milhões"; abaixo, em "mil" (como no modelo)
- const t = m.toLocaleString('pt-BR', { maximumFractionDigits: m >= 10 ? 0 : 2 }); return `R$ ${t} ${m < 2 ? 'milhão' : 'milhões'}`; }
+ const t = m.toLocaleString('pt-BR', { maximumFractionDigits: 1 }); return `R$ ${t} ${m < 2 ? 'milhão' : 'milhões'}`; }
           if (a >= 1000) return `R$ ${Math.round(a / 1000).toLocaleString('pt-BR')} mil`;
           return `R$ ${Math.round(a).toLocaleString('pt-BR')}`;
       };
@@ -365,23 +365,28 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
       // Resumo Gerencial
       parts.push(`Resumo Gerencial: ${operatingResult >= 0 ? 'Superávit' : 'Déficit'} operacional previsto de ${mil(operatingResult)} no período.`);
 
-      // Saldo em Aplicações (Ajustado)
-      if (appAtual > 0 || totalManualAplicacoes > 0 || totalManualResgates > 0) {
-          const cons: string[] = [];
-          if (totalManualAplicacoes > 0) cons.push(`as aplicações previstas (${mil(totalManualAplicacoes)})`);
-          if (totalManualResgates > 0) cons.push(`os resgates programados (${mil(totalManualResgates)})`);
-          parts.push(`Saldo em Aplicações (Ajustado): ${mil(appAjustado)}.${cons.length ? ` O valor já considera ${lista(cons)}.` : ' Não há aplicações ou resgates previstos no período.'}`);
-      }
-
-      // Previsão Operacional (resgates por empresa e destino)
-      const resgItens = Object.entries(resgPor).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([c, v]) => `na ${nomeCia(c)} (${mil(v)})`);
-      const aplItens = Object.entries(aplPor).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([c, v]) => `na ${nomeCia(c)} (${mil(v)})`);
-      if (resgItens.length) {
-          parts.push(`Previsão Operacional: Resgates ${lista(resgItens)}, destinados ${temMutuo ? 'ao mútuo e à cobertura dos pagamentos' : 'à cobertura dos pagamentos'} do período.${aplItens.length ? ` Aplicações previstas ${lista(aplItens)}.` : ''}`);
-      } else if (aplItens.length) {
-          parts.push(`Previsão Operacional: Sem resgates previstos; aplicações previstas ${lista(aplItens)}.`);
-      } else {
-          parts.push('Previsão Operacional: Não estão previstos resgates ou aplicações; os pagamentos do período serão cobertos pelo caixa.');
+      // Aplicações — UM parágrafo só: quanto temos hoje, o que vamos aplicar e
+      // resgatar (por empresa) e quanto ficará no fim do período.
+      const porCia = (m: Record<string, number>) => {
+          const xs = Object.entries(m).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+          // uma empresa só: "na TVN"; várias: "R$ 1.260 mil na TVC e R$ 250 mil na TVG"
+          return xs.length === 1 ? [`na ${nomeCia(xs[0][0])}`] : xs.map(([c, v]) => `${mil(v)} na ${nomeCia(c)}`);
+      };
+      const resgItens = porCia(resgPor), aplItens = porCia(aplPor);
+      const par = (xs: string[]) => xs.length === 1 ? ` ${xs[0]}` : ` (${lista(xs)})`;
+      if (appAtual > 0 || aplItens.length || resgItens.length) {
+          const destino = temMutuo ? 'para o mútuo e a cobertura dos pagamentos' : 'para a cobertura dos pagamentos';
+          let txt = `Saldo em Aplicações: Temos hoje ${mil(appAtual)} aplicados.`;
+          if (aplItens.length && resgItens.length) {
+              txt += ` Vamos aplicar mais ${mil(totalManualAplicacoes)}${par(aplItens)} e resgatar ${mil(totalManualResgates)}${par(resgItens)} ${destino}. Com isso, o saldo em aplicações será de ${mil(appAjustado)}.`;
+          } else if (aplItens.length) {
+              txt += ` Somando os ${mil(totalManualAplicacoes)} que vamos aplicar${par(aplItens)}, o saldo em aplicações será de ${mil(appAjustado)}.`;
+          } else if (resgItens.length) {
+              txt += ` Com o resgate de ${mil(totalManualResgates)}${par(resgItens)} ${destino}, o saldo em aplicações será de ${mil(appAjustado)}.`;
+          } else {
+              txt += ' Não estão previstas aplicações ou resgates no período, então o saldo se mantém.';
+          }
+          parts.push(txt);
       }
 
       // Atenção / Destaque: mútuos e aplicações que ficarão zeradas
