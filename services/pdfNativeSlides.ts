@@ -8,7 +8,7 @@
  */
 import type jsPDF from 'jspdf';
 import { Transaction, TransactionType } from '../types';
-import { classifyTax, buildVlDiaList } from '../utils/finance';
+import { classifyTax, buildVlDiaList, isInvestimentoPayable } from '../utils/finance';
 
 // ─── PALETA ───────────────────────────────────────────────────────────────────
 const BG           = [15, 23, 42];     // #0f172a
@@ -250,7 +250,7 @@ export function drawPayablesPage(
     return allPayables.filter(t=>normalizeCategory(t.category).includes(nf)).reduce((s,t)=>s+(Number(t.value)||0),0);
   };
   const valPessoal=getSumByCat('Pessoal')+getSumByCat('Folha');
-  const valInvest=getSumByCat('Investimento')+getSumByCat('Obra');
+  const valInvest=allPayables.filter(t=>isInvestimentoPayable(t)&&classifyTax(t)===null).reduce((s,t)=>s+(Number(t.value)||0),0);
   const valImpost=allPayables.filter(t=>classifyTax(t)!==null).reduce((s,t)=>s+(Number(t.value)||0),0);
   const valComiss=allPayables.filter(t=>normalizeCategory(t.category).includes('COMISS')&&classifyTax(t)===null).reduce((s,t)=>s+(Number(t.value)||0),0);
   const valFornec=totalPayables-valPessoal-valInvest-valComiss-valImpost;
@@ -266,7 +266,7 @@ export function drawPayablesPage(
   // VL DIA em ordem CRESCENTE de data (mesma regra da tela)
   const vlDia = buildVlDiaList(allPayables);
 
-  const catInvest=agg.filter(it=>{const p=allPayables.find(pp=>(pp.supplierCode||pp.supplier||pp.description||'Desconhecido')===it.id);return p?(normalizeCategory(p.category).includes('INVESTIMENTO')||normalizeCategory(p.category).includes('OBRA')):false;}).sort((a,b)=>b.value-a.value);
+  const catInvest=agg.filter(it=>{return allPayables.some(pp=>(pp.supplierCode||pp.supplier||pp.description||'Desconhecido')===it.id&&isInvestimentoPayable(pp));}).sort((a,b)=>b.value-a.value);
   const catImpost=agg.filter(it=>{const p=allPayables.find(pp=>(pp.supplierCode||pp.supplier||pp.description||'Desconhecido')===it.id);return p?classifyTax(p)!==null:false;}).sort((a,b)=>b.value-a.value);
   const catComiss=agg.filter(it=>{const p=allPayables.find(pp=>(pp.supplierCode||pp.supplier||pp.description||'Desconhecido')===it.id);return p?(normalizeCategory(p.category).includes('COMISS')&&classifyTax(p)===null):false;}).sort((a,b)=>b.value-a.value);
 

@@ -3,7 +3,7 @@ import { Transaction, TransactionType } from '../types';
 import { BarChart, Bar, Tooltip, ResponsiveContainer, Cell, LabelList, XAxis, YAxis } from 'recharts';
 import { Briefcase, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { FinanceLayout } from './FinanceLayout';
-import { formatCurrency, classifyTax, parseDate, buildVlDiaList } from '../utils/finance';
+import { formatCurrency, classifyTax, parseDate, buildVlDiaList, isInvestimentoPayable } from '../utils/finance';
 
 interface ContasPagarProps {
   transactions: Transaction[];
@@ -80,7 +80,7 @@ export const ContasPagar: React.FC<ContasPagarProps> = ({
       const val = Number(t.value) || 0;
       if (classifyTax(t) !== null) { catBuckets.impost += val; return; }             // 1ª: impostos (mais preciso, por fornecedor/fluxo)
       if (matchesCat(t, ['Pessoal', 'Folha'], PESSOAL_N2)) { catBuckets.pessoal += val; return; }
-      if (matchesCat(t, ['Investimento', 'Obra'], [])) { catBuckets.invest += val; return; }
+      if (isInvestimentoPayable(t)) { catBuckets.invest += val; return; }          // fluxo 401–405 (Capex) ou categoria Investimento/Obra
       if (matchesCat(t, ['Comiss'], COMISSAO_N2)) { catBuckets.comiss += val; return; }
       catBuckets.fornec += val;                                                       // residual
   });
@@ -224,7 +224,7 @@ export const ContasPagar: React.FC<ContasPagarProps> = ({
                  /* Col 3: Categorias Específicas (Investimento, Impostos, Comissões) - Empilhadas */
                  <div className="flex flex-col gap-4 h-full overflow-hidden">
                      {[
-                         { title: 'INVESTIMENTO', data: aggregatedPayables.filter(t => allPayables.find(p => groupKeyFor(p) === t.id)?.category?.includes('Investimento')), color: 'border-orange-500' },
+                         { title: 'INVESTIMENTO', data: aggregatedPayables.filter(t => allPayables.some(p => groupKeyFor(p) === t.id && isInvestimentoPayable(p))), color: 'border-orange-500' },
                          { title: 'IMPOSTOS', data: aggregatedPayables.filter(t => { const p = allPayables.find(pp => groupKeyFor(pp) === t.id); return p ? classifyTax(p) !== null : false; }), color: 'border-red-500' },
                          { title: 'COMISSÕES', data: aggregatedPayables.filter(t => { const p = allPayables.find(pp => groupKeyFor(pp) === t.id); return p ? normalizeCategory(p.category).includes('COMISS') && classifyTax(p) === null : false; }), color: 'border-amber-500' }
                      ].map((box, i) => (

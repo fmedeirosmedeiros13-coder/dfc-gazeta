@@ -606,6 +606,18 @@ export function calcTransfTotal(
  * Critério único — usado na DFC Consolidada e na página principal do
  * Demonstrativo, para os dois sempre baterem.
  */
+/**
+ * Pagamento de INVESTIMENTO para os quadros de Contas a Pagar (tela e PDF/PPTX):
+ * mesmo critério de Capex da DFC (fluxos N2 401–405) + categoria
+ * "Investimento"/"Obra". Antes só olhava o texto da categoria, e os lançamentos
+ * do TOTVS com fluxo de investimento (categoria = nome do fluxo) não entravam.
+ */
+export function isInvestimentoPayable(t: Transaction): boolean {
+  if (isCapexTransaction(t)) return true;
+  const cat = String(t.category ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  return cat.includes('INVESTIMENTO') || cat.includes('OBRA');
+}
+
 const CAPEX_N3_EXCLUIDOS = new Set(['40002', '40003', '40013']);
 const CAPEX_N3 = new Set(['40001','40004','40005','40006','40007','40008','40009','40010','40011','40012','40014','40015']);
 

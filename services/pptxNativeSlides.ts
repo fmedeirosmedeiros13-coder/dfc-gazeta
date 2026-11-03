@@ -11,7 +11,7 @@
  */
 import PptxGenJS from 'pptxgenjs';
 import { Transaction, TransactionType } from '../types';
-import { classifyTax, buildVlDiaList } from '../utils/finance';
+import { classifyTax, buildVlDiaList, isInvestimentoPayable } from '../utils/finance';
 
 // ─── PALETA & CONSTANTES (mutáveis por tema — applyTheme define escuro/claro) ───
 let BG           = '0f172a';
@@ -467,7 +467,7 @@ export function generatePayablesSlide(
       .reduce((s, t) => s + (Number(t.value) || 0), 0);
   };
   const valPessoal = getSumByCat('Pessoal') + getSumByCat('Folha');
-  const valInvest  = getSumByCat('Investimento') + getSumByCat('Obra');
+  const valInvest  = allPayables.filter(t => isInvestimentoPayable(t) && classifyTax(t) === null).reduce((s, t) => s + (Number(t.value) || 0), 0);
   const valImpost  = allPayables.filter(t => classifyTax(t) !== null).reduce((s, t) => s + (Number(t.value) || 0), 0);
   const valComiss  = allPayables.filter(t => normalizeCategory(t.category).includes('COMISS') && classifyTax(t) === null)
                       .reduce((s, t) => s + (Number(t.value) || 0), 0);
@@ -497,8 +497,7 @@ export function generatePayablesSlide(
 
   // Mini-cards de categoria
   const catInvest = agg.filter(it => {
-    const p = allPayables.find(pp => (pp.supplierCode || pp.supplier || pp.description || 'Desconhecido') === it.id);
-    return p ? (normalizeCategory(p.category).includes('INVESTIMENTO') || normalizeCategory(p.category).includes('OBRA')) : false;
+    return allPayables.some(pp => (pp.supplierCode || pp.supplier || pp.description || 'Desconhecido') === it.id && isInvestimentoPayable(pp));
   }).sort((a, b) => b.value - a.value);
 
   const catImpost = agg.filter(it => {
