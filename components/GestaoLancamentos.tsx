@@ -274,7 +274,39 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
     };
 
     if (editingId && onUpdateTransaction) {
-        onUpdateTransaction(transactionData);
+        // EDIÇÃO: parte do lançamento ORIGINAL e troca só o que o formulário
+        // preencheu. Antes o registro era recriado só com os campos do
+        // formulário — na aba Aplicações sumiam data, vencimento, banco,
+        // conta e situação; e qualquer edição virava status "REALIZADO".
+        const original = transactions.find(t => t.id === editingId);
+        if (original && activeTab === 'APLICACOES') {
+            // Aplicações: o formulário só tem Data, Empresa, Produto e Valor —
+            // os demais dados do relatório (operação, vencimento, banco, C/C,
+            // situação) ficam como foram importados.
+            const merged: Transaction = {
+                ...original,
+                companyCode: empresa || original.companyCode,
+                date: dtPrevPagt ? dtPrevPagt : original.date,
+                value: valorOriginal !== '' ? finalValue : original.value,
+                ...(description ? { category: description } : {}),
+            };
+            onUpdateTransaction(merged);
+        } else if (original) {
+            const merged: Transaction = { ...original };
+            (Object.keys(transactionData) as (keyof Transaction)[]).forEach(k => {
+                if (k === 'id' || k === 'type' || k === 'status') return;
+                const v = transactionData[k];
+                if (v === undefined || v === null || (typeof v === 'string' && v.trim() === '')) return;
+                (merged as any)[k] = v;
+            });
+            // Data: só troca se o usuário digitou uma (senão mantém a importada).
+            merged.date = dtPrevPagt ? dtPrevPagt : original.date;
+            // Valor: o formulário sempre traz o valor (pode ser zero de propósito).
+            if (valorOriginal !== '') merged.value = finalValue;
+            onUpdateTransaction(merged);
+        } else {
+            onUpdateTransaction(transactionData);
+        }
     } else {
         onAddTransaction(transactionData);
     }
