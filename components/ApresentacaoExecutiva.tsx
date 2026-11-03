@@ -324,30 +324,115 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   // Gera o texto da "Análise do Período" (mesmo conteúdo dos parágrafos, em
   // texto corrido editável) — espelha o padrão do Parecer do Financeiro.
   const generateAutoAnalise = () => {
-      const cobertura = summary.totalOutflow > 0 ? ((summary.totalInflow / summary.totalOutflow) * 100).toFixed(0) : '0';
+      // Modelo da gestora: blocos curtos com rótulo, valores em "mil"/"milhões",
+      // no FUTURO (é previsão). Seções sem conteúdo não aparecem.
+      const SIGLA: Record<string, string> = { '1': 'S/A', '2': 'TVG', '3': 'TVC', '4': 'TVN', '5': 'MIX', '6': 'FM 102', '14': 'VÍDEO', '17': 'DIFUSORA', '18': 'CIDADÃ', '22': 'FM LINHARES', '23': 'N. GERAÇÃO' };
+      const nomeCia = (id: string) => SIGLA[String(id).replace(/^0+(?=\d)/, '')] || `Empresa ${id}`;
+      const mil = (v: number) => {
+          const a = Math.abs(v);
+          if (a >= 1e7) { const m = a / 1e6;   // ≥ 10 milhões em "milhões"; abaixo, em "mil" (como no modelo)
+ const t = m.toLocaleString('pt-BR', { maximumFractionDigits: m >= 10 ? 0 : 2 }); return `R$ ${t} ${m < 2 ? 'milhão' : 'milhões'}`; }
+          if (a >= 1000) return `R$ ${Math.round(a / 1000).toLocaleString('pt-BR')} mil`;
+          return `R$ ${Math.round(a).toLocaleString('pt-BR')}`;
+      };
+      const lista = (xs: string[]) => xs.length <= 1 ? (xs[0] || '') : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`;
+      const mv = dfcManualValues || {};
+      const companyOf = (key: string, prefix: string) => key.slice(prefix.length).split('_')[0];
+
+      // Resgates / aplicações / mútuos por empresa (FC Diário)
+      const resgPor: Record<string, number> = {}, aplPor: Record<string, number> = {}, transfPor: Record<string, number> = {};
+      const transfDias = new Set<string>();
+      Object.entries(mv).forEach(([k, v]) => {
+          const n = Number(v) || 0; if (!n) return;
+          if (k.startsWith('sim_resg_')) { const c = companyOf(k, 'sim_resg_'); if (n > 0) resgPor[c] = (resgPor[c] || 0) + n; else aplPor[c] = (aplPor[c] || 0) - n; }
+          else if (k.startsWith('sim_transf_')) {
+              const c = companyOf(k, 'sim_transf_'); transfPor[c] = (transfPor[c] || 0) + n;
+              const dt = k.match(/(\d{2}\/\d{2})\/\d{4}$/); if (dt) transfDias.add(dt[1]);   // dia do mútuo (dd/mm)
+          }
+      });
+      const temMutuo = Object.values(transfPor).some(v => Math.round(v) !== 0);
+
+      // Aplicações: posição atual por empresa (aba Aplicações) e após o previsto
+      const appTx = transactions.filter(t => t.type === TransactionType.APPLICATION);
+      const appPor: Record<string, number> = {};
+      appTx.forEach(t => { const c = String(t.companyCode || '').replace(/^0+(?=\d)/, ''); appPor[c] = (appPor[c] || 0) + (Number(t.value) || 0); });
+      const appAtual = appTx.reduce((a, t) => a + (Number(t.value) || 0), 0);
+      const appAjustado = appAtual + totalManualAplicacoes - totalManualResgates;
+
       const parts: string[] = [];
-      parts.push(`Os recebimentos previstos para o período (${formatCurrency(summary.totalInflow)}) cobrem ${cobertura}% dos pagamentos previstos (${formatCurrency(summary.totalOutflow)}), o que deve gerar um resultado do caixa operacional de ${formatCurrency(operatingResult)}.`);
-      if (topSupplier || topCustomer) {
-          let p2 = '';
-          if (topSupplier && summary.totalOutflow > 0) {
-              p2 += `O maior desembolso individual previsto é para ${topSupplier.name}, ${formatCurrency(topSupplier.value)} — sozinho, ${((topSupplier.value / summary.totalOutflow) * 100).toFixed(1)}% de tudo que está previsto para pagamento no período. `;
-          }
-          if (topCustomer && summary.totalInflow > 0) {
-              p2 += `Do lado das entradas, ${topCustomer.name} deve ser a maior fonte de receita, ${formatCurrency(topCustomer.value)} (${((topCustomer.value / summary.totalInflow) * 100).toFixed(1)}% do previsto a receber)${(topCustomer.value / summary.totalInflow) > 0.3 ? ' — uma concentração alta, vale ficar de olho se esse cliente atrasar.' : '.'}`;
-          }
-          if (p2.trim()) parts.push(p2.trim());
+      parts.push('Caixa Operacional e Total de Disponibilidades');
+
+      // Resumo Gerencial
+      parts.push(`Resumo Gerencial: ${operatingResult >= 0 ? 'Superávit' : 'Déficit'} operacional previsto de ${mil(operatingResult)} no período.`);
+
+      // Saldo em Aplicações (Ajustado)
+      if (appAtual > 0 || totalManualAplicacoes > 0 || totalManualResgates > 0) {
+          const cons: string[] = [];
+          if (totalManualAplicacoes > 0) cons.push(`as aplicações previstas (${mil(totalManualAplicacoes)})`);
+          if (totalManualResgates > 0) cons.push(`os resgates programados (${mil(totalManualResgates)})`);
+          parts.push(`Saldo em Aplicações (Ajustado): ${mil(appAjustado)}.${cons.length ? ` O valor já considera ${lista(cons)}.` : ' Não há aplicações ou resgates previstos no período.'}`);
       }
-      // Aplicações/resgates vêm do FC Diário (previsão) — texto no futuro.
-      if (totalManualAplicacoes > 0 || totalManualResgates > 0) {
-          const itens: string[] = [];
-          if (totalManualResgates > 0) itens.push(`${formatCurrency(totalManualResgates)} em resgates`);
-          if (totalManualAplicacoes > 0) itens.push(`${formatCurrency(totalManualAplicacoes)} em aplicações`);
-          const efeito = cashFlowImpact >= 0 ? `um reforço líquido de ${formatCurrency(cashFlowImpact)} no caixa` : `uma saída líquida de ${formatCurrency(Math.abs(cashFlowImpact))} do caixa para as aplicações`;
-          parts.push(`Estão previstos ${itens.join(' e ')} no período, ${efeito}.`);
+
+      // Previsão Operacional (resgates por empresa e destino)
+      const resgItens = Object.entries(resgPor).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([c, v]) => `na ${nomeCia(c)} (${mil(v)})`);
+      const aplItens = Object.entries(aplPor).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([c, v]) => `na ${nomeCia(c)} (${mil(v)})`);
+      if (resgItens.length) {
+          parts.push(`Previsão Operacional: Resgates ${lista(resgItens)}, destinados ${temMutuo ? 'ao mútuo e à cobertura dos pagamentos' : 'à cobertura dos pagamentos'} do período.${aplItens.length ? ` Aplicações previstas ${lista(aplItens)}.` : ''}`);
+      } else if (aplItens.length) {
+          parts.push(`Previsão Operacional: Sem resgates previstos; aplicações previstas ${lista(aplItens)}.`);
       } else {
-          parts.push('Não estão previstas aplicações ou resgates para o período.');
+          parts.push('Previsão Operacional: Não estão previstos resgates ou aplicações; os pagamentos do período serão cobertos pelo caixa.');
       }
-      parts.push(`A posição consolidada deve encerrar o período em ${formatCurrency(netPeriodResult)},${netPeriodResult >= initialBalance ? ' um avanço frente ao saldo inicial.' : ' uma retração frente ao saldo inicial — vale acompanhar a tendência nos próximos períodos.'}`);
+
+      // Atenção / Destaque: mútuos e aplicações que ficarão zeradas
+      const destaques: string[] = [];
+      if (temMutuo) {
+          const cede = Object.entries(transfPor).filter(([, v]) => v < 0).map(([c, v]) => `${nomeCia(c)} (${mil(v)})`);
+          const recebe = Object.entries(transfPor).filter(([, v]) => v > 0).map(([c, v]) => `${nomeCia(c)} (${mil(v)})`);
+          const cedeIds = Object.entries(transfPor).filter(([, v]) => v < 0), recIds = Object.entries(transfPor).filter(([, v]) => v > 0);
+          // Data dos pagamentos que o mútuo cobre (dia lançado na coluna Transf)
+          const dias = [...transfDias].sort((a, b) => (a.slice(3) + a.slice(0, 2)).localeCompare(b.slice(3) + b.slice(0, 2)));
+          const quando = dias.length ? `de ${lista(dias)}` : 'do período';
+          if (cedeIds.length === 1 && recIds.length === 1) {
+              destaques.push(`Está previsto um mútuo de ${mil(recIds[0][1])} da ${nomeCia(cedeIds[0][0])} para a ${nomeCia(recIds[0][0])}, para cobrir os pagamentos ${quando}.`);
+          } else {
+              destaques.push(`Estão previstos mútuos${cede.length ? ` cedidos pela ${lista(cede)}` : ''}${recebe.length ? ` para a ${lista(recebe)}` : ''}, para cobrir os pagamentos ${quando}.`);
+          }
+      }
+      const zeradas = Object.keys(resgPor).filter(c => (appPor[c] || 0) > 0 && (appPor[c] || 0) - (resgPor[c] || 0) + (aplPor[c] || 0) <= 0.5).map(nomeCia);
+      if (zeradas.length) destaques.push(`Com os resgates previstos, a aplicação da ${lista(zeradas)} ficará ZERADA.`);
+      if (destaques.length) parts.push(`⚠ ATENÇÃO / DESTAQUE: ${destaques.join(' ')}`);
+
+      // Entradas: concentração por dia
+      const rec = plannedTransactions.filter(t => t.type === TransactionType.RECEIVABLE);
+      const totRec = rec.reduce((a, t) => a + (Number(t.value) || 0), 0);
+      if (totRec > 0) {
+          const porDia: Record<string, number> = {};
+          rec.forEach(t => { porDia[t.date] = (porDia[t.date] || 0) + (Number(t.value) || 0); });
+          const [dia, vDia] = Object.entries(porDia).sort((a, b) => b[1] - a[1])[0];
+          const pct = Math.round((vDia / totRec) * 100);
+          const resto = totRec - vDia;
+          parts.push(pct >= 40 && resto > 0
+              ? `Entradas: O dia ${dia.slice(0, 5)} concentra ${pct}% dos recebimentos (${mil(vDia)}). Os demais dias somam ${100 - pct}% (${mil(resto)}).`
+              : `Entradas: Recebimentos previstos de ${mil(totRec)}, distribuídos ao longo do período; o maior dia é ${dia.slice(0, 5)}, com ${pct}% (${mil(vDia)}).`);
+      }
+
+      // Saídas: principais pagamentos (Folha, Distribuição de Lucros e maiores fornecedores)
+      const pag = plannedTransactions.filter(t => t.type === TransactionType.PAYABLE);
+      const grupos: Record<string, number> = {};
+      pag.forEach(t => {
+          const nome = String(t.supplier || t.description || 'OUTROS').toUpperCase();
+          const n2 = String(t.flowTypeLevel2 || '').trim();
+          let g: string;
+          if (n2 === '217') g = 'DISTRIB. LUCRO';
+          else if (/13[ºO°]?\s*SAL/.test(nome)) g = '13º SALÁRIO';
+          else if (nome.includes('FOLHA')) g = 'FOLHA';
+          else { const w = nome.replace(/[^A-ZÀ-Ú0-9 ]/g, ' ').split(/\s+/).filter(Boolean); g = (w[0] && w[0].length <= 3 && w[1]) ? `${w[0]} ${w[1]}` : (w[0] || 'OUTROS'); }
+          grupos[g] = (grupos[g] || 0) + (Number(t.value) || 0);
+      });
+      const top = Object.entries(grupos).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([g, v]) => `${g} (${mil(v)})`);
+      if (top.length) parts.push(`Saídas: Os principais pagamentos previstos são ${lista(top)}.`);
+
       setAnaliseText(parts.join('\n\n'));
   };
 
@@ -772,7 +857,13 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                             <textarea value={analiseText} onChange={(e) => setAnaliseText(e.target.value)} style={{ fontSize: 'clamp(8px, 1.08cqw, 20px)' }} className="w-full h-full p-4 font-normal text-slate-300 bg-slate-900 border border-slate-700 rounded-md focus:outline-none focus:border-slate-500 resize-none custom-scrollbar" placeholder="Insira a análise do período aqui..." />
                         ) : (
                             <div className="h-full overflow-y-auto pr-4 font-normal text-slate-300 leading-relaxed text-justify whitespace-pre-wrap custom-scrollbar" style={{ fontSize: 'clamp(8px, 1.08cqw, 20px)' }}>
-                                {analiseText || <span className="text-slate-500 italic">Nenhuma análise gerada. Utilize os controles para adicionar.</span>}
+                                {analiseText ? analiseText.split('\n\n').map((par, pi) => {
+                                    // "Rótulo: texto" → rótulo em negrito; 1º parágrafo sem rótulo = título em negrito
+                                    const m = par.match(/^([^:\n]{2,48}):\s?([\s\S]*)$/);
+                                    if (m) return <p key={pi} style={{ margin: '0 0 0.7em' }}><b className="text-slate-100">{m[1]}:</b> {m[2]}</p>;
+                                    return <p key={pi} style={{ margin: '0 0 0.7em' }}>{pi === 0 ? <b className="text-slate-100">{par}</b> : par}</p>;
+                                }) : null}
+                                {analiseText ? null : <span className="text-slate-500 italic">Nenhuma análise gerada. Utilize os controles para adicionar.</span>}
                             </div>
                         )}
                     </div>

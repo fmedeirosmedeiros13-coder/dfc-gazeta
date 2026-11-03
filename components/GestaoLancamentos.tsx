@@ -1090,7 +1090,12 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
 
       // Pagamento REAL = não foi gerado pelo próprio Calendário.
       const hasRealPayables = importPayables.some(p => !p.generatedFromCalendarId);
-      const skipGeneration = activeTab === 'CALENDARIO' && !hasRealPayables;
+      // O Calendário só gera obrigações para CONTAS A PAGAR: roda ao importar
+      // Pagamentos ou o próprio Calendário. Importar Recebimentos, Aplicações ou
+      // Tipo de Fluxo NÃO mexe nos pagamentos gerados (antes rodava em toda
+      // importação e podia gerar de novo obrigações já tratadas/excluídas).
+      const importMexeEmPagar = activeTab === 'PAGAMENTOS' || activeTab === 'CALENDARIO';
+      const skipGeneration = !importMexeEmPagar || (activeTab === 'CALENDARIO' && !hasRealPayables);
 
       let calAdditions: Transaction[] = [];
       let calDeletions: string[] = [];
