@@ -161,6 +161,18 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
       // seu saldo chega em 27/07 do mesmo jeito.
       const allDates = (Array.from(new Set(adjustedTransactions.map(t => t.date))) as string[]).sort(byDate);
 
+      // Chegou previsto de uma semana nova (última data mudou)? Período escolhido
+      // à mão volta para o automático (segunda da geração → segunda seguinte).
+      const lastPrevistoDate = allDates.length ? allDates[allDates.length - 1] : '';
+      useEffect(() => {
+          if (!lastPrevistoDate) return;
+          try {
+              const seen = localStorage.getItem('fc_period_last_previsto');
+              if (seen && seen !== lastPrevistoDate) { setPeriodStart(''); setPeriodEnd(''); }
+              localStorage.setItem('fc_period_last_previsto', lastPrevistoDate);
+          } catch { /* ignora */ }
+      }, [lastPrevistoDate]);
+
       // ── PERÍODO EXIBIDO ──────────────────────────────────────────────────
       // Padrão: da SEGUNDA da semana do 1º dia com previsto até a SEGUNDA
       // SEGUINTE (Mon→Mon), mostrando só dias úteis (ex.: 03, 04, 05, 06, 07 e

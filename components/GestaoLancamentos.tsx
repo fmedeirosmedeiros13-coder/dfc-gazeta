@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { Lancamentos } from './Lancamentos';
 import { MultiSelect } from './MultiSelect';
 import { useTransactionFilters } from '../hooks/useTransactionFilters';
-import { parseDate, formatCurrency, moveToNextBusinessDay, parseCalendarMonths, formatCalendarMonths } from '../utils/finance';
+import { parseDate, formatCurrency, moveToNextBusinessDay, parseCalendarMonths, formatCalendarMonths, planWeeklyPrevistoImport } from '../utils/finance';
 import { resolveFlowFromConta, FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS } from '../utils/flowDePara';
 import { resolveCompanyFromCCPadrao } from '../utils/ccPadraoDePara';
 import { COMPANIES } from '../utils/finance';
@@ -16,6 +16,8 @@ interface GestaoLancamentosProps {
   onAddTransaction: (t: Transaction) => void;
   onImportTransactions: (ts: Transaction[]) => void;
   onDeleteTransaction: (id: string) => void;
+  /** Remove vários lançamentos de uma vez (troca semanal do previsto). */
+  onDeleteTransactions?: (ids: string[]) => void;
   onClearTransactions: (type: TransactionType) => void;
   onUpdateTransaction?: (t: Transaction) => void;
   /** Histórico de posições das Aplicações Financeiras (uma por importação/mês). */
@@ -32,7 +34,7 @@ const TAB_TO_TYPE: Record<TabType, TransactionType> = {
   'TIPO_FLUXO': TransactionType.FLOW_TYPE
 };
 
-export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactions, onAddTransaction, onImportTransactions, onDeleteTransaction, onClearTransactions, onUpdateTransaction, applicationSnapshots = [] }) => {
+export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactions, onAddTransaction, onImportTransactions, onDeleteTransaction, onDeleteTransactions, onClearTransactions, onUpdateTransaction, applicationSnapshots = [] }) => {
   // Estado do Formulário (Abas)
   const [activeTab, setActiveTab] = useState<TabType>('PAGAMENTOS');
   
@@ -1041,8 +1043,12 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
       const newCalendar = newTransactions.filter(t => t.type === TransactionType.CALENDAR);
       const replacingCalendar = newCalendar.length > 0;
       const oldCalIds = new Set(transactions.filter(t => t.type === TransactionType.CALENDAR).map(t => t.id));
+      // Previsto SEMANAL: mantém só a segunda da geração da semana anterior e
+      // tira o resto (senão a DFC/Demonstrativo somariam duas semanas).
+      const weekly = planWeeklyPrevistoImport(transactions, newTransactions);
+      const weeklyRemove = new Set(weekly.removeIds);
       const importPayables = [
-          ...transactions.filter(t => t.type === TransactionType.PAYABLE
+          ...transactions.filter(t => t.type === TransactionType.PAYABLE && !weeklyRemove.has(t.id)
               && !(replacingCalendar && t.generatedFromCalendarId && oldCalIds.has(t.generatedFromCalendarId))),
           ...newTransactions.filter(t => t.type === TransactionType.PAYABLE),
       ];
@@ -1070,10 +1076,20 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
       }
 
       if (newTransactions.length > 0) {
+          if (weekly.removeIds.length > 0) {
+              if (onDeleteTransactions) onDeleteTransactions(weekly.removeIds);
+              else weekly.removeIds.forEach(id => onDeleteTransaction(id));
+          }
           onImportTransactions(newTransactions);
           existingCalUpdates.forEach(u => onUpdateTransaction && onUpdateTransaction(u));
           calDeletions.forEach(id => onDeleteTransaction(id));   // reconciliação: remove gerados cujo real chegou
           const partes: string[] = [];
+          if (weekly.types.length > 0 && (weekly.removeIds.length > 0 || weekly.keptCount > 0)) {
+              partes.push(`Semana anterior substituída: ${weekly.removeIds.length} lançamento(s) antigo(s) removido(s)`
+                  + (weekly.generationDay ? `; mantido(s) ${weekly.keptCount} do dia da geração (${weekly.generationDay}).` : '.'));
+          } else if (weekly.generationDay) {
+              partes.push(`Dia da geração ${weekly.generationDay}: aparece na semana sem lançamentos (não veio no arquivo anterior).`);
+          }
           if (skipGeneration) partes.push(`Calendário salvo (cadastro fixo). Importe os Pagamentos ou use "Verificar & Gerar" para gerar as previsões.`);
           if (calAdditions.length > 0) partes.push(`${calAdditions.length} pagamento(s) recorrente(s) gerado(s) automaticamente (faltavam).`);
           if (calDeletions.length > 0) partes.push(`${calDeletions.length} pagamento(s) gerado(s) removido(s) por reconciliação (o real chegou).`);

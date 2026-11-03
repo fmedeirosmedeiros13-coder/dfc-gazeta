@@ -482,6 +482,11 @@ export default function App() {
             transactions={transactions}
             onAddTransaction={t => { setTransactions(p => [...p, t]); auditLog.record({ action: 'TRANSACTION_ADD', subject: t.id, after: t }); }}
             onDeleteTransaction={id => { setTransactions(p => p.filter(t => t.id !== id)); auditLog.record({ action: 'TRANSACTION_DELETE', subject: id }); }}
+            onDeleteTransactions={ids => {
+              const del = new Set(ids);
+              setTransactions(p => p.filter(t => !del.has(t.id)));
+              auditLog.record({ action: 'TRANSACTION_DELETE', subject: `troca semanal do previsto: ${ids.length} lançamento(s)` });
+            }}
             onImportTransactions={ts => {
                 const temApp = ts.some(t => t.type === TransactionType.APPLICATION);
                 if (temApp) {

@@ -467,6 +467,40 @@ export function formatCalendarMonths(m?: number[]): string {
   return m.map(n => MESES_PT[n - 1].charAt(0).toUpperCase() + MESES_PT[n - 1].slice(1)).join(', ');
 }
 
+// ─── Importação SEMANAL do previsto (TOTVS) ──────────────────────────────────
+// Rotina da Tesouraria: o arquivo da semana é gerado na segunda (dia da
+// geração). Nesse dia os títulos do próprio dia já foram baixados, então o
+// arquivo novo começa no dia seguinte e vai até a segunda seguinte. A segunda
+// da geração veio no arquivo ANTERIOR e precisa ser mantida.
+// Ex.: arquivo novo 10/11–16/11 → mantém 09/11 (veio no arquivo anterior) e
+// remove o resto da semana anterior (03/11–06/11), para não somar 2 semanas.
+const isFullBRDate = (d?: string) => /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(d || '').trim());
+const mondayOnOrBeforeTs = (ts: number) => { const dt = new Date(ts); const back = dt.getDay() === 0 ? 6 : dt.getDay() - 1; dt.setDate(dt.getDate() - back); dt.setHours(0, 0, 0, 0); return dt.getTime(); };
+
+export function planWeeklyPrevistoImport(
+  existing: Transaction[],
+  incoming: Transaction[],
+): { removeIds: string[]; keptCount: number; generationDay?: string; types: TransactionType[] } {
+  const removeIds: string[] = []; let keptCount = 0; let generationDay: string | undefined; const types: TransactionType[] = [];
+  for (const type of [TransactionType.PAYABLE, TransactionType.RECEIVABLE]) {
+    const novos = incoming.filter(t => t.type === type && !t.generatedFromCalendarId && isFullBRDate(t.date));
+    if (novos.length === 0) continue;
+    types.push(type);
+    const newMin = Math.min(...novos.map(t => parseDate(t.date)));
+    const gen = mondayOnOrBeforeTs(newMin);               // segunda da geração
+    if (gen < newMin) {
+      const dt = new Date(gen);
+      generationDay = `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+    }
+    existing.filter(t => t.type === type && isFullBRDate(t.date)).forEach(t => {
+      const d = parseDate(t.date);
+      if (d >= gen && d < newMin) keptCount++;              // dia da geração: fica
+      else removeIds.push(t.id);                            // semana anterior / mesmo período do arquivo novo: sai
+    });
+  }
+  return { removeIds, keptCount, generationDay, types };
+}
+
 /** Chave da aplicação de origem/destino do Resg Aplic de uma célula do FC Diário.
  *  Valor: 1 = CDB Banestes; ausente/0 = Fundo BTG (padrão). */
 export function keyResgFund(companyId: string, bankId: string, dateBR: string): string {
