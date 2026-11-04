@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { Lancamentos } from './Lancamentos';
 import { MultiSelect } from './MultiSelect';
 import { useTransactionFilters } from '../hooks/useTransactionFilters';
-import { parseDate, formatCurrency, moveToNextBusinessDay, parseCalendarMonths, formatCalendarMonths, planWeeklyPrevistoImport } from '../utils/finance';
+import { parseDate, formatCurrency, moveToNextBusinessDay, parseCalendarMonths, formatCalendarMonths, planWeeklyPrevistoImport, parseCalendarValidity } from '../utils/finance';
 import { resolveFlowFromConta, FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS, n2FromN3 } from '../utils/flowDePara';
 import { resolveCompanyFromCCPadrao } from '../utils/ccPadraoDePara';
 import { COMPANIES } from '../utils/finance';
@@ -32,6 +32,20 @@ const TAB_TO_TYPE: Record<TabType, TransactionType> = {
   'APLICACOES': TransactionType.APPLICATION,
   'CALENDARIO': TransactionType.CALENDAR,
   'TIPO_FLUXO': TransactionType.FLOW_TYPE
+};
+
+/** Data digitada no lançamento manual: "01/02" vira "01/02/<ano atual>"; "1/2/26" vira "01/02/2026". */
+const normalizeManualDate = (raw: string): string => {
+  const t = String(raw || '').trim();
+  if (!t) return '';
+  const p2 = (n: string) => n.padStart(2, '0');
+  let m = t.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (m) return `${p2(m[1])}/${p2(m[2])}/${new Date().getFullYear()}`;
+  m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+  if (m) return `${p2(m[1])}/${p2(m[2])}/20${m[3]}`;
+  m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return `${p2(m[1])}/${p2(m[2])}/${m[3]}`;
+  return t;
 };
 
 export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactions, onAddTransaction, onImportTransactions, onDeleteTransaction, onDeleteTransactions, onClearTransactions, onUpdateTransaction, applicationSnapshots = [] }) => {
@@ -134,6 +148,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
   
   // Calendar Specific
   const [mesCalendario, setMesCalendario] = useState('Todos');
+  const [validadeCalendario, setValidadeCalendario] = useState('');
 
   const resetForm = () => {
     setValorOriginal('');
@@ -151,6 +166,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
     setFluxoN2('');
     setDtPrevPagt('');
     setMesCalendario('Todos');
+    setValidadeCalendario('');
     setEditingId(null);
   };
 
@@ -188,6 +204,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           setFluxoN2(t.flowTypeLevel2 || '');
           setValorOriginal(String(Number(t.value) || 0));
           setMesCalendario(formatCalendarMonths(t.calendarMonths));
+          setValidadeCalendario(t.calendarValidUntil || '');
       } else if (targetTab === 'RECEBIMENTOS') {
           setDtPrevPagt(t.date);
           setCustomer(t.customer || '');
@@ -232,9 +249,11 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
     const transactionData: Transaction = {
       id: editingId || crypto.randomUUID(),
       type,
-      status: 'REALIZADO',
+      // Lançamento manual de Pagamento/Recebimento/Calendário é PREVISÃO (antes
+      // entrava como REALIZADO e não aparecia em Contas a Pagar/Receber nem no FC).
+      status: activeTab === 'APLICACOES' ? 'REALIZADO' : 'PREVISTO',
       
-      date: dtPrevPagt || new Date().toLocaleDateString('pt-BR'), 
+      date: normalizeManualDate(dtPrevPagt) || new Date().toLocaleDateString('pt-BR'), 
       value: finalValue,
       
       category: activeTab === 'TIPO_FLUXO' ? secao : 
@@ -271,6 +290,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
       customer: activeTab === 'RECEBIMENTOS' ? customer : undefined,
       portfolio: activeTab === 'RECEBIMENTOS' ? carteira : undefined,
       calendarMonths: activeTab === 'CALENDARIO' ? parseCalendarMonths(mesCalendario) : undefined,
+      calendarValidUntil: activeTab === 'CALENDARIO' ? parseCalendarValidity(validadeCalendario) : undefined,
     };
 
     if (editingId && onUpdateTransaction) {
@@ -328,7 +348,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           example = '114101;10001;100;Antecipações - Cliente;Analítica;Entrada';
           filename = 'Modelo_Tipo_Fluxo.csv';
       } else if (activeTab === 'CALENDARIO') {
-          headers = 'DT PREV PAGT;EMPRESA;FORNECEDOR;NOME FORNECEDOR;ESPECIE;TITULO;TIPO DE FLUXO;VALOR;FLUXO N2;MÊS';
+          headers = 'DT PREV PAGT;EMPRESA;FORNECEDOR;NOME FORNECEDOR;ESPECIE;TITULO;TIPO DE FLUXO;VALOR;FLUXO N2;MÊS;VALIDADE';
           example = 'Folha de pagamento (quinzena) - Débito;;BANESTES S.A;15;50000.00;';
           filename = 'Modelo_Calendario.csv';
       } else if (activeTab === 'RECEBIMENTOS') {
@@ -724,6 +744,8 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                const valor     = getVal(['VALOR', 'VLR', 'R$']);
                // Coluna MÊS: "Todos" = mensal; ou meses específicos (ex.: Novembro).
                const mesCal    = getVal(['MÊS', 'MES', 'MESES', 'MÊS REFERÊNCIA', 'MES REFERENCIA']);
+               // Coluna VALIDADE: até quando a obrigação vale (vazio = sem prazo).
+               const validCal  = getVal(['VALIDADE', 'VÁLIDO ATÉ', 'VALIDO ATE', 'VIGÊNCIA', 'VIGENCIA', 'DT VALIDADE']);
 
                if (despesas || nomeForn || fornecCod) {
                    tr = {
@@ -743,6 +765,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                        flowTypeCode: fluxoCodFinal,
                        flowTypeLevel2: fluxo2,
                        calendarMonths: parseCalendarMonths(mesCal),
+                       calendarValidUntil: parseCalendarValidity(validCal),
                    } as Transaction;
                }
           } else if (type === TransactionType.FLOW_TYPE) {
@@ -1406,8 +1429,13 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               });
           }
 
+          // Validade: depois da data, a obrigação não é mais gerada (e sai o que foi gerado depois dela).
+          const validTs = cal.calendarValidUntil ? parseDate(cal.calendarValidUntil) : 0;
+          if (validTs) validLinked.forEach(g => { if (parseDate(g.date) > validTs) deletions.push(g.id); });
+
           const occ = occurrenceInWindow(cal.date, cal.calendarMonths);
           if (!occ) return;  // recorrente não cai na janela do previsto importado -> não gera
+          if (validTs && parseDate(occ) > validTs) return;   // vencida: não gera
 
           const already = validLinked.some(g => g.date === occ);
           if (!already) {
@@ -2012,6 +2040,10 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fluxo N2</label>
                        <input type="text" value={fluxoN2} onChange={(e) => setFluxoN2(e.target.value)} className="w-full p-2 border border-slate-700 bg-slate-800 text-slate-100 rounded text-xs" placeholder="Ex: 201" />
                    </div>
+                </div>
+                <div>
+                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Validade</label>
+                   <input type="text" value={validadeCalendario} onChange={(e) => setValidadeCalendario(e.target.value)} className="w-full p-2 border border-slate-700 bg-slate-800 text-slate-100 rounded text-xs" placeholder="dd/mm/aaaa ou mm/aaaa (vazio = sem prazo)" />
                 </div>
                 <div>
                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mês</label>

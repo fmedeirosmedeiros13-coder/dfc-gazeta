@@ -1,7 +1,7 @@
 import React from 'react';
 import { Transaction, TransactionType } from '../types';
 import { Pencil, Trash2, Check } from 'lucide-react';
-import { classifyTax, formatCalendarMonths } from '../utils/finance';
+import { classifyTax, formatCalendarMonths, parseDate } from '../utils/finance';
 
 interface LancamentosProps {
   transactions: Transaction[];
@@ -111,6 +111,7 @@ export const Lancamentos: React.FC<LancamentosProps> = ({ transactions, onEdit, 
                       <th className="px-2 py-2 bg-yellow-900/20 border-r border-purple-900/30 text-right min-w-[100px]">Valor</th>
                       <th className="px-2 py-2 border-r border-purple-900/30 bg-yellow-900/10">Fluxo N2</th>
                       <th className="px-2 py-2 border-r border-purple-900/30 text-center">Mês</th>
+                      <th className="px-2 py-2 border-r border-purple-900/30 text-center">Validade</th>
                       <th className="px-2 py-2 border-r border-purple-900/30 text-center">Check</th>
                       <th className="px-2 py-2 text-center">Ação</th>
                     </tr>
@@ -237,6 +238,10 @@ export const Lancamentos: React.FC<LancamentosProps> = ({ transactions, onEdit, 
                <td className="px-2 py-2 bg-yellow-900/20 text-right font-bold border-r border-slate-800/50 text-slate-200">{t.value > 0 ? t.value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}</td>
                <td className="px-2 py-2 border-r border-slate-800/50 text-center bg-yellow-900/10 font-mono text-slate-400">{t.flowTypeLevel2}</td>
                <td className={`px-2 py-2 border-r border-slate-800/50 text-center ${t.calendarMonths && t.calendarMonths.length ? 'text-amber-300 font-semibold' : 'text-slate-400'}`}>{formatCalendarMonths(t.calendarMonths)}</td>
+               {(() => {
+                   const v = t.calendarValidUntil; const vencida = !!v && parseDate(v) < new Date(new Date().toDateString()).getTime();
+                   return <td className={`px-2 py-2 border-r border-slate-800/50 text-center whitespace-nowrap ${vencida ? 'text-red-400 font-semibold' : v ? 'text-slate-300' : 'text-slate-500'}`} title={vencida ? 'Validade vencida: não gera mais' : undefined}>{v ? `${v}${vencida ? ' (vencida)' : ''}` : 'Sem prazo'}</td>;
+               })()}
                <td className={`px-2 py-2 text-center border-r border-slate-800/50 font-bold ${t.calendarStatus === 'GERADO' ? 'text-blue-400' : t.calendarStatus === 'OK' ? (t.calendarValueDivergence ? 'bg-amber-900/20 text-amber-400' : 'bg-green-900/20 text-green-400') : 'text-slate-500'}`}
                    title={t.calendarValueDivergence ? 'Pagamento real encontrado, mas o valor diverge da média do calendário em mais de 30%' : undefined}>
                    {t.calendarStatus === 'OK'

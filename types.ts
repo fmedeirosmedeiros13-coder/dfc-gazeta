@@ -117,6 +117,8 @@ export interface Transaction {
   calendarStatus?: 'OK' | 'GERADO';
   /** Calendário: meses em que a obrigação vence (1–12). Vazio/ausente = TODOS os meses. */
   calendarMonths?: number[];
+  /** Calendário: validade da obrigação (dd/mm/aaaa). Depois dela não gera mais. Vazio = sem prazo. */
+  calendarValidUntil?: string;
   // Quando calendarStatus === 'OK': o valor real (ou soma, no caso de
   // Comissão) se afasta da média do calendário em mais de 30%. Sinaliza
   // pra revisão, sem invalidar o match.

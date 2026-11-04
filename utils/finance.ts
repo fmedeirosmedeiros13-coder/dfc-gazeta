@@ -461,6 +461,28 @@ export function parseCalendarMonths(raw: unknown): number[] | undefined {
   return out.size > 0 && out.size < 12 ? [...out].sort((a, b) => a - b) : undefined;
 }
 
+/**
+ * Lê a coluna VALIDADE do Calendário → 'dd/mm/aaaa' (último dia em que a
+ * obrigação ainda é gerada). Aceita dd/mm/aaaa, dd/mm/aa, mm/aaaa (vale até o
+ * fim do mês), aaaa-mm-dd e data do Excel (número). Vazio/"indeterminado" = sem prazo.
+ */
+export function parseCalendarValidity(raw: unknown): string | undefined {
+  const txt = String(raw ?? '').trim();
+  if (!txt || /^(indeterminad|sem\s*prazo|-+)$/i.test(txt) || /indeterminad/i.test(txt)) return undefined;
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  let m = txt.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+  if (m) { const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]); return `${p2(Number(m[1]))}/${p2(Number(m[2]))}/${y}`; }
+  m = txt.match(/^(\d{1,2})\/(\d{4})$/);
+  if (m) { const mm = Number(m[1]), y = Number(m[2]); const last = new Date(y, mm, 0).getDate(); return `${p2(last)}/${p2(mm)}/${y}`; }
+  m = txt.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const n = Number(txt.replace(',', '.'));
+  if (Number.isFinite(n) && n > 20000 && n < 80000) {   // número de série do Excel
+    const d = new Date(Math.round((n - 25569) * 86400000)); return `${p2(d.getUTCDate())}/${p2(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+  }
+  return undefined;
+}
+
 /** Texto da coluna MÊS para exibir: "Todos" ou "Novembro", "Abril, Outubro"… */
 export function formatCalendarMonths(m?: number[]): string {
   if (!m || m.length === 0) return 'Todos';
