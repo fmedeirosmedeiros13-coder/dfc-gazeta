@@ -399,7 +399,8 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               // "1/31/2023"). Corrige pegando o valor BRUTO (serial do Excel) dessas
               // colunas e convertendo com a mesma lógica confiável de parseDateExcel,
               // em vez de confiar na string já formatada pelo SheetJS.
-              const dateColRegex = /^DT |DATA$|DATA |VENC|EMISS|LIQUID/i;
+              // VALIDADE/VIGÊNCIA também são datas (Calendário) — antes vinham no formato americano (12/31/2099).
+              const dateColRegex = /^DT |DATA$|DATA |VENC|EMISS|LIQUID|VALID|VIG[EÊ]NCIA/i;
               const headerRow = rows[0] || [];
               const dateColIndexes = headerRow
                   .map((h, idx) => ({ h: String(h ?? '').trim(), idx }))
@@ -417,7 +418,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                           const rawVal = rawRowVals[idx];
                           // Serial Excel = número puro → converte na mão (confiável,
                           // independente de locale). Texto já formatado → não mexe.
-                          if (typeof rawVal === 'number' && rawVal > 10000 && rawVal < 73000) {
+                          if (typeof rawVal === 'number' && rawVal > 10000 && rawVal < 2958466) {   // até 31/12/9999 (ex.: validade 31/12/2099)
                               const excelBase = new Date(Date.UTC(1899, 11, 30));
                               excelBase.setUTCDate(excelBase.getUTCDate() + rawVal);
                               rows[i][idx] = `${String(excelBase.getUTCDate()).padStart(2, '0')}/${String(excelBase.getUTCMonth() + 1).padStart(2, '0')}/${excelBase.getUTCFullYear()}`;
@@ -1430,7 +1431,8 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           }
 
           // Validade: depois da data, a obrigação não é mais gerada (e sai o que foi gerado depois dela).
-          const validTs = cal.calendarValidUntil ? parseDate(cal.calendarValidUntil) : 0;
+          const validNorm = parseCalendarValidity(cal.calendarValidUntil);
+          const validTs = validNorm ? parseDate(validNorm) : 0;
           if (validTs) validLinked.forEach(g => { if (parseDate(g.date) > validTs) deletions.push(g.id); });
 
           const occ = occurrenceInWindow(cal.date, cal.calendarMonths);

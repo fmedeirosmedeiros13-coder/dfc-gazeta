@@ -471,7 +471,12 @@ export function parseCalendarValidity(raw: unknown): string | undefined {
   if (!txt || /^(indeterminad|sem\s*prazo|-+)$/i.test(txt) || /indeterminad/i.test(txt)) return undefined;
   const p2 = (n: number) => String(n).padStart(2, '0');
   let m = txt.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
-  if (m) { const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]); return `${p2(Number(m[1]))}/${p2(Number(m[2]))}/${y}`; }
+  if (m) {
+    const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+    let d = Number(m[1]), mo = Number(m[2]);
+    if (mo > 12 && d <= 12) [d, mo] = [mo, d];   // veio no formato americano (mês/dia) → dia/mês
+    return `${p2(d)}/${p2(mo)}/${y}`;
+  }
   m = txt.match(/^(\d{1,2})\/(\d{4})$/);
   if (m) { const mm = Number(m[1]), y = Number(m[2]); const last = new Date(y, mm, 0).getDate(); return `${p2(last)}/${p2(mm)}/${y}`; }
   m = txt.match(/^(\d{4})-(\d{2})-(\d{2})/);
