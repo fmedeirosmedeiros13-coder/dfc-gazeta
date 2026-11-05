@@ -311,8 +311,10 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                   return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
               };
               result.balances.forEach(b => {
+                  const alvo = nextBusinessDayBR(b.dateISO);
+                  (b as any).targetBR = alvo;   // para o aviso mostrar a coluna certa de cada extrato
                   onManualValueChange(`sim_close_${b.companyId}_${b.bankId}_${b.dateISO}`, b.saldo);
-                  onManualValueChange(`sim_sd_ini_${b.companyId}_${b.bankId}_${nextBusinessDayBR(b.dateISO)}`, b.saldo);
+                  onManualValueChange(`sim_sd_ini_${b.companyId}_${b.bankId}_${alvo}`, b.saldo);
               });
               setExtratoResult(result);
           } catch (err) {
@@ -753,7 +755,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                  <div className="mx-2 mt-2 bg-slate-800/60 border border-slate-700 rounded-lg p-3 text-[11px]">
                      <div className="flex justify-between items-start">
                          <p className="text-slate-300">
-                             ✓ {extratoResult.balances.length} conta(s) bancária(s) atualizada(s) — já aplicado no SD Inicial da coluna {displayDates[0] || 'atual'} de cada banco.
+                             ✓ {extratoResult.balances.length} conta(s) bancária(s) atualizada(s) — já aplicado no SD Inicial {(() => { const ds = Array.from(new Set(extratoResult.balances.map((b: any) => b.targetBR).filter(Boolean))) as string[]; return ds.length === 0 ? `da coluna ${displayDates[0] || 'atual'}` : ds.length === 1 ? `da coluna ${ds[0]}` : `das colunas ${ds.join(', ')}`; })()} (dia útil seguinte ao fechamento de cada extrato).
                          </p>
                          <button onClick={() => setExtratoResult(null)} className="text-slate-500 hover:text-slate-300 shrink-0 ml-2">✕</button>
                      </div>

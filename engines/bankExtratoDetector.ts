@@ -22,6 +22,8 @@ export function detectBank(rawText: string): BankId | null {
   if (flat.includes('CONSULTAS - EXTRATO DE CONTA CORRENTE')) return 'BB';
   if (flat.includes('SAC CAIXA') && flat.includes('EXTRATO NO PER')) return 'CEF';
   if (flat.includes('ITAU.COM.BR')) return 'ITAU';
+  // Itaú BBA sem o rodapé "itau.com.br" (alguns PDFs exportados vêm sem ele)
+  if ((flat.includes('ITAÚ BBA') || flat.includes('ITAU BBA')) && /LAN.AMENTOS DO PER.ODO/.test(flat)) return 'ITAU';
   if (flat.includes('SICOOB') && flat.includes('SISBR')) return 'SICOOB';
   // BTG: assinatura a acrescentar quando o extrato desse banco for recebido
   // e o parser correspondente for implementado.

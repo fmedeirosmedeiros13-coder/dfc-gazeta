@@ -58,22 +58,31 @@ export function parseItauExtrato(rawText: string): ItauExtratoParseResult {
 
   // Pega a ÚLTIMA ocorrência de "SALDO TOTAL DISPONÍVEL DIA" (pode haver uma
   // por dia com movimento; a mais recente é a que vale).
-  const saldoDiaMatches = [...flat.matchAll(/SALDO TOTAL DISPON.VEL DIA\s*([\d.,]+)/gi)];
+  const saldoDiaMatches = [...flat.matchAll(/(?:(\d{2})\/(\d{2})\/(\d{4})\s*)?SALDO TOTAL DISPON.VEL DIA\s*([\d.,]+)/gi)];
   if (saldoDiaMatches.length > 0) {
     const last = saldoDiaMatches[saldoDiaMatches.length - 1];
+    // Data do fechamento = o DIA da linha "SALDO TOTAL DISPONÍVEL DIA" (ex.: 04/11),
+    // não o fim do período. Extrato tirado no próprio dia (período "até 05/11")
+    // traz o 05/11 ainda em aberto; o fechamento real é o de 04/11, que vira o
+    // SD Inicial de 05/11. Antes o sistema gravava como fechamento de 05/11 e o
+    // saldo só aparecia em 06/11. Dias seguintes sem movimento continuam usando
+    // esse fechamento (o FC Diário pega o último fechamento anterior ao dia).
+    const closeISO = last[1] ? `${last[3]}-${last[2]}-${last[1]}` : dateISO;
     return {
-      dateISO,
-      balance: { cnpj, companyId, saldo: parseNum(last[1]), origem: 'SALDO TOTAL DISPONÍVEL DIA (realizado)' },
+      dateISO: closeISO,
+      balance: { cnpj, companyId, saldo: parseNum(last[4]), origem: 'SALDO TOTAL DISPONÍVEL DIA (realizado)' },
       cnpjNaoMapeado: null,
     };
   }
 
   // Sem movimento no período: usa o SALDO ANTERIOR (nada mudou).
-  const anteriorMatch = flat.match(/SALDO ANTERIOR\s*([\d.,]+)/i);
+  const anteriorMatch = flat.match(/(?:(\d{2})\/(\d{2})\/(\d{4})\s*)?SALDO ANTERIOR\s*([\d.,]+)/i);
   if (anteriorMatch) {
+    // Fechamento = dia da linha "SALDO ANTERIOR" (mesmo critério acima).
+    const closeISO = anteriorMatch[1] ? `${anteriorMatch[3]}-${anteriorMatch[2]}-${anteriorMatch[1]}` : dateISO;
     return {
-      dateISO,
-      balance: { cnpj, companyId, saldo: parseNum(anteriorMatch[1]), origem: 'SALDO ANTERIOR (sem movimento no período)' },
+      dateISO: closeISO,
+      balance: { cnpj, companyId, saldo: parseNum(anteriorMatch[4]), origem: 'SALDO ANTERIOR (sem movimento no período)' },
       cnpjNaoMapeado: null,
     };
   }
