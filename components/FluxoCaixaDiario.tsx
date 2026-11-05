@@ -168,7 +168,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
           if (!lastPrevistoDate) return;
           try {
               const seen = localStorage.getItem('fc_period_last_previsto');
-              if (seen && seen !== lastPrevistoDate) { setPeriodStart(''); setPeriodEnd(''); }
+              if (seen && seen !== lastPrevistoDate) { setPeriodStart(''); setPeriodEnd(''); setHideBeforeDate(''); }
               localStorage.setItem('fc_period_last_previsto', lastPrevistoDate);
           } catch { /* ignora */ }
       }, [lastPrevistoDate]);
@@ -211,7 +211,20 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
       // só a EXIBIÇÃO das colunas anteriores é escondida.
       // Ocultar dias anteriores a uma data escolhida (dentre as do período
       // importado/exibido) — não fica preso a "hoje", o usuário escolhe.
-      const [hideBeforeDate, setHideBeforeDate] = useState<string>('');
+      // "Ocultar antes de" fica SALVO (trocar de aba/recarregar não volta para
+      // "Mostrar tudo"). Só volta quando o período muda: semana nova importada
+      // ou datas do período alteradas.
+      const [hideBeforeDate, setHideBeforeDateState] = useState<string>(() => {
+          try { return localStorage.getItem('fc_hide_before') || ''; } catch { return ''; }
+      });
+      const setHideBeforeDate = (v: string) => {
+          setHideBeforeDateState(v);
+          try { if (v) localStorage.setItem('fc_hide_before', v); else localStorage.removeItem('fc_hide_before'); } catch { /* ignora */ }
+      };
+      // Dia salvo que não está mais na semana exibida → volta para "Mostrar tudo".
+      useEffect(() => {
+          if (hideBeforeDate && displayDates.length && !displayDates.includes(hideBeforeDate)) setHideBeforeDate('');
+      }, [displayDates.join('|')]);
       const isVisibleIdx = (i: number) => !hideBeforeDate || parseDate(displayDates[i]) >= parseDate(hideBeforeDate);
 
       // Importação unificada de extratos bancários: aceita vários arquivos de
@@ -691,7 +704,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                          <input
                              type="date"
                              value={startISO}
-                             onChange={e => setPeriodStart(e.target.value)}
+                             onChange={e => { setPeriodStart(e.target.value); setHideBeforeDate(''); }}
                              className="px-2 py-1 rounded text-[10px] bg-slate-700 text-slate-200 border border-slate-600"
                              title="Data inicial do período exibido (padrão: segunda-feira)"
                          />
@@ -699,13 +712,13 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                          <input
                              type="date"
                              value={endISO}
-                             onChange={e => setPeriodEnd(e.target.value)}
+                             onChange={e => { setPeriodEnd(e.target.value); setHideBeforeDate(''); }}
                              className="px-2 py-1 rounded text-[10px] bg-slate-700 text-slate-200 border border-slate-600"
                              title="Data final do período exibido (padrão: segunda seguinte). Amplie para ver um período maior."
                          />
                          {(periodStart || periodEnd) && (
                              <button
-                                 onClick={() => { setPeriodStart(''); setPeriodEnd(''); }}
+                                 onClick={() => { setPeriodStart(''); setPeriodEnd(''); setHideBeforeDate(''); }}
                                  className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700 hover:text-slate-200 transition-colors"
                                  title="Voltar para a semana padrão (segunda a segunda)"
                              >
