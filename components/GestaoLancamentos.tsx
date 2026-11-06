@@ -10,6 +10,7 @@ import { resolveFlowFromConta, FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS, n2FromN3 } fr
 import { resolveCompanyFromCCPadrao } from '../utils/ccPadraoDePara';
 import { COMPANIES } from '../utils/finance';
 import { ApplicationEvolutionPanel } from './ApplicationEvolutionPanel';
+import { BackupRestore } from './BackupRestore';
 
 interface GestaoLancamentosProps {
   transactions: Transaction[];
@@ -1886,6 +1887,8 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               <GitMerge className="w-4 h-4" /> Tipo de Fluxo
             </button>
           </div>
+          {/* Cópia de segurança de todos os dados (arquivo .json) */}
+          <BackupRestore />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 flex-1 overflow-hidden">
