@@ -133,7 +133,10 @@ export function normalizeDayLabel(d: unknown): string {
 export function buildVlDiaList(list: { date?: unknown; value?: unknown }[]): { date: string; value: number }[] {
   const byDay: Record<string, number> = {};
   list.forEach(t => {
-    const k = normalizeDayLabel(t.date);
+    // Sábado, domingo e feriado vão para o DIA ÚTIL seguinte (como no FC Diário):
+    // ex.: 14/11 (sáb) e 15/11 (dom) somam no 16/11 e não aparecem no VL DIA.
+    const dia = normalizeDayLabel(t.date);
+    const k = /^\d{2}\/\d{2}\/\d{4}$/.test(dia) ? moveToNextBusinessDay(dia) : dia;
     byDay[k] = (byDay[k] || 0) + (Number(t.value) || 0);
   });
   const key = (label: string) => parseDate(label) || Number.MAX_SAFE_INTEGER;

@@ -1,6 +1,6 @@
 import React, { useRef, useState, useMemo } from 'react';
 import { Transaction, TransactionType, FinancialSummary, AIAnalysisResult, DashboardViewType, ManualValues } from '../types';
-import { parseDate, buildVlDiaList, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell, calcInitialBalance, calcResgAplicTotal, calcResgAplicByFund, calcTransfTotal, isCapexTransaction, isDistribLucrosTransaction, getStartDate, getLatestExtractDate } from '../utils/finance';
+import { parseDate, buildVlDiaList, moveToNextBusinessDay, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell, calcInitialBalance, calcResgAplicTotal, calcResgAplicByFund, calcTransfTotal, isCapexTransaction, isDistribLucrosTransaction, getStartDate, getLatestExtractDate } from '../utils/finance';
 import { FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS, n2FromN3 } from '../utils/flowDePara';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, PieChart, Pie, LabelList, AreaChart, Area, LineChart, Line } from 'recharts';
 import { TrendingUp, TrendingDown, Wallet, AlertCircle, RefreshCw, Briefcase, ChevronRight, ArrowUpCircle, BrainCircuit, ShieldCheck, Lightbulb, Table2, Scale, Upload, Trash2, AlertTriangle, CheckCircle2, FileX, Tag, ArrowLeft, Layers, CalendarRange, DollarSign, Calendar, ArrowDownRight, ArrowUpRight, Printer, Calculator, Target, LayoutGrid, ListFilter, Landmark } from 'lucide-react';
@@ -897,9 +897,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
       const allPayables = transactions.filter(t => t.type === TransactionType.PAYABLE);
       const allReceivables = transactions.filter(t => t.type === TransactionType.RECEIVABLE);
 
+      // Dia não útil (sáb/dom/feriado): a coluna do dia continua aparecendo, mas o
+      // valor é somado no dia útil seguinte (ex.: 14 e 15/11 → 16/11).
+      const diaUtil = (d: string) => (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(d || '').trim()) ? moveToNextBusinessDay(String(d).trim()) : d);
       const uniqueDates: string[] = Array.from(new Set<string>([
           ...allPayables.map(t => t.date),
-          ...allReceivables.map(t => t.date)
+          ...allReceivables.map(t => t.date),
+          ...allPayables.map(t => diaUtil(t.date)),
+          ...allReceivables.map(t => diaUtil(t.date)),
       ])).sort((a: string, b: string) => parseDateGlobal(a) - parseDateGlobal(b));
 
       // Ordem atualizada conforme imagem de referência
@@ -946,9 +951,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                   }) || null;
               }
 
-              if (matchedComp && uniqueDates.includes(t.date)) {
-                  matrix[matchedComp][t.date] = (matrix[matchedComp][t.date] || 0) + (Number(t.value) || 0);
-                  colTotals[t.date] += (Number(t.value) || 0);
+              const dia = diaUtil(t.date);
+              if (matchedComp && uniqueDates.includes(dia)) {
+                  matrix[matchedComp][dia] = (matrix[matchedComp][dia] || 0) + (Number(t.value) || 0);
+                  colTotals[dia] += (Number(t.value) || 0);
                   grandTotal += (Number(t.value) || 0);
               }
           });
