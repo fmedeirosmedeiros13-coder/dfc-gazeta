@@ -1,6 +1,6 @@
 import React, { useRef, useState, useMemo } from 'react';
 import { Transaction, TransactionType, FinancialSummary, AIAnalysisResult, DashboardViewType, ManualValues } from '../types';
-import { parseDate, buildVlDiaList, moveToNextBusinessDay, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell, calcInitialBalance, calcResgAplicTotal, calcResgAplicByFund, calcTransfTotal, isCapexTransaction, isDistribLucrosTransaction, getStartDate, getLatestExtractDate, nome12 } from '../utils/finance';
+import { parseDate, buildVlDiaList, moveToNextBusinessDay, classifyTax, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell, calcInitialBalance, calcResgAplicTotal, calcResgAplicByFund, calcTransfTotal, isCapexTransaction, isDistribLucrosTransaction, getStartDate, getLatestExtractDate, nome12 } from '../utils/finance';
 import { FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS, n2FromN3 } from '../utils/flowDePara';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, PieChart, Pie, LabelList, AreaChart, Area, LineChart, Line } from 'recharts';
 import { TrendingUp, TrendingDown, Wallet, AlertCircle, RefreshCw, Briefcase, ChevronRight, ArrowUpCircle, BrainCircuit, ShieldCheck, Lightbulb, Table2, Scale, Upload, Trash2, AlertTriangle, CheckCircle2, FileX, Tag, ArrowLeft, Layers, CalendarRange, DollarSign, Calendar, ArrowDownRight, ArrowUpRight, Printer, Calculator, Target, LayoutGrid, ListFilter, Landmark } from 'lucide-react';
@@ -1314,7 +1314,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
           } else if (t.type === TransactionType.PAYABLE && t.status === 'PREVISTO') {
               if (isCapexTransaction(t)) { capexByCol[col.id] += val; return; }
               if (isDistribLucrosTransaction(t)) { lucrosByCol[col.id] += val; return; }
-              const idx = classifyCat(t, OUTFLOW_CATS);
+              // Imposto pelo MESMO critério de Contas a Pagar (classifyTax: fornecedor
+              // e palavras-chave — ex.: ISS pago à Prefeitura com fluxo de Pessoal ou
+              // de Fornecedor). Antes a DFC só olhava o fluxo e a linha Impostos não
+              // batia com o quadro Impostos do Contas a Pagar.
+              const impIdx = OUTFLOW_CATS.findIndex(c => c.label === '(-) Impostos');
+              const idx = classifyTax(t) !== null && impIdx >= 0 ? impIdx : classifyCat(t, OUTFLOW_CATS);
               outflowCat[idx === -1 ? FORNEC_IDX : idx][col.id] += val;
               opOutflowTotal[col.id] += val;
           }

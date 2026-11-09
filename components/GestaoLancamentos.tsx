@@ -407,7 +407,12 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               // em vez de confiar na string já formatada pelo SheetJS.
               // VALIDADE/VIGÊNCIA também são datas (Calendário) — antes vinham no formato americano (12/31/2099).
               const dateColRegex = /^DT |DATA$|DATA |VENC|EMISS|LIQUID|VALID|VIG[EÊ]NCIA/i;
-              const headerRow = rows[0] || [];
+              // Cabeçalho pode não estar na 1ª linha (ex.: relatório de Aplicações do
+              // TOTVS começa com o título "rs_sea_operac_financ: Por Banco").
+              const hdrIdx = Math.max(0, rows.slice(0, 10).findIndex(r =>
+                  (r || []).filter(c => String(c ?? '').trim()).length >= 3 &&
+                  (r || []).some(c => dateColRegex.test(String(c ?? '').trim()))));
+              const headerRow = rows[hdrIdx] || [];
               const dateColIndexes = headerRow
                   .map((h, idx) => ({ h: String(h ?? '').trim(), idx }))
                   .filter(({ h }) => dateColRegex.test(h))
@@ -417,7 +422,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
                   const rowsRaw: any[][] = XLSX.utils.sheet_to_json(worksheet, {
                       header: 1, raw: true, defval: ''
                   });
-                  for (let i = 1; i < rows.length; i++) {
+                  for (let i = hdrIdx + 1; i < rows.length; i++) {
                       const rawRowVals = rowsRaw[i];
                       if (!rawRowVals) continue;
                       dateColIndexes.forEach(idx => {
@@ -533,6 +538,9 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           const hasFornecedor = has('FORNECEDOR') || has('NOME FORNECEDOR') || has('COD FORNECEDOR') || has('FORNEC');
           const hasFluxoNivel = (has('FLUXO NIVEL 3') || has('FLUXO NIVEL 2')) && has('CONTA TOTVS');
 
+          // Calendário: tem FORNECEDOR como Pagamentos, mas traz as colunas MÊS e/ou VALIDADE.
+          const hasCalendario = has('MES') || has('MÊS') || has('VALIDADE') || has('VALIDO ATE') || has('VÁLIDO ATÉ') || has('VIGENCIA') || has('VIGÊNCIA');
+          if (hasCalendario && !hasCliente) return 'CALENDARIO';
           if (hasBanco && hasProduto) return 'APLICACOES';
           if (hasCCPadrao) return 'APLICACOES';
           if (hasFluxoNivel && !hasFornecedor && !hasCliente) return 'TIPO_FLUXO';
@@ -541,7 +549,10 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           return null; // colunas ambíguas/insuficientes — não arrisca bloquear à toa
       };
       const detectedTab = detectFileTabType(colMap);
-      if (detectedTab && detectedTab !== activeTab) {
+      // Calendário sem as colunas MÊS/VALIDADE (modelo antigo) parece Pagamentos:
+      // nessa combinação não avisa, porque as colunas são as mesmas.
+      const compativel = detectedTab === 'PAGAMENTOS' && activeTab === 'CALENDARIO';
+      if (detectedTab && detectedTab !== activeTab && !compativel) {
           const prosseguir = window.confirm(
               `⚠️ Este arquivo parece ser de "${TAB_LABELS[detectedTab]}", mas a aba aberta é "${TAB_LABELS[activeTab]}".\n\n` +
               `Importar aqui pode gravar os dados no lugar errado.\n\n` +
