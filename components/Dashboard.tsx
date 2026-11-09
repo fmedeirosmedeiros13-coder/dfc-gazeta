@@ -390,11 +390,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                          <div className="p-2 bg-slate-900 text-center border-b border-slate-700">
                              <p className={`${isSlide ? 'text-[10px]' : 'text-xs'} font-bold text-slate-300 uppercase tracking-wide`}>VL Dia</p>
                          </div>
-                         <div className="flex-1 overflow-auto custom-scrollbar p-2 space-y-2 min-h-0">
+                         {/* No slide (Demonstrativo/PDF) os dias DIVIDEM a altura da coluna — semana de
+
+                             segunda a segunda tem até 8+ dias e antes os últimos ficavam escondidos. */}
+
+                         <div className={isSlide ? "flex-1 flex flex-col min-h-0" : "flex-1 overflow-auto custom-scrollbar p-2 space-y-2 min-h-0"} style={isSlide ? { padding: '0.4cqw', gap: '0.35cqw' } : undefined}>
                              {vlDiaList.map((d, idx) => {
                                  const valStr = d.value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
                                  const fontSizeClass = valStr.length > 12 ? 'text-[10px]' : valStr.length > 9 ? 'text-xs' : 'text-sm';
-                                 return (
+                                 const n = Math.max(vlDiaList.length, 1);
+                                 const fDia = `clamp(6px, ${Math.min(0.62, 4.2 / n).toFixed(2)}cqw, 13px)`, fVal = `clamp(8px, ${Math.min(1.0, 6.6 / n).toFixed(2)}cqw, 20px)`;
+                                 return isSlide ? (
+                                     <div key={idx} className="bg-slate-700/50 rounded-lg border border-slate-600/50 flex flex-col items-end justify-center min-h-0" style={{ flex: '1 1 0', padding: '0.15cqw 0.5cqw', overflow: 'hidden' }}>
+                                         <p className="text-slate-400 font-semibold uppercase tracking-wider leading-tight" style={{ fontSize: fDia }}>Dia {d.date}</p>
+                                         <p className="font-black text-slate-200 tracking-tight leading-tight" style={{ fontSize: fVal }}>{valStr}</p>
+                                     </div>
+                                 ) : (
                                      <div key={idx} className="bg-slate-700/50 p-2 rounded-lg border border-slate-600/50 hover:bg-slate-700 transition-colors flex flex-col items-end">
                                          <p className="text-[9px] text-slate-400 mb-0.5 font-semibold uppercase tracking-wider">Dia {d.date}</p>
                                          <p className={`${fontSizeClass} font-black text-slate-200 tracking-tight`}>{valStr}</p>

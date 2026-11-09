@@ -908,7 +908,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                 />
             </div>
         </div>
-        <div data-slide-type="payables" className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-8 gap-6 border border-slate-800">
+        <div data-slide-type="payables" className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-8 gap-6 border border-slate-800" style={{ containerType: 'inline-size' as any }}>
             <header className="flex justify-between items-end pb-4 border-b border-slate-800 shrink-0">
                 <div>
                     <h2 className="text-sm font-medium text-slate-400 uppercase tracking-widest mb-1">
@@ -938,7 +938,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                 />
             </div>
         </div>
-        <div data-slide-type="receivables" className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-8 gap-6 border border-slate-800">
+        <div data-slide-type="receivables" className="pdf-export-page bg-slate-900 w-full max-w-[1920px] aspect-video shadow-2xl rounded-xl overflow-hidden flex flex-col relative print:break-after-page print:shadow-none mx-auto p-8 gap-6 border border-slate-800" style={{ containerType: 'inline-size' as any }}>
             <header className="flex justify-between items-end pb-4 border-b border-slate-800 shrink-0">
                 <div>
                     <h2 className="text-sm font-medium text-slate-400 uppercase tracking-widest mb-1">
