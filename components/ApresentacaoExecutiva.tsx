@@ -9,7 +9,7 @@ import html2canvas from "html2canvas";
 import { PPTExportAlternative } from './PPTExportAlternative';
 import { generatePayablesSlide, generateReceivablesSlide } from '../services/pptxNativeSlides';
 import { drawPayablesPage, drawReceivablesPage } from '../services/pdfNativeSlides';
-import { formatCurrency, parseDate, COMPANIES, BANKS_MAPPING, isCapexTransaction, nome12 } from '../utils/finance';
+import { formatCurrency, parseDate, COMPANIES, BANKS_MAPPING, isCapexTransaction, isDistribLucrosTransaction, nome12 } from '../utils/finance';
 
 // ── Gráficos dos quadros de Pontos Críticos ──────────────────────────────────
 const RiskDonut: React.FC<{ pct: number; color: string; caption?: string; small?: boolean; track?: string; pctFontSize?: string }> = ({ pct, color, caption, small, track, pctFontSize }) => {
@@ -363,7 +363,25 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
       parts.push('Caixa Operacional e Total de Disponibilidades');
 
       // Resumo Gerencial
-      parts.push(`Resumo Gerencial: ${operatingResult >= 0 ? 'Superávit' : 'Déficit'} operacional previsto de ${mil(operatingResult)} no período.`);
+      // Mesmo conceito da DFC Consolidada: "1 - Atividades Operacionais" =
+      // entradas − saídas operacionais (SEM Capex e SEM Distribuição de Lucros).
+      // Investimentos e lucros entram depois, na variação do caixa.
+      {
+          const pagPrev = plannedTransactions.filter(t => t.type === TransactionType.PAYABLE);
+          const capexPrev = pagPrev.filter(t => isCapexTransaction(t)).reduce((a, t) => a + (Number(t.value) || 0), 0);
+          const lucrosPrev = pagPrev.filter(t => !isCapexTransaction(t) && isDistribLucrosTransaction(t)).reduce((a, t) => a + (Number(t.value) || 0), 0);
+          const saidasOp = summary.totalOutflow - capexPrev - lucrosPrev;
+          const resultadoOp = summary.totalInflow - saidasOp;
+          let txt = `Resumo Gerencial: ${resultadoOp >= 0 ? 'Superávit' : 'Déficit'} operacional previsto de ${mil(resultadoOp)} no período (entradas de ${mil(summary.totalInflow)} menos saídas operacionais de ${mil(saidasOp)}).`;
+          const extras: string[] = [];
+          if (capexPrev > 0) extras.push(`os investimentos (${mil(capexPrev)})`);
+          if (lucrosPrev > 0) extras.push(`a distribuição de lucros (${mil(lucrosPrev)})`);
+          if (extras.length) {
+              const variacao = resultadoOp - capexPrev - lucrosPrev;
+              txt += ` Considerando ${lista(extras)}, a variação prevista do caixa é de ${variacao < 0 ? '-' : ''}${mil(variacao)}.`;
+          }
+          parts.push(txt);
+      }
 
       // Aplicações — UM parágrafo só: quanto temos hoje, o que vamos aplicar e
       // resgatar (por empresa) e quanto ficará no fim do período.
