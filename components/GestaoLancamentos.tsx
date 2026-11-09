@@ -176,7 +176,12 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
       setActiveTab(tab);
       resetForm();
       // Resetar os filtros específicos ao mudar de aba
-      setFiltros(prev => ({ ...prev, fornecedor: [], cliente: [], tipoFluxo: 'all' }));
+      setFiltros(prev => {
+          const tipo = TAB_TO_TYPE[tab];
+          const norm = (c: unknown) => String(c ?? '').trim().replace(/^0+(?=\d)/, '');
+          const empresaExiste = prev.empresa === 'all' || transactions.some(t => t.type === tipo && norm(t.companyCode) === norm(prev.empresa));
+          return { ...prev, fornecedor: [], cliente: [], tipoFluxo: 'all', produto: 'all', empresa: empresaExiste ? prev.empresa : 'all' };
+      });
   };
 
   const handleEdit = (t: Transaction) => {
@@ -1304,6 +1309,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
       // realValueByKey soma os valores por chave — para Comissão isso agrega
       // automaticamente todos os fornecedores/pessoas distintos daquele mês.
       const realKeys = new Set<string>();
+      const realDatesByKey = new Map<string, number[]>();   // datas dos pagamentos reais por fornecedor (casamento "perto da data")
       const realValueByKey = new Map<string, number>();
       const addValue = (k: string, v: number) => realValueByKey.set(k, (realValueByKey.get(k) || 0) + v);
       realPayables.forEach(p => {
@@ -1320,6 +1326,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               // vem como fluxo 20129 na importação, mas está cadastrado como 21404
               // no Calendário — sem esta chave ele seria gerado em duplicidade.
               const ks = `SUP|${company}|${supplier}`; realKeys.add(ks); addValue(ks, val);
+              const dts = realDatesByKey.get(ks) || []; dts.push(parseDate(p.date)); realDatesByKey.set(ks, dts);
           }
           if (company)  { const k = `EMP|${company}|${flow}`;  realKeys.add(k); addValue(k, val); }
           if (company && isComissao(p)) { const k = `ESP|${company}|${flow}`; realKeys.add(k); addValue(k, val); }
@@ -1400,9 +1407,20 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           // está presente e NÃO deve ser gerada. Resolve o INSS (fluxo 20129 na
           // importação vs 21404 no cadastro). Só para itens com fornecedor
           // específico (não Comissão, que casa por Empresa+Fluxo agregado).
-          const supOnly = (!isComissao(cal) && (cal.supplierCode || '').trim())
-              ? `SUP|${String(cal.companyCode ?? '').trim().replace(/^0+(?=\d)/, '')}|${(cal.supplierCode || '').trim()}`
-              : null;
+          // Só vale quando o fornecedor tem UM único fluxo no Calendário daquela
+          // empresa (caso do INSS). O Banestes (70007) tem Folha, 13º… — se valesse
+          // para ele, as FÉRIAS pagas pelo Banestes no dia 11 "davam baixa" na
+          // quinzena do dia 15 e a Folha dessas empresas não era gerada.
+          const calCo = String(cal.companyCode ?? '').trim().replace(/^0+(?=\d)/, '');
+          const calSup = (cal.supplierCode || '').trim();
+          // ...e só se o pagamento real do fornecedor estiver PERTO da data da
+          // obrigação (até 3 dias). Ex.: Férias pagas pelo Banestes em 11/11 não
+          // contam como a quinzena de 15/11.
+          const occPrev = occurrenceInWindow(cal.date, cal.calendarMonths);
+          const occTs = occPrev ? parseDate(occPrev) : 0;
+          const perto = (k: string) => !occTs || (realDatesByKey.get(k) || []).some(d => Math.abs(d - occTs) <= 3 * 86400000);
+          const supOnlyKey = (!isComissao(cal) && calSup) ? `SUP|${calCo}|${calSup}` : null;
+          const supOnly = supOnlyKey && perto(supOnlyKey) ? supOnlyKey : null;
           const matchedKey = realKeys.has(key)
               ? key
               : (supOnly && realKeys.has(supOnly) ? supOnly : null);
@@ -1504,7 +1522,8 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           }
 
           // 1. Filtro de Empresa
-          if (filtros.empresa !== 'all' && t.companyCode !== filtros.empresa) {
+          const normEmp = (c: unknown) => String(c ?? '').trim().replace(/^0+(?=\d)/, '');
+          if (filtros.empresa !== 'all' && normEmp(t.companyCode) !== normEmp(filtros.empresa)) {
               return false;
           }
 
@@ -1565,11 +1584,15 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
   );
 
   // Lista única de empresas para o select (baseada nas transações existentes)
+  // Só as empresas que têm lançamento NA ABA ATIVA (antes misturava todas as abas).
   const uniqueCompanies = useMemo(() => {
       const companies = new Set<string>();
-      transactions.forEach(t => { if(t.companyCode) companies.add(t.companyCode); });
-      return Array.from(companies).sort();
-  }, [transactions]);
+      const currentType = TAB_TO_TYPE[activeTab];
+      transactions.forEach(t => {
+          if (t.type === currentType && t.companyCode) companies.add(String(t.companyCode).trim().replace(/^0+(?=\d)/, ''));
+      });
+      return Array.from(companies).sort((a, b) => (Number(a) || 0) - (Number(b) || 0));
+  }, [transactions, activeTab]);
 
   // Lista única de fornecedores para a aba ativa (exceto Recebimentos)
   const uniqueFornecedores = useMemo(() => {
@@ -2299,7 +2322,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
 
           <div className="overflow-auto flex-1 w-full">
             <Lancamentos 
-                transactions={filteredTransactionsNew} 
+                transactions={lancamentosFiltrados} 
                 onEdit={handleEdit} 
                 onDelete={onDeleteTransaction}
                 activeTab={activeTab} // Passando activeTab apenas se Lancamentos precisar de contexto extra
