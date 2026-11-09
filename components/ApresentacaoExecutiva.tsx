@@ -9,7 +9,7 @@ import html2canvas from "html2canvas";
 import { PPTExportAlternative } from './PPTExportAlternative';
 import { generatePayablesSlide, generateReceivablesSlide } from '../services/pptxNativeSlides';
 import { drawPayablesPage, drawReceivablesPage } from '../services/pdfNativeSlides';
-import { formatCurrency, parseDate, COMPANIES, BANKS_MAPPING, isCapexTransaction } from '../utils/finance';
+import { formatCurrency, parseDate, COMPANIES, BANKS_MAPPING, isCapexTransaction, nome12 } from '../utils/finance';
 
 // ── Gráficos dos quadros de Pontos Críticos ──────────────────────────────────
 const RiskDonut: React.FC<{ pct: number; color: string; caption?: string; small?: boolean; track?: string; pctFontSize?: string }> = ({ pct, color, caption, small, track, pctFontSize }) => {
@@ -824,7 +824,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                             <div style={{ borderTop: '1px solid #2a3478', paddingTop: '0.4cqw', display: 'flex', flexDirection: 'column', gap: '0.15cqw', flexShrink: 0 }}>
                                 {list.length ? list.map((e, i) => (
                                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: F.list, lineHeight: 1.5 }}>
-                                        <span style={{ color: '#D6E2EC', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{e.name}</span>
+                                        <span style={{ color: '#D6E2EC', whiteSpace: 'nowrap', minWidth: 0 }} title={e.name}>{nome12(e.name)}</span>
                                         <span style={{ color: '#FFFFFF', fontWeight: 700, whiteSpace: 'nowrap' }}>{formatCurrency(e.value)}</span>
                                     </div>
                                 )) : <span style={{ color: '#9DB0C2', fontSize: F.list, fontStyle: 'italic', textAlign: 'center' }}>Sem registros.</span>}

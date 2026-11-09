@@ -11,7 +11,7 @@
  */
 import PptxGenJS from 'pptxgenjs';
 import { Transaction, TransactionType } from '../types';
-import { classifyTax, buildVlDiaList, isInvestimentoPayable } from '../utils/finance';
+import { classifyTax, buildVlDiaList, isInvestimentoPayable, nome12 } from '../utils/finance';
 
 // ─── PALETA & CONSTANTES (mutáveis por tema — applyTheme define escuro/claro) ───
 let BG           = '0f172a';
@@ -204,7 +204,7 @@ function drawBarList(
     const iy = startY + i * rowH;
 
     // Nome (15 chars, fonte menor)
-    slide.addText(trunc(item.name, 15), {
+    slide.addText(nome12(item.name), {
       x: x + padLeft, y: iy, w: nameColW, h: rowH,
       fontSize: 4.5, color: TXT_MUTED, fontFace: FONT, bold: true, valign: 'middle', wrap: false,
     });
@@ -299,7 +299,7 @@ function drawStackedCards(
       });
 
       // Nome
-      slide.addText(trunc(item.name, 20), {
+      slide.addText(nome12(item.name), {
         x: x + 0.10, y: iy + 0.005, w: (w - 0.10) * 0.58, h: itemH - 0.01,
         fontSize: 5, color: TXT_LIGHT, fontFace: FONT, bold: true, valign: 'middle', wrap: false,
       });
@@ -353,7 +353,7 @@ function drawCompanyBars(
     const iy = startY + i * rowH;
 
     // Nome empresa
-    slide.addText(trunc(d.name, 12), {
+    slide.addText(nome12(d.name), {
       x: x + 0.06, y: iy, w: nameColW, h: rowH,
       fontSize: 5.5, color: TXT_MUTED, fontFace: FONT, bold: true, valign: 'middle', wrap: false,
     });

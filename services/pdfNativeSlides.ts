@@ -8,7 +8,7 @@
  */
 import type jsPDF from 'jspdf';
 import { Transaction, TransactionType } from '../types';
-import { classifyTax, buildVlDiaList, isInvestimentoPayable } from '../utils/finance';
+import { classifyTax, buildVlDiaList, isInvestimentoPayable, nome12 } from '../utils/finance';
 
 // ─── PALETA ───────────────────────────────────────────────────────────────────
 const BG           = [15, 23, 42];     // #0f172a
@@ -139,7 +139,7 @@ function drawBarList(pdf: jsPDF, title: string, items: AggItem[], x: number, y: 
 
   display.forEach((item,i) => {
     const iy = startY + i*rowH;
-    textInBox(pdf, trunc(item.name,15), x+padL, iy, nameColW, rowH, {size:4.5, color:TXT_MUTED, bold:true});
+    textInBox(pdf, nome12(item.name), x+padL, iy, nameColW, rowH, {size:4.5, color:TXT_MUTED, bold:true});
 
     const barH = Math.min(rowH*0.55, 0.14);
     const barY = iy+(rowH-barH)/2;
@@ -184,7 +184,7 @@ function drawStackedCards(pdf: jsPDF, cards:{title:string;items:AggItem[];border
       pdf.roundedRect(x+0.05, iy+0.005, 0.025, itemH-0.01, 0.008, 0.008, 'F');
       // Fundo item
       roundRect(pdf, x+0.05, iy+0.005, w-0.10, itemH-0.01, 0.025, ITEM_BG);
-      textInBox(pdf, trunc(item.name,20), x+0.10, iy+0.005, (w-0.10)*0.58, itemH-0.01, {size:5, color:TXT_LIGHT, bold:true});
+      textInBox(pdf, nome12(item.name), x+0.10, iy+0.005, (w-0.10)*0.58, itemH-0.01, {size:5, color:TXT_LIGHT, bold:true});
       textInBox(pdf, fmtVal(item.value), x+0.10+(w-0.10)*0.53, iy+0.005, (w-0.10)*0.42, itemH-0.01, {size:5, color:TXT_WHITE, bold:true, align:'right'});
     });
   });
@@ -202,7 +202,7 @@ function drawCompanyBars(pdf: jsPDF, data:{name:string;value:number}[], x: numbe
 
   display.forEach((d,i) => {
     const iy=startY+i*rowH;
-    textInBox(pdf, trunc(d.name,12), x+0.06, iy, nameColW, rowH, {size:5.5, color:TXT_MUTED, bold:true});
+    textInBox(pdf, nome12(d.name), x+0.06, iy, nameColW, rowH, {size:5.5, color:TXT_MUTED, bold:true});
     const barH=Math.min(rowH*0.55,0.16), barY=iy+(rowH-barH)/2, barX=x+0.06+nameColW+0.04;
     const pct=Math.max(d.value/maxVal,0.03);
     const fullW=barAreaW*pct;

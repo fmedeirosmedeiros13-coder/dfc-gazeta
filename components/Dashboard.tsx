@@ -1,6 +1,6 @@
 import React, { useRef, useState, useMemo } from 'react';
 import { Transaction, TransactionType, FinancialSummary, AIAnalysisResult, DashboardViewType, ManualValues } from '../types';
-import { parseDate, buildVlDiaList, moveToNextBusinessDay, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell, calcInitialBalance, calcResgAplicTotal, calcResgAplicByFund, calcTransfTotal, isCapexTransaction, isDistribLucrosTransaction, getStartDate, getLatestExtractDate } from '../utils/finance';
+import { parseDate, buildVlDiaList, moveToNextBusinessDay, BANKS_MAPPING, formatCurrency, formatCompact, formatDFCCell, calcInitialBalance, calcResgAplicTotal, calcResgAplicByFund, calcTransfTotal, isCapexTransaction, isDistribLucrosTransaction, getStartDate, getLatestExtractDate, nome12 } from '../utils/finance';
 import { FLOW_DEPARA, FLOW_DEPARA_AMBIGUOUS, n2FromN3 } from '../utils/flowDePara';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, PieChart, Pie, LabelList, AreaChart, Area, LineChart, Line } from 'recharts';
 import { TrendingUp, TrendingDown, Wallet, AlertCircle, RefreshCw, Briefcase, ChevronRight, ArrowUpCircle, BrainCircuit, ShieldCheck, Lightbulb, Table2, Scale, Upload, Trash2, AlertTriangle, CheckCircle2, FileX, Tag, ArrowLeft, Layers, CalendarRange, DollarSign, Calendar, ArrowDownRight, ArrowUpRight, Printer, Calculator, Target, LayoutGrid, ListFilter, Landmark } from 'lucide-react';
@@ -302,7 +302,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                          <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-1.5">
                              {items.length > 0 ? items.map(t => (
                                  <div key={t.id} className="flex items-center gap-1.5 min-h-[22px]">
-                                     <span className={`${isSlide ? 'text-[9px] w-[48%]' : 'text-[11px] w-[42%]'} text-slate-300 font-semibold truncate shrink-0`} title={t.name}>{t.name}</span>
+                                     <span className={`${isSlide ? 'text-[9px] w-[48%]' : 'text-[11px] w-[42%]'} text-slate-300 font-semibold whitespace-nowrap overflow-hidden shrink-0`} title={t.name}>{nome12(t.name)}</span>
                                      <div className="flex-1 h-[16px] bg-slate-900/60 rounded-sm overflow-hidden">
                                          <div className="h-full bg-gradient-to-r from-teal-600 to-teal-400 rounded-sm transition-all" style={{ width: `${Math.max((t.value / maxVal) * 100, 3)}%` }} />
                                      </div>
@@ -326,7 +326,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                          <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-1.5">
                              {items.length > 0 ? items.map(t => (
                                  <div key={t.id} className="flex items-center gap-1.5 min-h-[22px]">
-                                     <span className={`${isSlide ? 'text-[9px] w-[48%]' : 'text-[11px] w-[42%]'} text-slate-300 font-semibold truncate shrink-0`} title={t.name}>{t.name}</span>
+                                     <span className={`${isSlide ? 'text-[9px] w-[48%]' : 'text-[11px] w-[42%]'} text-slate-300 font-semibold whitespace-nowrap overflow-hidden shrink-0`} title={t.name}>{nome12(t.name)}</span>
                                      <div className="flex-1 h-[16px] bg-slate-900/60 rounded-sm overflow-hidden">
                                          <div className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-sm transition-all" style={{ width: `${Math.max((t.value / maxVal) * 100, 3)}%` }} />
                                      </div>
@@ -354,7 +354,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                                  <div className="flex-1 overflow-auto custom-scrollbar space-y-1.5 min-h-0">
                                      {card.list.length > 0 ? card.list.map(t => (
                                          <div key={t.id} className={`flex justify-between items-center bg-slate-700/50 px-2 py-1.5 rounded-md shadow-sm text-[9px] border-l-2 ${card.borderColor} hover:bg-slate-700 transition-colors`}>
-                                             <span className={`truncate max-w-[75%] text-slate-300 font-semibold ${isSlide ? 'text-[8px]' : ''}`}>{t.name}</span>
+                                             <span className={`whitespace-nowrap max-w-[75%] text-slate-300 font-semibold ${isSlide ? 'text-[8px]' : ''}`} title={t.name}>{nome12(t.name)}</span>
                                              <span className={`font-bold text-slate-200 ${isSlide ? 'text-[8px]' : ''}`}>{Math.round(t.value).toLocaleString('pt-BR')}</span>
                                          </div>
                                      )) : <p className="text-[9px] text-slate-500 text-center mt-2">Sem registros.</p>}
@@ -371,7 +371,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                              <ResponsiveContainer width="100%" height="100%">
                                  <BarChart data={barChartData.slice(0, 10)} layout="vertical" margin={{top:5, right:50, left:10, bottom:5}}>
                                      <XAxis type="number" hide />
-                                     <YAxis dataKey="name" type="category" width={65} tick={{fontSize: barChartData.length > 8 ? 8 : 10, fill: '#94a3b8', fontWeight: 'bold'}} interval={0} />
+                                     <YAxis dataKey="name" type="category" width={70} tickFormatter={(v: string) => nome12(v)} tick={{fontSize: barChartData.length > 8 ? 8 : 10, fill: '#94a3b8', fontWeight: 'bold'}} interval={0} />
                                      <Tooltip cursor={{fill: 'transparent'}} contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc', borderRadius: '8px'}} itemStyle={{color: '#38bdf8'}} formatter={(v: number) => `R$ ${Math.round(v).toLocaleString('pt-BR')}`} />
                                      <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={30}>
                                          {barChartData.slice(0, 10).map((entry, index) => (

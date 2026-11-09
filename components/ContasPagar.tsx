@@ -3,7 +3,7 @@ import { Transaction, TransactionType } from '../types';
 import { BarChart, Bar, Tooltip, ResponsiveContainer, Cell, LabelList, XAxis, YAxis } from 'recharts';
 import { Briefcase, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { FinanceLayout } from './FinanceLayout';
-import { formatCurrency, classifyTax, parseDate, buildVlDiaList, isInvestimentoPayable } from '../utils/finance';
+import { formatCurrency, classifyTax, parseDate, buildVlDiaList, isInvestimentoPayable, nome12 } from '../utils/finance';
 
 interface ContasPagarProps {
   transactions: Transaction[];
@@ -183,7 +183,7 @@ export const ContasPagar: React.FC<ContasPagarProps> = ({
                          <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-1.5">
                              {items.length > 0 ? items.map(t => (
                                  <div key={t.id} className="flex items-center gap-1.5 min-h-[22px]">
-                                     <span className={`${isSlide ? 'text-[9px] w-[48%]' : 'text-[11px] w-[42%]'} text-slate-300 font-semibold truncate shrink-0`} title={t.name}>{t.name}</span>
+                                     <span className={`${isSlide ? 'text-[9px] w-[48%]' : 'text-[11px] w-[42%]'} text-slate-300 font-semibold whitespace-nowrap overflow-hidden shrink-0`} title={t.name}>{nome12(t.name)}</span>
                                      <div className="flex-1 h-[16px] bg-slate-900/60 rounded-sm overflow-hidden">
                                          <div className="h-full bg-gradient-to-r from-sky-600 to-sky-400 rounded-sm transition-all" style={{ width: `${Math.max((t.value / maxVal) * 100, 3)}%` }} />
                                      </div>
@@ -208,7 +208,7 @@ export const ContasPagar: React.FC<ContasPagarProps> = ({
                          <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-1.5">
                              {items.length > 0 ? items.map(t => (
                                  <div key={t.id} className="flex items-center gap-1.5 min-h-[22px]">
-                                     <span className={`${isSlide ? 'text-[9px] w-[48%]' : 'text-[11px] w-[42%]'} text-slate-300 font-semibold truncate shrink-0`} title={t.name}>{t.name}</span>
+                                     <span className={`${isSlide ? 'text-[9px] w-[48%]' : 'text-[11px] w-[42%]'} text-slate-300 font-semibold whitespace-nowrap overflow-hidden shrink-0`} title={t.name}>{nome12(t.name)}</span>
                                      <div className="flex-1 h-[16px] bg-slate-900/60 rounded-sm overflow-hidden">
                                          <div className="h-full bg-gradient-to-r from-indigo-600 to-indigo-400 rounded-sm transition-all" style={{ width: `${Math.max((t.value / maxVal) * 100, 3)}%` }} />
                                      </div>
@@ -238,7 +238,7 @@ export const ContasPagar: React.FC<ContasPagarProps> = ({
                                  ) : (
                                      box.data.map(t => (
                                          <div key={t.id} className={`flex justify-between items-center bg-slate-700/50 px-2 py-1.5 rounded-md shadow-sm text-[9px] border-l-2 ${box.color} hover:bg-slate-700 transition-colors`}>
-                                             <span className={`truncate max-w-[75%] text-slate-300 font-semibold ${isSlide ? 'text-[8px]' : ''}`}>{t.name}</span>
+                                             <span className={`whitespace-nowrap max-w-[75%] text-slate-300 font-semibold ${isSlide ? 'text-[8px]' : ''}`} title={t.name}>{nome12(t.name)}</span>
                                              <span className={`font-bold text-slate-200 ${isSlide ? 'text-[8px]' : ''}`}>{Math.round(Number(t.value) || 0).toLocaleString('pt-BR')}</span>
                                          </div>
                                      ))
@@ -263,10 +263,7 @@ export const ContasPagar: React.FC<ContasPagarProps> = ({
                                      interval={0}
                                      tick={(props: any) => {
                                          const { x, y, payload } = props;
-                                         const maxChars = 12;
-                                         const label = payload.value.length > maxChars
-                                             ? payload.value.slice(0, maxChars - 1) + '…'
-                                             : payload.value;
+                                         const label = nome12(payload.value);   // 12 caracteres, sem reticências
                                          return (
                                              <text x={x} y={y} dy={4} textAnchor="end" fontSize={barChartData.length > 8 ? 8 : 10} fontWeight="bold" fill="#94a3b8">
                                                  {label}

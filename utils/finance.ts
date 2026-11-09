@@ -145,6 +145,11 @@ export function buildVlDiaList(list: { date?: unknown; value?: unknown }[]): { d
     .sort((a, b) => key(a.date) - key(b.date));
 }
 
+/** Nome de fornecedor/cliente/empresa padronizado: até 12 caracteres, SEM reticências. */
+export function nome12(nome: unknown): string {
+  return String(nome ?? '').replace(/\s+/g, ' ').trim().slice(0, 12).trimEnd();
+}
+
 // ─── 4. FORMATAÇÃO DE VALORES ─────────────────────────────────────────────────
 
 const PT_BR = 'pt-BR';
