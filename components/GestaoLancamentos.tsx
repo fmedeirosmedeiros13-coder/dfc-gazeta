@@ -1266,10 +1266,13 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
   const isComissao = (t: Transaction) => String(t.species || '').trim().toUpperCase() === 'CO';
   const calendarMatchKey = (t: Transaction) => {
       const flow = (t.flowTypeCode || '').trim();
-      const company = (t.companyCode || '').trim();
+      const company = String(t.companyCode ?? '').trim().replace(/^0+(?=\d)/, '');
       if (isComissao(t)) return `ESP|${company}|${flow}`;
       const supplier = (t.supplierCode || '').trim();
-      if (supplier) return `SUP|${supplier}|${flow}`;
+      // POR EMPRESA: a Folha (Banestes 70007) de uma empresa não pode "dar baixa"
+      // na Folha das outras. Antes a chave era só fornecedor+fluxo e, se qualquer
+      // empresa tivesse um título 70007 na semana, a quinzena de TODAS não era gerada.
+      if (supplier) return `SUP|${company}|${supplier}|${flow}`;
       return `EMP|${company}|${flow}`;
   };
   const hasKey = (t: Transaction) => {
@@ -1306,17 +1309,17 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
       realPayables.forEach(p => {
           const flow = (p.flowTypeCode || '').trim();
           if (!flow) return;
-          const company = (p.companyCode || '').trim();
+          const company = String(p.companyCode ?? '').trim().replace(/^0+(?=\d)/, '');
           const supplier = (p.supplierCode || '').trim();
           const val = Number(p.value) || 0;
           if (supplier) {
-              const k = `SUP|${supplier}|${flow}`; realKeys.add(k); addValue(k, val);
+              const k = `SUP|${company}|${supplier}|${flow}`; realKeys.add(k); addValue(k, val);
               // Chave SÓ por fornecedor (sem o fluxo): permite reconhecer que a
               // obrigação já está na importação mesmo quando o Tipo de Fluxo do
               // cadastro difere do que veio do TOTVS. Ex.: INSS (fornecedor 62858)
               // vem como fluxo 20129 na importação, mas está cadastrado como 21404
               // no Calendário — sem esta chave ele seria gerado em duplicidade.
-              const ks = `SUP|${supplier}`; realKeys.add(ks); addValue(ks, val);
+              const ks = `SUP|${company}|${supplier}`; realKeys.add(ks); addValue(ks, val);
           }
           if (company)  { const k = `EMP|${company}|${flow}`;  realKeys.add(k); addValue(k, val); }
           if (company && isComissao(p)) { const k = `ESP|${company}|${flow}`; realKeys.add(k); addValue(k, val); }
@@ -1398,7 +1401,7 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
           // importação vs 21404 no cadastro). Só para itens com fornecedor
           // específico (não Comissão, que casa por Empresa+Fluxo agregado).
           const supOnly = (!isComissao(cal) && (cal.supplierCode || '').trim())
-              ? `SUP|${(cal.supplierCode || '').trim()}`
+              ? `SUP|${String(cal.companyCode ?? '').trim().replace(/^0+(?=\d)/, '')}|${(cal.supplierCode || '').trim()}`
               : null;
           const matchedKey = realKeys.has(key)
               ? key
