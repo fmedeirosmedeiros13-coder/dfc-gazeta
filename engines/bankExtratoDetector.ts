@@ -20,6 +20,10 @@ export function detectBank(rawText: string): BankId | null {
 
   if (flat.includes('SERVICO DE EXTRATOS BANESTES')) return 'BANESTES';
   if (flat.includes('CONSULTAS - EXTRATO DE CONTA CORRENTE')) return 'BB';
+  // Layout novo do BB Empresa ("Extrato conta corrente" + "999 S A L D O" /
+  // "Lançamentos futuros" / "Saldo Aprovisionado no Dia"), sem o título antigo.
+  if (flat.includes('EXTRATO CONTA CORRENTE') &&
+      (/9\s*9\s*9\s*S\s*A\s*L\s*D\s*O/.test(flat) || flat.includes('SALDO APROVISIONADO') || /LAN.AMENTOS FUTUROS/.test(flat))) return 'BB';
   if (flat.includes('SAC CAIXA') && flat.includes('EXTRATO NO PER')) return 'CEF';
   if (flat.includes('ITAU.COM.BR')) return 'ITAU';
   // Itaú BBA sem o rodapé "itau.com.br" (alguns PDFs exportados vêm sem ele)
