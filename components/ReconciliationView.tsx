@@ -191,6 +191,72 @@ function UnexpectedRow({ t }: { t: Transaction }) {
 
 type Tab = 'overview' | 'matched' | 'review' | 'pending' | 'unexpected' | 'strategic';
 
+// ─── "Não Previsto": tabela por fornecedor (modelo da Tesouraria) ──────────────
+// FORNEC. | VL PREVISTO | VL REALIZADO | VL DIFERENÇA | DT PGTO
+// · VL REALIZADO = pagamentos do fornecedor que não casaram com nenhum previsto;
+// · VL PREVISTO  = títulos previstos do MESMO fornecedor que ficaram sem par
+//   (ex.: previsto 30.000, pago 15.000 com outro valor/título);
+// · VL DIFERENÇA = realizado − previsto.
+// A coluna ÁREA (CC) entra quando o relatório de realizado do TOTVS trouxer o CC.
+const NaoPrevistoTabela: React.FC<{ pending: Transaction[]; unexpected: Transaction[] }> = ({ pending, unexpected }) => {
+  const norm = (v: unknown) => String(v ?? '').trim().toUpperCase().replace(/^0+(?=\d)/, '');
+  const chave = (t: Transaction) => norm(t.supplierCode) || norm(t.supplier || t.description);
+  const fmt = (v: number) => v === 0 ? '-' : Math.round(v).toLocaleString('pt-BR');
+  const linhas = useMemo(() => {
+    const m = new Map<string, { nome: string; prev: number; real: number; datas: Set<string>; qtd: number }>();
+    unexpected.forEach(t => {
+      const k = chave(t);
+      const r = m.get(k) || { nome: (t.supplier || t.description || 'Sem fornecedor').trim(), prev: 0, real: 0, datas: new Set<string>(), qtd: 0 };
+      r.real += Math.abs(Number(t.value) || 0); r.qtd++;
+      if (t.date) r.datas.add(String(t.date).slice(0, 5));
+      m.set(k, r);
+    });
+    pending.forEach(t => { const r = m.get(chave(t)); if (r) r.prev += Math.abs(Number(t.value) || 0); });
+    return [...m.values()].sort((a, b) => (b.real - b.prev) - (a.real - a.prev));
+  }, [pending, unexpected]);
+  const tot = linhas.reduce((a, l) => ({ prev: a.prev + l.prev, real: a.real + l.real }), { prev: 0, real: 0 });
+  const ord = (d: string) => d.slice(3, 5) + d.slice(0, 2);
+  return (
+    <div className="overflow-x-auto rounded-lg border border-slate-800">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-slate-900 text-slate-400 uppercase tracking-wider text-[10px]">
+            <th className="text-left px-3 py-2">Fornec.</th>
+            <th className="text-right px-3 py-2">Vl Previsto</th>
+            <th className="text-right px-3 py-2">Vl Realizado</th>
+            <th className="text-right px-3 py-2">Vl Diferença</th>
+            <th className="text-center px-3 py-2">Dt Pgto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.map((l, i) => {
+            const dif = l.real - l.prev;
+            const datas = [...l.datas].sort((a, b) => ord(a).localeCompare(ord(b)));
+            return (
+              <tr key={i} className="border-t border-slate-800 hover:bg-slate-800/40">
+                <td className="px-3 py-2 text-slate-200 font-semibold" title={l.nome}>{l.nome}{l.qtd > 1 && <span className="ml-1.5 text-[10px] text-slate-500 font-normal">({l.qtd} títulos)</span>}</td>
+                <td className="px-3 py-2 text-right text-slate-400">{fmt(l.prev)}</td>
+                <td className="px-3 py-2 text-right text-slate-100 font-semibold">{fmt(l.real)}</td>
+                <td className={`px-3 py-2 text-right font-bold ${dif > 0 ? 'text-red-400' : dif < 0 ? 'text-emerald-400' : 'text-slate-400'}`}>{fmt(dif)}</td>
+                <td className="px-3 py-2 text-center text-slate-300 whitespace-nowrap">{datas.length <= 2 ? datas.join(', ') : `${datas[0]} a ${datas[datas.length - 1]}`}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-slate-700 bg-slate-900/80 font-bold">
+            <td className="px-3 py-2 text-slate-300">TOTAL ({linhas.length} fornecedores)</td>
+            <td className="px-3 py-2 text-right text-slate-300">{fmt(tot.prev)}</td>
+            <td className="px-3 py-2 text-right text-slate-100">{fmt(tot.real)}</td>
+            <td className="px-3 py-2 text-right text-red-400">{fmt(tot.real - tot.prev)}</td>
+            <td />
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+};
+
 export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
   transactions,
   realizedTransactions,
@@ -502,7 +568,7 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
                       <p className="text-sm text-slate-500">Nenhum pagamento sem previsto correspondente</p>
                     </div>
                   )
-                  : result.unexpected.map(t => <UnexpectedRow key={t.id} t={t} />)
+                  : <NaoPrevistoTabela pending={result.pending} unexpected={result.unexpected} />
                 }
               </div>
             )}
