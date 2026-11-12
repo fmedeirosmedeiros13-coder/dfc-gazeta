@@ -230,6 +230,32 @@ function groupByBucket(
  * @param realized  Transações realizadas.
  * @returns         Resultado estruturado com pares, pendentes, surpresas e KPIs.
  */
+/** Junta linhas do mesmo título (empresa + fornecedor + título + parcela) num item só, somando o valor. */
+function juntarRateioPorTitulo(list: Transaction[]): Transaction[] {
+  const grupos = new Map<string, Transaction[]>();
+  const soltos: Transaction[] = [];
+  for (const t of list) {
+    const doc = norm(t.documentNumber);
+    if (!doc) { soltos.push(t); continue; }
+    const k = [norm(t.companyCode), norm(t.supplierCode), doc, norm(t.installment)].join('|');
+    const g = grupos.get(k); if (g) g.push(t); else grupos.set(k, [t]);
+  }
+  const out: Transaction[] = [...soltos];
+  grupos.forEach(g => {
+    if (g.length === 1) { out.push(g[0]); return; }
+    const soma = g.reduce((a, t) => a + Math.abs(Number(t.value) || 0), 0);
+    out.push({
+      ...g[0],
+      value: Math.round(soma * 100) / 100,
+      // valor do título = soma das linhas (o "valor original" de cada linha de rateio
+      // costuma repetir o total do título — não pode ser usado linha a linha)
+      originalTitleValue: Math.round(soma * 100) / 100,
+      description: `${g[0].description || g[0].supplier || ''} (${g.length} linhas de rateio)`.trim(),
+    });
+  });
+  return out;
+}
+
 export function reconcile(
   planned: Transaction[],
   realized: Transaction[],
@@ -239,7 +265,11 @@ export function reconcile(
   const unexpected: Transaction[] = [];
 
   // ── Fase 0: Filtrar apenas pagamentos ────────────────────────────────────
-  const activePrev   = planned.filter(t => t.type === 'PAYABLE');
+  // e JUNTAR as linhas de RATEIO por centro de custo: o previsto do TOTVS traz o
+  // mesmo título em várias linhas (uma por CC — ex.: Uber 9971620926 em 32
+  // linhas), mas ele é pago de uma vez só. Sem juntar, uma linha casava e as
+  // outras ficavam "Em aberto", parecendo o mesmo pagamento repetido.
+  const activePrev   = juntarRateioPorTitulo(planned.filter(t => t.type === 'PAYABLE'));
   let remainingPrev  = [...activePrev];
   let remainingReal  = [...realized];
 

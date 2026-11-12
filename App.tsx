@@ -268,9 +268,13 @@ export default function App() {
           csvText = new TextDecoder('iso-8859-1').decode(buf);
         }
 
+        // Duplicata = o MESMO pagamento já importado como REALIZADO. Antes comparava
+        // também com o PREVISTO: todo pagamento que batia exatamente com um título
+        // previsto (mesmo documento e valor) era descartado como "duplicata" — sumiam
+        // justamente os pagamentos que deveriam conciliar (ex.: 112 de 466).
         const result  = parseRealizedCSV(
           csvText,
-          [...transactions, ...realizedTransactions],
+          realizedTransactions,
           selectedCompany !== 'all' ? selectedCompany : '',
           selectedCompany,
         );

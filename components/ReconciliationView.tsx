@@ -266,7 +266,7 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
     { id: 'matched',     label: 'Conciliados',  count: result.matched.length },
     { id: 'review',      label: 'Revisão',      count: result.reviewNeeded.length },
     { id: 'pending',     label: 'Em Aberto',    count: result.pending.length },
-    { id: 'unexpected',  label: 'Surpresas',    count: result.unexpected.length },
+    { id: 'unexpected',  label: 'Não Previsto', count: result.unexpected.length },
     { id: 'strategic',   label: 'Estratégico' },
   ];
 
@@ -400,7 +400,7 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
               color="text-amber-400"
             />
             <KPICard
-              label="Surpresas"
+              label="Não Previsto"
               value={formatCompact(result.totals.unexpectedValue)}
               sub={`${result.unexpected.length} realizado(s) sem par`}
               color="text-rose-400"
