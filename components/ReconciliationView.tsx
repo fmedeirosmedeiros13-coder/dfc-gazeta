@@ -198,24 +198,18 @@ type Tab = 'overview' | 'matched' | 'review' | 'pending' | 'unexpected' | 'strat
 //   (ex.: previsto 30.000, pago 15.000 com outro valor/título);
 // · VL DIFERENÇA = realizado − previsto.
 // A coluna ÁREA (CC) entra quando o relatório de realizado do TOTVS trouxer o CC.
-const NaoPrevistoTabela: React.FC<{ pending: Transaction[]; unexpected: Transaction[] }> = ({ pending, unexpected }) => {
-  const norm = (v: unknown) => String(v ?? '').trim().toUpperCase().replace(/^0+(?=\d)/, '');
-  const chave = (t: Transaction) => norm(t.supplierCode) || norm(t.supplier || t.description);
-  const fmt = (v: number) => v === 0 ? '-' : Math.round(v).toLocaleString('pt-BR');
-  const linhas = useMemo(() => {
-    const m = new Map<string, { nome: string; prev: number; real: number; datas: Set<string>; qtd: number }>();
-    unexpected.forEach(t => {
-      const k = chave(t);
-      const r = m.get(k) || { nome: (t.supplier || t.description || 'Sem fornecedor').trim(), prev: 0, real: 0, datas: new Set<string>(), qtd: 0 };
-      r.real += Math.abs(Number(t.value) || 0); r.qtd++;
-      if (t.date) r.datas.add(String(t.date).slice(0, 5));
-      m.set(k, r);
-    });
-    pending.forEach(t => { const r = m.get(chave(t)); if (r) r.prev += Math.abs(Number(t.value) || 0); });
-    return [...m.values()].sort((a, b) => (b.real - b.prev) - (a.real - a.prev));
-  }, [pending, unexpected]);
-  const tot = linhas.reduce((a, l) => ({ prev: a.prev + l.prev, real: a.real + l.real }), { prev: 0, real: 0 });
+type LinhaFornec = { nome: string; prev: number; real: number; datas: Set<string>; qtd: number };
+const normForn = (v: unknown) => String(v ?? '').trim().toUpperCase().replace(/^0+(?=\d)/, '');
+const chaveForn = (t: Transaction) => normForn(t.supplierCode) || normForn(t.supplier || t.description);
+const nomeForn = (t: Transaction) => (t.supplier || t.description || 'Sem fornecedor').replace(/\s*\(\d+ linhas de rateio\)$/, '').trim();
+
+/** Tabela por fornecedor no modelo da Tesouraria: Fornec. | Vl Previsto | Vl Realizado | Vl Diferença | Dt Pgto. */
+const TabelaFornecedores: React.FC<{ linhas: LinhaFornec[]; ordenar: 'diferenca' | 'realizado' }> = ({ linhas, ordenar }) => {
+  const fmt = (v: number) => Math.round(v) === 0 ? '-' : Math.round(v).toLocaleString('pt-BR');
   const ord = (d: string) => d.slice(3, 5) + d.slice(0, 2);
+  const lista = [...linhas].sort((a, b) => ordenar === 'diferenca' ? (b.real - b.prev) - (a.real - a.prev) : b.real - a.real);
+  const tot = lista.reduce((a, l) => ({ prev: a.prev + l.prev, real: a.real + l.real }), { prev: 0, real: 0 });
+  const corDif = (d: number) => Math.round(d) > 0 ? 'text-red-400' : Math.round(d) < 0 ? 'text-emerald-400' : 'text-slate-400';
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-800">
       <table className="w-full text-xs">
@@ -229,7 +223,7 @@ const NaoPrevistoTabela: React.FC<{ pending: Transaction[]; unexpected: Transact
           </tr>
         </thead>
         <tbody>
-          {linhas.map((l, i) => {
+          {lista.map((l, i) => {
             const dif = l.real - l.prev;
             const datas = [...l.datas].sort((a, b) => ord(a).localeCompare(ord(b)));
             return (
@@ -237,7 +231,7 @@ const NaoPrevistoTabela: React.FC<{ pending: Transaction[]; unexpected: Transact
                 <td className="px-3 py-2 text-slate-200 font-semibold" title={l.nome}>{l.nome}{l.qtd > 1 && <span className="ml-1.5 text-[10px] text-slate-500 font-normal">({l.qtd} títulos)</span>}</td>
                 <td className="px-3 py-2 text-right text-slate-400">{fmt(l.prev)}</td>
                 <td className="px-3 py-2 text-right text-slate-100 font-semibold">{fmt(l.real)}</td>
-                <td className={`px-3 py-2 text-right font-bold ${dif > 0 ? 'text-red-400' : dif < 0 ? 'text-emerald-400' : 'text-slate-400'}`}>{fmt(dif)}</td>
+                <td className={`px-3 py-2 text-right font-bold ${corDif(dif)}`}>{fmt(dif)}</td>
                 <td className="px-3 py-2 text-center text-slate-300 whitespace-nowrap">{datas.length <= 2 ? datas.join(', ') : `${datas[0]} a ${datas[datas.length - 1]}`}</td>
               </tr>
             );
@@ -245,16 +239,54 @@ const NaoPrevistoTabela: React.FC<{ pending: Transaction[]; unexpected: Transact
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-slate-700 bg-slate-900/80 font-bold">
-            <td className="px-3 py-2 text-slate-300">TOTAL ({linhas.length} fornecedores)</td>
+            <td className="px-3 py-2 text-slate-300">TOTAL ({lista.length} fornecedores)</td>
             <td className="px-3 py-2 text-right text-slate-300">{fmt(tot.prev)}</td>
             <td className="px-3 py-2 text-right text-slate-100">{fmt(tot.real)}</td>
-            <td className="px-3 py-2 text-right text-red-400">{fmt(tot.real - tot.prev)}</td>
+            <td className={`px-3 py-2 text-right ${corDif(tot.real - tot.prev)}`}>{fmt(tot.real - tot.prev)}</td>
             <td />
           </tr>
         </tfoot>
       </table>
     </div>
   );
+};
+
+// "Não Previsto": VL REALIZADO = pagamentos que não casaram; VL PREVISTO = títulos
+// previstos do MESMO fornecedor que ficaram sem par; diferença = realizado − previsto.
+// A coluna ÁREA (CC) entra quando o relatório de realizado do TOTVS trouxer o CC.
+const NaoPrevistoTabela: React.FC<{ pending: Transaction[]; unexpected: Transaction[] }> = ({ pending, unexpected }) => {
+  const linhas = useMemo(() => {
+    const m = new Map<string, LinhaFornec>();
+    unexpected.forEach(t => {
+      const k = chaveForn(t);
+      const r = m.get(k) || { nome: nomeForn(t), prev: 0, real: 0, datas: new Set<string>(), qtd: 0 };
+      r.real += Math.abs(Number(t.value) || 0); r.qtd++;
+      if (t.date) r.datas.add(String(t.date).slice(0, 5));
+      m.set(k, r);
+    });
+    pending.forEach(t => { const r = m.get(chaveForn(t)); if (r) r.prev += Math.abs(Number(t.value) || 0); });
+    return [...m.values()];
+  }, [pending, unexpected]);
+  return <TabelaFornecedores linhas={linhas} ordenar="diferenca" />;
+};
+
+// "Conciliados": cada fornecedor com o total previsto × realizado dos pares casados.
+const ConciliadosTabela: React.FC<{ groups: MatchGroup[] }> = ({ groups }) => {
+  const linhas = useMemo(() => {
+    const m = new Map<string, LinhaFornec>();
+    groups.forEach(g => {
+      const ref = g.real[0] || g.prev[0]; if (!ref) return;
+      const k = chaveForn(ref);
+      const r = m.get(k) || { nome: nomeForn(g.prev[0] || ref), prev: 0, real: 0, datas: new Set<string>(), qtd: 0 };
+      r.prev += g.prev.reduce((a, t) => a + Math.abs(Number(t.value) || 0), 0);
+      r.real += g.real.reduce((a, t) => a + Math.abs(Number(t.value) || 0), 0);
+      r.qtd += Math.max(g.prev.length, g.real.length);
+      g.real.forEach(t => { if (t.date) r.datas.add(String(t.date).slice(0, 5)); });
+      m.set(k, r);
+    });
+    return [...m.values()];
+  }, [groups]);
+  return <TabelaFornecedores linhas={linhas} ordenar="realizado" />;
 };
 
 export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
@@ -528,7 +560,7 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
               <div className="space-y-2">
                 {result.matched.length === 0
                   ? <p className="text-sm text-slate-600 text-center py-8">Nenhum item conciliado</p>
-                  : result.matched.map((g, i) => <MatchRow key={i} group={g} />)
+                  : <ConciliadosTabela groups={result.matched} />
                 }
               </div>
             )}
