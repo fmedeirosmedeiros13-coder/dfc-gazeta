@@ -10,10 +10,11 @@
  */
 
 import React, { useMemo, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
 import {
   Scale, Upload, Trash2, CheckCircle2, AlertTriangle,
   FileX, ArrowLeft, ChevronDown, ChevronRight, GitMerge,
-  ShieldCheck, Eye,
+  ShieldCheck, Eye, Download,
 } from 'lucide-react';
 import { Transaction, TransactionType } from '../types';
 import { reconcile, confidenceColor, formatCoverage, type MatchGroup, type ReconciliationResult } from '../engines/reconciliation';
@@ -161,13 +162,41 @@ function MatchRow({ group }: { group: MatchGroup }) {
 
 // ─── Pending/Unexpected rows ──────────────────────────────────────────────────
 
+/** Exporta os títulos "Em aberto" (previstos sem pagamento correspondente) para Excel. */
+function exportarEmAberto(lista: Transaction[], periodo: string) {
+  const linhas = lista.map(t => ({
+    'Data Prevista': t.date,
+    'Empresa': t.companyCode ?? '',
+    'Cód. Fornecedor': t.supplierCode ?? '',
+    'Fornecedor': (t.supplier ?? t.description ?? '').replace(/\s*\(\d+ linhas de rateio\)$/, ''),
+    'Espécie': t.species ?? '',
+    'Título': t.documentNumber ?? '',
+    'Parcela': t.installment ?? '',
+    'Tipo de Fluxo': t.flowTypeCode ?? '',
+    'Fluxo N2': t.flowTypeLevel2 ?? '',
+    'Valor': Math.round((Number(t.originalTitleValue ?? t.value) || 0) * 100) / 100,
+  }));
+  const ws = XLSX.utils.json_to_sheet(linhas);
+  ws['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 44 }, { wch: 8 }, { wch: 14 }, { wch: 8 }, { wch: 12 }, { wch: 9 }, { wch: 14 }];
+  // valor com separador de milhar e 2 casas
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+  for (let r = 1; r <= range.e.r; r++) { const c = ws[XLSX.utils.encode_cell({ r, c: 9 })]; if (c) c.z = '#,##0.00'; }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Em Aberto');
+  const nome = `Em_Aberto_${String(periodo || '').replace(/[^0-9]+/g, '-').replace(/^-|-$/g, '') || 'periodo'}.xlsx`;
+  XLSX.writeFile(wb, nome);
+}
+
 function PendingRow({ t }: { t: Transaction }) {
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 border border-slate-800/40 rounded-lg">
       <AlertTriangle size={12} className="text-amber-500 flex-shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-slate-300 truncate">{t.supplier ?? t.description}</p>
-        <p className="text-[10px] text-slate-600">{t.date} · {t.documentNumber ?? 'sem documento'}</p>
+        <p className="text-xs text-slate-300 truncate">
+          {t.supplierCode && <span className="font-mono text-slate-500 mr-2">{t.supplierCode}</span>}
+          {t.supplier ?? t.description}
+        </p>
+        <p className="text-[10px] text-slate-600">{t.date} · Emp {t.companyCode} · Título {t.documentNumber ?? 'sem documento'}{t.installment ? ` / ${t.installment}` : ''}</p>
       </div>
       <p className="text-xs text-amber-400 font-mono">{formatCurrency(t.originalTitleValue ?? t.value)}</p>
     </div>
@@ -586,7 +615,17 @@ export const ReconciliationView: React.FC<ReconciliationViewProps> = ({
                       <p className="text-sm text-slate-500">Todos os previstos foram conciliados</p>
                     </div>
                   )
-                  : result.pending.map(t => <PendingRow key={t.id} t={t} />)
+                  : (<>
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => exportarEmAberto(result.pending, selectedPeriod?.label ?? '')}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-emerald-700 hover:bg-emerald-600 text-white"
+                        >
+                          <Download size={14} /> Exportar Excel
+                        </button>
+                      </div>
+                      {result.pending.map(t => <PendingRow key={t.id} t={t} />)}
+                    </>)
                 }
               </div>
             )}
