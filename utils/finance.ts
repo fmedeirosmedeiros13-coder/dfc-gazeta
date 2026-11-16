@@ -545,8 +545,11 @@ export function planWeeklyPrevistoImport(
       generationDay = `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
     }
     existing.filter(t => t.type === type && isFullBRDate(t.date)).forEach(t => {
-      const d = parseDate(t.date);
-      if (d >= gen && d < newMin) keptCount++;              // dia da geração: fica
+      // Data no DIA ÚTIL em que será paga: sábado/domingo/feriado antes da
+      // segunda da geração (ex.: 14 e 15/11, quinzena) também pertencem a ela.
+      // Antes só o próprio 16/11 ficava e os títulos de 14 e 15/11 eram apagados.
+      const d = parseDate(moveToNextBusinessDay(t.date.trim()));
+      if (d >= gen && d < newMin) keptCount++;              // dia da geração (e fim de semana antes dele): fica
       else removeIds.push(t.id);                            // semana anterior / mesmo período do arquivo novo: sai
     });
   }
