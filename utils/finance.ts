@@ -145,6 +145,23 @@ export function buildVlDiaList(list: { date?: unknown; value?: unknown }[]): { d
     .sort((a, b) => key(a.date) - key(b.date));
 }
 
+/**
+ * Código de empresa padronizado SEM zeros à esquerda ("002" → "2"). Alguns
+ * relatórios do TOTVS (ex.: Contas a Receber) trazem "002"; outros, "2". Sem
+ * padronizar, a mesma empresa aparecia duas vezes nos gráficos ("Empresa 002"
+ * e "TV GAZETA").
+ */
+export function normCompanyCode(c: unknown): string {
+  const s = String(c ?? '').trim();
+  return /^\d+$/.test(s) ? s.replace(/^0+(?=\d)/, '') : s;
+}
+/** Aplica normCompanyCode num lançamento (só cria objeto novo se mudar). */
+export function withNormCompany<T extends { companyCode?: string }>(t: T): T {
+  if (!t || t.companyCode === undefined) return t;
+  const n = normCompanyCode(t.companyCode);
+  return n === t.companyCode ? t : { ...t, companyCode: n };
+}
+
 /** Nome de fornecedor/cliente/empresa padronizado: até 12 caracteres, SEM reticências. */
 export function nome12(nome: unknown): string {
   return String(nome ?? '').replace(/\s+/g, ' ').trim().slice(0, 12).trimEnd();

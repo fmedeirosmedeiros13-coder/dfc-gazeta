@@ -39,6 +39,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { Transaction, ManualValues } from '../types';
 import type { Dispatch, SetStateAction } from 'react';
 import { DB_NAME, DB_VERSION, ensureAllStores, warnDbBlocked, releaseOnUpgrade } from '../utils/idb';
+import { withNormCompany } from '../utils/finance';
 
 // ─── Configuração do banco ────────────────────────────────────────────────────
 
@@ -174,13 +175,14 @@ export function usePersistence({
         // ficou salvo em navegadores que já usaram o app. Só ele: mesma assinatura exata.
         const isExemplo = (t: Transaction) =>
           t.id === '1' && t.description === 'Exemplo Previsto' && t.supplierCode === '1464' && Number(t.value) === 500;
-        const cleanTx = (savedTx ?? []).filter(t => !isExemplo(t));
+        // Empresa "002" → "2" (corrige também o que já estava gravado).
+        const cleanTx = (savedTx ?? []).filter(t => !isExemplo(t)).map(withNormCompany);
         // A restauração pode chegar ATRASADA (ex.: banco liberado só depois que
         // outra aba fechou). Nunca apaga o que já foi digitado/importado nesta
         // sessão: valores digitados têm prioridade sobre os salvos; lançamentos
         // só são restaurados se a sessão ainda não tem nenhum.
         if (cleanTx.length > 0) setTransactions((prev: Transaction[]) => (prev.length > 0 ? prev : cleanTx));
-        if (savedReal && savedReal.length  > 0) setRealizedTransactions((prev: Transaction[]) => (prev.length > 0 ? prev : savedReal));
+        if (savedReal && savedReal.length  > 0) setRealizedTransactions((prev: Transaction[]) => (prev.length > 0 ? prev : savedReal.map(withNormCompany)));
         if (savedMV   && Object.keys(savedMV).length > 0) setManualValues((prev: ManualValues) => ({ ...savedMV, ...prev }));
       } catch (err) {
         console.warn('[usePersistence] IndexedDB não disponível — funcionando sem persistência.', err);

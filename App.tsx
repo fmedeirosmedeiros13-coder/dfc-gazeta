@@ -44,6 +44,7 @@ import {
 import { analyzeFinancialData, type ExecutiveAnalysis } from './services/claudeService';
 import { syncFromERP, getERPConfigFromEnv }             from './services/erpConnector';
 import { notificationService }                           from './services/notifications';
+import { withNormCompany } from './utils/finance';
 
 // Hooks
 import { useFinancialCalculations } from './hooks/useFinancialCalculations';
@@ -219,7 +220,8 @@ export default function App() {
   }, [manualValues]);
 
   const handleUpdateTransaction = useCallback((updated: Transaction) => {
-    setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t));
+    const u = withNormCompany(updated);
+    setTransactions(prev => prev.map(t => t.id === u.id ? u : t));
     auditLog.record({ action: 'TRANSACTION_EDIT', subject: updated.id, after: updated });
   }, []);
 
@@ -299,7 +301,7 @@ export default function App() {
         if (!window.confirm(confirmMsg)) return;
 
         const newTx = result.valid.map(r => r.transaction);
-        setRealizedTransactions(prev => [...prev, ...newTx]);
+        setRealizedTransactions(prev => [...prev, ...newTx.map(withNormCompany)]);
         realizadoSnapshots.capture(newTx);
 
         auditLog.record({
@@ -327,7 +329,7 @@ export default function App() {
     try {
       const result = await syncFromERP(erpConfig, [...transactions, ...realizedTransactions]);
       if (result.success && result.imported.length > 0) {
-        setRealizedTransactions(prev => [...prev, ...result.imported]);
+        setRealizedTransactions(prev => [...prev, ...result.imported.map(withNormCompany)]);
         realizadoSnapshots.capture(result.imported);
         setLastERPSync(result.syncedAt);
         alert(`✓ ERP: ${result.imported.length} transação(ões) importadas. ${result.skipped} ignoradas (duplicatas).`);
@@ -484,14 +486,15 @@ export default function App() {
           <GestaoLancamentos
             key="data-entry"
             transactions={transactions}
-            onAddTransaction={t => { setTransactions(p => [...p, t]); auditLog.record({ action: 'TRANSACTION_ADD', subject: t.id, after: t }); }}
+            onAddTransaction={tIn => { const t = withNormCompany(tIn); setTransactions(p => [...p, t]); auditLog.record({ action: 'TRANSACTION_ADD', subject: t.id, after: t }); }}
             onDeleteTransaction={id => { setTransactions(p => p.filter(t => t.id !== id)); auditLog.record({ action: 'TRANSACTION_DELETE', subject: id }); }}
             onDeleteTransactions={ids => {
               const del = new Set(ids);
               setTransactions(p => p.filter(t => !del.has(t.id)));
               auditLog.record({ action: 'TRANSACTION_DELETE', subject: `troca semanal do previsto: ${ids.length} lançamento(s)` });
             }}
-            onImportTransactions={ts => {
+            onImportTransactions={tsIn => {
+                const ts = tsIn.map(withNormCompany);   // empresa "002" → "2"
                 const temApp = ts.some(t => t.type === TransactionType.APPLICATION);
                 if (temApp) {
                   // Aplicações não acumulam: cada importação é a posição ATUAL,
