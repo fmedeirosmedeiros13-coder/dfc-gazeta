@@ -9,7 +9,7 @@ import html2canvas from "html2canvas";
 import { PPTExportAlternative } from './PPTExportAlternative';
 import { generatePayablesSlide, generateReceivablesSlide } from '../services/pptxNativeSlides';
 import { drawPayablesPage, drawReceivablesPage } from '../services/pdfNativeSlides';
-import { formatCurrency, parseDate, COMPANIES, BANKS_MAPPING, isCapexTransaction, isDistribLucrosTransaction, nome12 } from '../utils/finance';
+import { formatCurrency, parseDate, COMPANIES, BANKS_MAPPING, isCapexTransaction, isDistribLucrosTransaction, nome12, getPeriodoFCDiario } from '../utils/finance';
 
 // ── Gráficos dos quadros de Pontos Críticos ──────────────────────────────────
 const RiskDonut: React.FC<{ pct: number; color: string; caption?: string; small?: boolean; track?: string; pctFontSize?: string }> = ({ pct, color, caption, small, track, pctFontSize }) => {
@@ -186,6 +186,8 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
 
   // --- CÁLCULO DE DATAS (PRESERVADO) ---
   const dateRange = useMemo(() => {
+    const pFC = getPeriodoFCDiario();
+    if (pFC) return `${pFC.inicio} A ${pFC.fim}`;      // mesmo período do FC Diário
     if (transactions.length === 0) return 'Período não identificado';
     
     const parseDate = (d: string) => {

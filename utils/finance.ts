@@ -381,6 +381,31 @@ export function getAllExtractDates(manualValues: Record<string, number>): string
  * esquecido 27/07), o primeiro dia exibido muda pra ele, e essa mesma busca
  * recalcula sozinha a partir da nova data — sem precisar de código extra.
  */
+/**
+ * SD Inicial CONSOLIDADO de um dia, pela MESMA regra do 1º dia do FC Diário:
+ * por empresa e banco → SD Inicial digitado/importado do dia; senão o último
+ * fechamento real (extrato) anterior ao dia; senão o saldo de partida.
+ */
+export function calcSaldoInicialDoDia(companyIds: string[], dateBR: string, manualValues: Record<string, number>): number {
+  const mv = manualValues ?? {};
+  let total = 0;
+  for (const c of companyIds) {
+    for (const b of BANKS_MAPPING[c] ?? []) {
+      const storageId = `${c}_${b.id}`;
+      const manual = mv[`sim_sd_ini_${storageId}_${dateBR}`];
+      if (manual !== undefined && !Number.isNaN(Number(manual))) { total += Number(manual) || 0; continue; }
+      const prev = getLatestCloseBefore(storageId, dateBR, mv);
+      total += prev !== undefined && !Number.isNaN(prev) ? Number(prev) : (Number(mv[`sim_start_${storageId}`]) || 0);
+    }
+  }
+  return total;
+}
+
+/** Período exibido no FC Diário (publicado por ele) — usado pelo Demonstrativo. */
+export function getPeriodoFCDiario(): { inicio: string; fim: string } | null {
+  try { const v = JSON.parse(localStorage.getItem('fc_periodo_exibido') || 'null'); return v && v.inicio ? v : null; } catch { return null; }
+}
+
 export function getLatestCloseBefore(
   storageId: string,
   cutoffDateBR: string, // dd/mm/aaaa — o dia cujo Saldo Inicial estamos calculando

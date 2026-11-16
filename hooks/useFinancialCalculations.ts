@@ -14,6 +14,7 @@
 import { useMemo } from 'react';
 import { Transaction, TransactionType, FinancialSummary, ManualValues } from '../types';
 import {
+  calcSaldoInicialDoDia, getPeriodoFCDiario,
   parseDate,
   calcInitialBalance,
   calcResgAplicTotal,
@@ -137,6 +138,14 @@ export function useFinancialCalculations({
   // teve nenhum extrato importado.
 
   const executiveInitialBalance = useMemo(() => {
+    // Mesmo SD Inicial do 1º dia do FC Diário (período exibido lá). Antes usava
+    // o "extrato mais recente" de cada empresa, somando só os bancos com extrato
+    // naquela data exata — ficava faltando banco (ex.: 1,9 mi × 4,8 mi no FC).
+    const periodo = getPeriodoFCDiario();
+    if (periodo) {
+      const cias = selectedCompany === 'all' ? Object.keys(BANKS_MAPPING) : [selectedCompany];
+      return calcSaldoInicialDoDia(cias, periodo.inicio, manualValues);
+    }
     const fallbackDate = getStartDate(filteredTransactions);
 
     const companiesToSum = selectedCompany === 'all' ? uniqueCompanies : [selectedCompany];

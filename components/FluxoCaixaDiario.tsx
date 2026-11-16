@@ -212,6 +212,12 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
       // só a EXIBIÇÃO das colunas anteriores é escondida.
       // Ocultar dias anteriores a uma data escolhida (dentre as do período
       // importado/exibido) — não fica preso a "hoje", o usuário escolhe.
+      // Publica o período exibido (o Demonstrativo usa o mesmo início/fim e o
+      // mesmo SD Inicial do 1º dia).
+      useEffect(() => {
+          try { if (displayDates.length) localStorage.setItem('fc_periodo_exibido', JSON.stringify({ inicio: displayDates[0], fim: displayDates[displayDates.length - 1] })); } catch { /* ignora */ }
+      }, [displayDates.join('|')]);
+
       // "Ocultar antes de" fica SALVO (trocar de aba/recarregar não volta para
       // "Mostrar tudo"). Só volta quando o período muda: semana nova importada
       // ou datas do período alteradas.
