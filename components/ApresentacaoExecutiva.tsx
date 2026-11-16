@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { FinancialSummary, Transaction, AIAnalysisResult, TransactionType, DashboardViewType } from '../types';
 import { X, Printer, FileDown, Lock, Edit2, RefreshCw, Trash2, Check, Presentation, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { ResumoFinanceiro } from './ResumoFinanceiro';
@@ -293,6 +293,11 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   // (Editar / Gerar Automático / Limpar).
   const [analiseText, setAnaliseText] = useState('');
   const [isEditingAnalise, setIsEditingAnalise] = useState(false);
+  // Edição da Análise: o texto é digitado num campo "solto" e só é gravado ao
+  // sair do campo / clicar ✓. Antes cada letra regravava o estado da página
+  // inteira (slides, gráficos) — por isso a digitação "agarrava".
+  const analiseRef = useRef<HTMLTextAreaElement>(null);
+  const salvarAnaliseEditada = () => { if (analiseRef.current) setAnaliseText(analiseRef.current.value); };
   // Tema do Demonstrativo (escopado só a este relatório — o app segue escuro).
   // 'dark' = padrão atual; 'light' = paleta creme/navy (Rede Gazeta) para escolha.
   const [reportTheme, setReportTheme] = useState<'dark' | 'light'>('light');
@@ -395,7 +400,10 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
       const resgItens = porCia(resgPor), aplItens = porCia(aplPor);
       const par = (xs: string[]) => xs.length === 1 ? ` ${xs[0]}` : ` (${lista(xs)})`;
       if (appAtual > 0 || aplItens.length || resgItens.length) {
-          const destino = temMutuo ? 'para o mútuo e a cobertura dos pagamentos' : 'para a cobertura dos pagamentos';
+          // "para o mútuo" só quando a empresa que resgata é a que cede o mútuo.
+          const cedentes = new Set(Object.entries(transfPor).filter(([, v]) => Math.round(v) < 0).map(([c]) => c));
+          const resgateFinanciaMutuo = Object.keys(resgPor).some(c => cedentes.has(c));
+          const destino = resgateFinanciaMutuo ? 'para o mútuo e a cobertura dos pagamentos' : 'para a cobertura dos pagamentos';
           let txt = `Saldo em Aplicações: Temos hoje ${mil(appAtual)} aplicados.`;
           if (aplItens.length && resgItens.length) {
               txt += ` Vamos aplicar mais ${mil(totalManualAplicacoes)}${par(aplItens)} e resgatar ${mil(totalManualResgates)}${par(resgItens)} ${destino}. Com isso, o saldo em aplicações será de ${mil(appAjustado)}.`;
@@ -418,10 +426,15 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
           // Data dos pagamentos que o mútuo cobre (dia lançado na coluna Transf)
           const dias = [...transfDias].sort((a, b) => (a.slice(3) + a.slice(0, 2)).localeCompare(b.slice(3) + b.slice(0, 2)));
           const quando = dias.length ? `de ${lista(dias)}` : 'do período';
+          // Nome completo da empresa e valor cheio (ex.: "mútuo de R$ 100.000 da S.A. A GAZETA para a TV GAZETA").
+          const nomeCompleto = (id: string) => COMPANIES.find(c => c.id === String(id).replace(/^0+(?=\d)/, ''))?.name || nomeCia(id);
+          const cheio = (v: number) => `R$ ${Math.round(Math.abs(v)).toLocaleString('pt-BR')}`;
           if (cedeIds.length === 1 && recIds.length === 1) {
-              destaques.push(`Está previsto um mútuo de ${mil(recIds[0][1])} da ${nomeCia(cedeIds[0][0])} para a ${nomeCia(recIds[0][0])}, para cobrir os pagamentos ${quando}.`);
+              destaques.push(`Está previsto um mútuo de ${cheio(recIds[0][1])} da ${nomeCompleto(cedeIds[0][0])} para a ${nomeCompleto(recIds[0][0])}, para cobrir os pagamentos ${quando}.`);
           } else {
-              destaques.push(`Estão previstos mútuos${cede.length ? ` cedidos pela ${lista(cede)}` : ''}${recebe.length ? ` para a ${lista(recebe)}` : ''}, para cobrir os pagamentos ${quando}.`);
+              const ced = cedeIds.map(([c, v]) => `${nomeCompleto(c)} (${cheio(v)})`);
+              const rec = recIds.map(([c, v]) => `${nomeCompleto(c)} (${cheio(v)})`);
+              destaques.push(`Estão previstos mútuos${ced.length ? ` cedidos pela ${lista(ced)}` : ''}${rec.length ? ` para a ${lista(rec)}` : ''}, para cobrir os pagamentos ${quando}.`);
           }
       }
       const zeradas = Object.keys(resgPor).filter(c => (appPor[c] || 0) > 0 && (appPor[c] || 0) - (resgPor[c] || 0) + (aplPor[c] || 0) <= 0.5).map(nomeCia);
@@ -867,7 +880,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                         <h3 className="font-semibold text-slate-200" style={{ fontSize: 'clamp(9px, 1.3cqw, 24px)' }}>Análise do Período</h3>
                         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">
                             {isEditingAnalise ? (
-                                <button onClick={() => setIsEditingAnalise(false)} className="p-1.5 text-emerald-400 hover:bg-slate-800 rounded-md transition-colors" title="Salvar"><Check className="w-4 h-4" /></button>
+                                <button onClick={() => { salvarAnaliseEditada(); setIsEditingAnalise(false); }} className="p-1.5 text-emerald-400 hover:bg-slate-800 rounded-md transition-colors" title="Salvar"><Check className="w-4 h-4" /></button>
                             ) : (
                                 <>
                                     <button onClick={() => setIsEditingAnalise(true)} className="p-1.5 text-slate-400 hover:bg-slate-800 rounded-md transition-colors" title="Editar"><Edit2 className="w-4 h-4" /></button>
@@ -879,7 +892,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                     </div>
                     <div className="flex-1 min-h-0">
                         {isEditingAnalise ? (
-                            <textarea value={analiseText} onChange={(e) => setAnaliseText(e.target.value)} style={{ fontSize: 'clamp(8px, 1.08cqw, 20px)' }} className="w-full h-full p-4 font-normal text-slate-300 bg-slate-900 border border-slate-700 rounded-md focus:outline-none focus:border-slate-500 resize-none custom-scrollbar" placeholder="Insira a análise do período aqui..." />
+                            <textarea ref={analiseRef} defaultValue={analiseText} onBlur={salvarAnaliseEditada} style={{ fontSize: 'clamp(8px, 1.08cqw, 20px)' }} className="w-full h-full p-4 font-normal text-slate-300 bg-slate-900 border border-slate-700 rounded-md focus:outline-none focus:border-slate-500 resize-none custom-scrollbar" placeholder="Insira a análise do período aqui..." />
                         ) : (
                             <div className="h-full overflow-y-auto pr-4 font-normal text-slate-300 leading-relaxed text-justify whitespace-pre-wrap custom-scrollbar" style={{ fontSize: 'clamp(8px, 1.08cqw, 20px)' }}>
                                 {analiseText ? analiseText.split('\n\n').map((par, pi) => {
