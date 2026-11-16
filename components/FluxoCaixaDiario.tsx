@@ -11,7 +11,8 @@ import { detectBank } from '../engines/bankExtratoDetector';
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 import { Transaction, TransactionType, ManualValues } from '../types';
 import { parseDate, BANKS_MAPPING, byDate, moveToNextBusinessDay, COMPANIES, getLatestCloseBefore, calcResgAplicTotal, checkResgateSaldo, ResgCheck } from '../utils/finance';
-import { Calculator, AlertTriangle, Trash2 } from 'lucide-react';
+import { Calculator, AlertTriangle, Trash2, ArrowLeftRight } from 'lucide-react';
+import { MovimentosModal, useMovimentosTransf, deltasDe, siglaCia as siglaMov, type MovimentoTransf } from './MovimentosTransf';
 
 // Data canônica em ISO (yyyy-mm-dd), independente do formato de exibição.
 // Usada como chave do fechamento persistido, para o seed funcionar mesmo
@@ -613,6 +614,79 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
           return false;
       };
 
+      // ── Indicação de MÚTUO na coluna Transf ──────────────────────────────────
+      // Por dia: empresa com Transf líquido NEGATIVO cede (empresta/paga) e com
+      // POSITIVO recebe. Transferência entre bancos da mesma empresa soma zero
+      // e aparece como "INTERNA".
+      const SIGLA_CIA: Record<string, string> = { '1': 'S/A', '2': 'TVG', '3': 'TVC', '4': 'TVN', '5': 'MIX', '6': 'FM 102', '14': 'VÍDEO', '17': 'DIFUSORA', '18': 'CIDADÃ', '22': 'FM LINH.', '23': 'N. GERAÇÃO' };
+      const siglaCia = (id: string) => SIGLA_CIA[String(id).replace(/^0+(?=\d)/, '')] || `Emp ${id}`;
+      const mutuoInfo = useMemo(() => {
+          const porDia: Record<string, Record<string, number>> = {};
+          Object.entries(dfcManualValues || {}).forEach(([k, v]) => {
+              const n = Number(v) || 0; if (!n || !k.startsWith('sim_transf_')) return;
+              const rest = k.slice('sim_transf_'.length);
+              const i1 = rest.indexOf('_'), i2 = rest.indexOf('_', i1 + 1);
+              if (i1 < 0 || i2 < 0) return;
+              const cid = rest.slice(0, i1).replace(/^0+(?=\d)/, ''), date = rest.slice(i2 + 1);
+              (porDia[date] ||= {})[cid] = ((porDia[date] || {})[cid] || 0) + n;
+          });
+          const fmt = (v: number) => Math.abs(v).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+          const out: Record<string, { tag: string; title: string; tipo: 'cede' | 'recebe' | 'interna' }> = {};
+          Object.entries(porDia).forEach(([date, cias]) => {
+              const cedem = Object.entries(cias).filter(([, v]) => Math.round(v) < 0);
+              const recebem = Object.entries(cias).filter(([, v]) => Math.round(v) > 0);
+              Object.entries(cias).forEach(([cid, v]) => {
+                  const key = `${cid}|${date}`;
+                  if (Math.round(v) < 0) {
+                      const p = recebem.map(([c]) => siglaCia(c));
+                      out[key] = { tipo: 'cede', tag: `MÚTUO → ${p.join(', ') || '?'}`, title: `${siglaCia(cid)} empresta/paga R$ ${fmt(v)} por mútuo${p.length ? ' para ' + p.join(', ') : ' (falta lançar quem recebe)'}` };
+                  } else if (Math.round(v) > 0) {
+                      const p = cedem.map(([c]) => siglaCia(c));
+                      out[key] = { tipo: 'recebe', tag: `MÚTUO ← ${p.join(', ') || '?'}`, title: `${siglaCia(cid)} recebe R$ ${fmt(v)} por mútuo${p.length ? ' de ' + p.join(', ') : ' (falta lançar quem cede)'}` };
+                  } else {
+                      out[key] = { tipo: 'interna', tag: 'INTERNA', title: 'Transferência entre bancos da própria empresa (soma zero)' };
+                  }
+              });
+          });
+          return out;
+      }, [dfcManualValues]);
+      // ── Movimentos lançados (transferência/mútuo) ─────────────────────────────
+      const [movs, setMovs] = useMovimentosTransf();
+      const [movModal, setMovModal] = useState<{ aberto: boolean; data?: string; filtro?: { cia: string; banco: string } | null }>({ aberto: false });
+      const aplicarDeltas = (deltas: Record<string, number>) => {
+          Object.entries(deltas).forEach(([k, d]) => {
+              if (!d || !onManualValueChange) return;
+              onManualValueChange(k, Math.round(((Number((dfcManualValues || {})[k]) || 0) + d) * 100) / 100);
+          });
+      };
+      const somarDeltas = (...ds: Record<string, number>[]) => ds.reduce((acc, d) => { Object.entries(d).forEach(([k, v]) => { acc[k] = (acc[k] || 0) + v; }); return acc; }, {} as Record<string, number>);
+      const salvarMov = (novo: MovimentoTransf, antigo: MovimentoTransf | null) => {
+          aplicarDeltas(somarDeltas(antigo ? deltasDe(antigo, -1) : {}, deltasDe(novo, 1)));
+          setMovs(prev => antigo ? prev.map(m => m.id === antigo.id ? novo : m) : [...prev, novo]);
+      };
+      const excluirMov = (m: MovimentoTransf) => { aplicarDeltas(deltasDe(m, -1)); setMovs(prev => prev.filter(x => x.id !== m.id)); };
+      const somaTransfDoDia = (date: string) => Object.entries(dfcManualValues || {}).reduce((a, [k, v]) => a + (k.startsWith('sim_transf_') && k.endsWith(`_${date}`) ? (Number(v) || 0) : 0), 0);
+      // etiquetas por banco/dia a partir dos movimentos
+      const movsPorCelula = useMemo(() => {
+          const m: Record<string, { txt: string; tipo: 'cede' | 'recebe' | 'interna'; valor: number }[]> = {};
+          const fmtV = (v: number) => Math.round(v).toLocaleString('pt-BR');
+          movs.forEach(x => {
+              const o = `${x.origemCia}|${x.origemBanco}|${x.date}`, d = `${x.destinoCia}|${x.destinoBanco}|${x.date}`;
+              if (x.tipo === 'MUTUO') {
+                  (m[o] ||= []).push({ tipo: 'cede', valor: -x.valor, txt: `MÚTUO → ${siglaMov(x.destinoCia)} ${fmtV(x.valor)}` });
+                  (m[d] ||= []).push({ tipo: 'recebe', valor: x.valor, txt: `MÚTUO ← ${siglaMov(x.origemCia)} ${fmtV(x.valor)}` });
+              } else {
+                  (m[o] ||= []).push({ tipo: 'interna', valor: -x.valor, txt: `INTERNA → ${x.destinoBanco} ${fmtV(x.valor)}` });
+                  (m[d] ||= []).push({ tipo: 'interna', valor: x.valor, txt: `INTERNA ← ${x.origemBanco} ${fmtV(x.valor)}` });
+              }
+          });
+          return m;
+      }, [movs]);
+
+      const tagMutuo = (info?: { tag: string; title: string; tipo: string }) => !info ? null : (
+          <span title={info.title} className={`block mx-auto mt-0.5 w-fit px-1 rounded text-[7px] font-extrabold leading-[11px] whitespace-nowrap ${info.tipo === 'cede' ? 'bg-rose-600/80 text-white' : info.tipo === 'recebe' ? 'bg-emerald-600/80 text-white' : 'bg-slate-600/80 text-slate-100'}`}>{info.tag}</span>
+      );
+
       // Resgates lançados que o fundo de origem NÃO cobre (por empresa e fundo).
       const resgAlerts = useMemo(() => {
           const out: { companyName: string; chk: ResgCheck }[] = [];
@@ -690,6 +764,14 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                              Limpar Extratos
                          </button>
                      )}
+                     <button
+                         onClick={() => setMovModal({ aberto: true, data: displayDates.find(d => !hideBeforeDate || parseDate(d) >= parseDate(hideBeforeDate)) || displayDates[0], filtro: null })}
+                         className="flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-bold uppercase border bg-violet-700 text-white border-violet-500 hover:bg-violet-600 transition-colors"
+                         title="Lança mútuo entre empresas ou transferência entre bancos — preenche as duas pontas da coluna Transf"
+                     >
+                         <ArrowLeftRight className="w-3 h-3" />
+                         Lançar transferência / mútuo
+                     </button>
                      {/* TESTE — remover antes de produção (pedido do usuário). */}
                      {onTestWipeAll && (
                          <button
@@ -779,6 +861,17 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
              )}
 
              {/* Avisos de saldo negativo: sugere resgate (se tem aplicação) ou aporte */}
+             <MovimentosModal
+                 aberto={movModal.aberto}
+                 onFechar={() => setMovModal({ aberto: false })}
+                 datas={displayDates}
+                 dataInicial={movModal.data}
+                 filtroBanco={movModal.filtro || null}
+                 movs={movs}
+                 onSalvar={salvarMov}
+                 onExcluir={excluirMov}
+                 somaTransfDoDia={somaTransfDoDia}
+             />
              {resgAlerts.length > 0 && (
                  <div className="mx-2 mt-2 bg-red-950/40 border border-red-800/60 rounded-lg p-3 text-[11px]">
                      <p className="text-red-300 font-bold flex items-center gap-1.5 mb-2">
@@ -914,6 +1007,7 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                              </td>
                                              <td className="border border-slate-700 p-1 text-center text-purple-400 font-medium bg-amber-900/10">
                                                  {day.transf.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                                 {Number(day.transf) !== 0 && tagMutuo(mutuoInfo[`${String(group.entity.id).replace(/^0+(?=\d)/, '')}|${day.date}`])}
                                              </td>
                                              <td className="border border-slate-600 p-1 text-center font-bold text-slate-200 bg-slate-800">
                                                  {day.sdParcial.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
@@ -1040,6 +1134,25 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                                          value={day.transf}
                                                          onCommit={(v) => onManualValueChange && onManualValueChange(day.keyTransf, v)}
                                                      />
+                                                     {(() => {
+                                                         const lista = movsPorCelula[`${group.entity.id}|${bRow.bank.id}|${day.date}`] || [];
+                                                         const abrir = () => setMovModal({ aberto: true, data: day.date, filtro: { cia: String(group.entity.id), banco: bRow.bank.id } });
+                                                         if (lista.length > 0) {
+                                                             const ajuste = (Number(day.transf) || 0) - lista.reduce((a, x) => a + x.valor, 0);
+                                                             return (
+                                                                 <div className="flex flex-wrap justify-center gap-0.5 pb-0.5 cursor-pointer" onClick={abrir} title="Clique para ver/editar os movimentos deste banco no dia">
+                                                                     {lista.map((x, i) => (
+                                                                         <span key={i} className={`px-1 rounded text-[7px] font-extrabold leading-[11px] whitespace-nowrap ${x.tipo === 'cede' ? 'bg-rose-600/80 text-white' : x.tipo === 'recebe' ? 'bg-emerald-600/80 text-white' : 'bg-slate-600/80 text-slate-100'}`}>{x.txt}</span>
+                                                                     ))}
+                                                                     {Math.round(ajuste) !== 0 && <span className="px-1 rounded text-[7px] font-extrabold leading-[11px] whitespace-nowrap bg-amber-700/80 text-white" title="Valor digitado direto na célula">AJUSTE {Math.round(ajuste).toLocaleString('pt-BR')}</span>}
+                                                                 </div>
+                                                             );
+                                                         }
+                                                         // sem movimentos: banco cuja empresa fecha em zero no dia = transferência interna
+                                                         if (Number(day.transf) === 0) return null;
+                                                         const info = mutuoInfo[`${String(group.entity.id).replace(/^0+(?=\d)/, '')}|${day.date}`];
+                                                         return info?.tipo === 'interna' ? tagMutuo(info) : null;
+                                                     })()}
                                                  </td>
                                                  <td className="border border-slate-700 p-1 text-center font-medium text-slate-400 bg-slate-800/50 text-[10px]">
                                                      {day.sdParcial.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
