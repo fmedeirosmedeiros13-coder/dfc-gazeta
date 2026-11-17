@@ -1,4 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { gerarAnalise, type DadosAnalise } from '../utils/analiseTextos';
+import { n2FromN3 } from '../utils/flowDePara';
 import { FinancialSummary, Transaction, AIAnalysisResult, TransactionType, DashboardViewType } from '../types';
 import { X, Printer, FileDown, Lock, Edit2, RefreshCw, Trash2, Check, Presentation, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { ResumoFinanceiro } from './ResumoFinanceiro';
@@ -9,7 +11,7 @@ import html2canvas from "html2canvas";
 import { PPTExportAlternative } from './PPTExportAlternative';
 import { generatePayablesSlide, generateReceivablesSlide } from '../services/pptxNativeSlides';
 import { drawPayablesPage, drawReceivablesPage } from '../services/pdfNativeSlides';
-import { formatCurrency, parseDate, COMPANIES, BANKS_MAPPING, isCapexTransaction, isDistribLucrosTransaction, nome12, getPeriodoFCDiario } from '../utils/finance';
+import { formatCurrency, parseDate, COMPANIES, BANKS_MAPPING, isCapexTransaction, isDistribLucrosTransaction, nome12, getPeriodoFCDiario, classifyTax, moveToNextBusinessDay } from '../utils/finance';
 
 // ── Gráficos dos quadros de Pontos Críticos ──────────────────────────────────
 const RiskDonut: React.FC<{ pct: number; color: string; caption?: string; small?: boolean; track?: string; pctFontSize?: string }> = ({ pct, color, caption, small, track, pctFontSize }) => {
@@ -91,6 +93,57 @@ const fixTableTextForCapture = (root: HTMLElement) => {
     cell.appendChild(sp);
   });
 };
+
+// ─── Quadro "Análise do Período" ──────────────────────────────────────────────
+// Estado de edição LOCAL (memo): abrir o lápis e digitar não re-renderiza os
+// slides/gráficos do Demonstrativo — antes cada clique/letra "agarrava".
+const AnaliseBox = React.memo(function AnaliseBox({ texto, variante, onSalvar, onGerar, onLimpar }: {
+    texto: string; variante: number; onSalvar: (t: string) => void; onGerar: (v?: number) => void; onLimpar: () => void;
+}) {
+    const [editando, setEditando] = useState(false);
+    const ref = useRef<HTMLTextAreaElement>(null);
+    const salvar = () => { if (ref.current) onSalvar(ref.current.value); setEditando(false); };
+    const btn = 'p-1.5 text-slate-400 hover:bg-slate-800 rounded-md transition-colors';
+    const negrito = (linha: string, k: number) => {
+        const mm = linha.match(/^(•\s*)?([^:\n]{2,48}):\s?([\s\S]*)$/);
+        return mm ? <span key={k}>{mm[1] || ''}<b className="text-slate-100">{mm[2]}:</b> {mm[3]}</span> : <span key={k}>{linha}</span>;
+    };
+    return (
+        <div className="border border-slate-800 bg-slate-950/50 rounded-lg flex flex-col relative group min-h-0" style={{ flex: '1 1 0', padding: '1.1cqw 1.4cqw' }}>
+            <div className="flex justify-between items-center border-b border-slate-800 shrink-0" style={{ paddingBottom: '0.6cqw', marginBottom: '0.7cqw' }}>
+                <h3 className="font-semibold text-slate-200" style={{ fontSize: 'clamp(9px, 1.3cqw, 24px)' }}>Análise do Período</h3>
+                <div className="flex gap-1 items-center opacity-0 group-hover:opacity-100 transition-opacity print:hidden" data-html2canvas-ignore="true">
+                    {editando ? (
+                        <button onClick={salvar} className="p-1.5 text-emerald-400 hover:bg-slate-800 rounded-md transition-colors" title="Salvar"><Check className="w-4 h-4" /></button>
+                    ) : (
+                        <>
+                            <span className="text-[10px] text-slate-500 mr-1">Texto</span>
+                            {[1, 2, 3, 4].map(v => (
+                                <button key={v} onClick={() => onGerar(v)} title={['', 'Modelo Resumo Gerencial', 'Modelo Principais Recebimentos e Pagamentos', 'Visão executiva', 'Resumo da semana'][v]}
+                                    className={`w-6 h-6 rounded text-[11px] font-bold ${variante === v ? 'bg-sky-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>{v}</button>
+                            ))}
+                            <button onClick={() => setEditando(true)} className={btn} title="Editar"><Edit2 className="w-4 h-4" /></button>
+                            <button onClick={() => onGerar()} className={btn} title="Gerar outro texto (alterna 1→2→3→4)"><RefreshCw className="w-4 h-4" /></button>
+                            <button onClick={onLimpar} className="p-1.5 text-rose-400 hover:bg-slate-800 rounded-md transition-colors" title="Limpar"><Trash2 className="w-4 h-4" /></button>
+                        </>
+                    )}
+                </div>
+            </div>
+            <div className="flex-1 min-h-0">
+                {editando ? (
+                    <textarea ref={ref} defaultValue={texto} autoFocus style={{ fontSize: 'clamp(8px, 1.0cqw, 18px)' }} className="w-full h-full p-3 font-normal text-slate-300 bg-slate-900 border border-slate-700 rounded-md focus:outline-none focus:border-slate-500 resize-none custom-scrollbar" />
+                ) : (
+                    <div className="h-full overflow-y-auto pr-4 font-normal text-slate-300 text-justify whitespace-pre-wrap custom-scrollbar" style={{ fontSize: 'clamp(7px, 0.9cqw, 17px)', lineHeight: 1.45 }}>
+                        {texto ? texto.split('\n\n').map((par, pi) => /^[^:\n]{2,48}:/.test(par) || /^(Recebimentos|Pagamentos):/.test(par)
+                            ? <p key={pi} style={{ margin: '0 0 0.45em' }}>{par.split('\n').map((l, li) => <React.Fragment key={li}>{li > 0 && <br />}{negrito(l, li)}</React.Fragment>)}</p>
+                            : <p key={pi} style={{ margin: '0 0 0.45em' }}>{pi === 0 ? <b className="text-slate-100">{par}</b> : par}</p>
+                        ) : <span className="text-slate-500 italic">Nenhuma análise gerada. Utilize os controles para adicionar.</span>}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+});
 
 export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({ 
   summary, 
@@ -292,12 +345,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
   // "Análise do Período" agora é editável, com os mesmos controles do Parecer
   // (Editar / Gerar Automático / Limpar).
   const [analiseText, setAnaliseText] = useState('');
-  const [isEditingAnalise, setIsEditingAnalise] = useState(false);
-  // Edição da Análise: o texto é digitado num campo "solto" e só é gravado ao
-  // sair do campo / clicar ✓. Antes cada letra regravava o estado da página
-  // inteira (slides, gráficos) — por isso a digitação "agarrava".
-  const analiseRef = useRef<HTMLTextAreaElement>(null);
-  const salvarAnaliseEditada = () => { if (analiseRef.current) setAnaliseText(analiseRef.current.value); };
+
   // Tema do Demonstrativo (escopado só a este relatório — o app segue escuro).
   // 'dark' = padrão atual; 'light' = paleta creme/navy (Rede Gazeta) para escolha.
   const [reportTheme, setReportTheme] = useState<'dark' | 'light'>('light');
@@ -330,148 +378,106 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
 
   // Gera o texto da "Análise do Período" (mesmo conteúdo dos parágrafos, em
   // texto corrido editável) — espelha o padrão do Parecer do Financeiro.
-  const generateAutoAnalise = () => {
-      // Modelo da gestora: blocos curtos com rótulo, valores em "mil"/"milhões",
-      // no FUTURO (é previsão). Seções sem conteúdo não aparecem.
+  // Qual dos 4 textos foi gerado por último (o botão de atualizar alterna 1→2→3→4).
+  const [varianteAnalise, setVarianteAnalise] = useState<number>(() => { try { return Number(localStorage.getItem('fc_analise_variante')) || 0; } catch { return 0; } });
+  const generateAutoAnalise = (variante?: number) => {
       const SIGLA: Record<string, string> = { '1': 'S/A', '2': 'TVG', '3': 'TVC', '4': 'TVN', '5': 'MIX', '6': 'FM 102', '14': 'VÍDEO', '17': 'DIFUSORA', '18': 'CIDADÃ', '22': 'FM LINHARES', '23': 'N. GERAÇÃO' };
-      const nomeCia = (id: string) => SIGLA[String(id).replace(/^0+(?=\d)/, '')] || `Empresa ${id}`;
-      const mil = (v: number) => {
-          const a = Math.abs(v);
-          if (a >= 1e7) { const m = a / 1e6;   // ≥ 10 milhões em "milhões"; abaixo, em "mil" (como no modelo)
- const t = m.toLocaleString('pt-BR', { maximumFractionDigits: 1 }); return `R$ ${t} ${m < 2 ? 'milhão' : 'milhões'}`; }
-          if (a >= 1000) return `R$ ${Math.round(a / 1000).toLocaleString('pt-BR')} mil`;
-          return `R$ ${Math.round(a).toLocaleString('pt-BR')}`;
-      };
-      const lista = (xs: string[]) => xs.length <= 1 ? (xs[0] || '') : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`;
+      const normId = (id: string) => String(id ?? '').replace(/^0+(?=\d)/, '');
+      const nomeCompleto = (id: string) => COMPANIES.find(c => c.id === normId(id))?.name || SIGLA[normId(id)] || `Empresa ${id}`;
+      const curto = (nome: string) => { const w = String(nome || '').replace(/[^A-Za-zÀ-ú0-9&\. ]/g, ' ').split(/\s+/).filter(Boolean); const n = (w[0] && w[0].length <= 3 && w[1]) ? `${w[0]} ${w[1]}` : (w.slice(0, 2).join(' ') || 'Outros'); return n.split(' ').map(p => p.length <= 3 && /^[A-Z]+$/i.test(p) && !/^(DE|DA|DO|E)$/i.test(p) ? p.toUpperCase() : p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' '); };   // siglas (EDP, BB) em maiúsculas
       const mv = dfcManualValues || {};
-      const companyOf = (key: string, prefix: string) => key.slice(prefix.length).split('_')[0];
+      const add = (o: Record<string, number>, k: string, v: number) => { o[k] = (o[k] || 0) + v; };
 
-      // Resgates / aplicações / mútuos por empresa (FC Diário)
-      const resgPor: Record<string, number> = {}, aplPor: Record<string, number> = {}, transfPor: Record<string, number> = {};
-      const transfDias = new Set<string>();
+      // FC Diário: resgates, aplicações e mútuos (por empresa e por dia)
+      const resgPor: Record<string, number> = {}, aplPor: Record<string, number> = {}, resgPorDia: Record<string, number> = {}, aplPorDia: Record<string, number> = {};
+      const transfPor: Record<string, number> = {}; const transfDias = new Set<string>();
       Object.entries(mv).forEach(([k, v]) => {
           const n = Number(v) || 0; if (!n) return;
-          if (k.startsWith('sim_resg_')) { const c = companyOf(k, 'sim_resg_'); if (n > 0) resgPor[c] = (resgPor[c] || 0) + n; else aplPor[c] = (aplPor[c] || 0) - n; }
-          else if (k.startsWith('sim_transf_')) {
-              const c = companyOf(k, 'sim_transf_'); transfPor[c] = (transfPor[c] || 0) + n;
-              const dt = k.match(/(\d{2}\/\d{2})\/\d{4}$/); if (dt) transfDias.add(dt[1]);   // dia do mútuo (dd/mm)
-          }
+          const data = (k.match(/(\d{2}\/\d{2}\/\d{4})$/) || [])[1] || '';
+          if (k.startsWith('sim_resg_')) { const c = normId(k.slice(9).split('_')[0]); if (n > 0) { add(resgPor, c, n); if (data) add(resgPorDia, data, n); } else { add(aplPor, c, -n); if (data) add(aplPorDia, data, -n); } }
+          else if (k.startsWith('sim_transf_')) { add(transfPor, normId(k.slice(11).split('_')[0]), n); if (data) transfDias.add(data.slice(0, 5)); }
       });
-      const temMutuo = Object.values(transfPor).some(v => Math.round(v) !== 0);
-
-      // Aplicações: posição atual por empresa (aba Aplicações) e após o previsto
+      const cedem = Object.entries(transfPor).filter(([, v]) => Math.round(v) < 0), recebem = Object.entries(transfPor).filter(([, v]) => Math.round(v) > 0);
+      const mutuos = (cedem.length || recebem.length) ? {
+          de: cedem.map(([c]) => nomeCompleto(c)).join(', ') || '?', para: recebem.map(([c]) => nomeCompleto(c)).join(', ') || '?',
+          valor: recebem.reduce((a, [, v]) => a + v, 0) || -cedem.reduce((a, [, v]) => a + v, 0),
+          dias: [...transfDias].sort((a, b) => (a.slice(3) + a.slice(0, 2)).localeCompare(b.slice(3) + b.slice(0, 2))),
+      } : null;
       const appTx = transactions.filter(t => t.type === TransactionType.APPLICATION);
-      const appPor: Record<string, number> = {};
-      appTx.forEach(t => { const c = String(t.companyCode || '').replace(/^0+(?=\d)/, ''); appPor[c] = (appPor[c] || 0) + (Number(t.value) || 0); });
-      const appAtual = appTx.reduce((a, t) => a + (Number(t.value) || 0), 0);
-      const appAjustado = appAtual + totalManualAplicacoes - totalManualResgates;
+      const appPor: Record<string, number> = {}; appTx.forEach(t => add(appPor, normId(String(t.companyCode || '')), Number(t.value) || 0));
+      const zeradas = Object.keys(resgPor).filter(c => (appPor[c] || 0) > 0 && (appPor[c] || 0) - (resgPor[c] || 0) + (aplPor[c] || 0) <= 0.5).map(nomeCompleto);
 
-      const parts: string[] = [];
-      parts.push('Caixa Operacional e Total de Disponibilidades');
-
-      // Resumo Gerencial
-      // Mesmo conceito da DFC Consolidada: "1 - Atividades Operacionais" =
-      // entradas − saídas operacionais (SEM Capex e SEM Distribuição de Lucros).
-      // Investimentos e lucros entram depois, na variação do caixa.
-      {
-          const pagPrev = plannedTransactions.filter(t => t.type === TransactionType.PAYABLE);
-          const capexPrev = pagPrev.filter(t => isCapexTransaction(t)).reduce((a, t) => a + (Number(t.value) || 0), 0);
-          const lucrosPrev = pagPrev.filter(t => !isCapexTransaction(t) && isDistribLucrosTransaction(t)).reduce((a, t) => a + (Number(t.value) || 0), 0);
-          const saidasOp = summary.totalOutflow - capexPrev - lucrosPrev;
-          const resultadoOp = summary.totalInflow - saidasOp;
-          let txt = `Resumo Gerencial: ${resultadoOp >= 0 ? 'Superávit' : 'Déficit'} operacional previsto de ${mil(resultadoOp)} no período (entradas de ${mil(summary.totalInflow)} menos saídas operacionais de ${mil(saidasOp)}).`;
-          const extras: string[] = [];
-          if (capexPrev > 0) extras.push(`os investimentos (${mil(capexPrev)})`);
-          if (lucrosPrev > 0) extras.push(`a distribuição de lucros (${mil(lucrosPrev)})`);
-          if (extras.length) {
-              const variacao = resultadoOp - capexPrev - lucrosPrev;
-              txt += ` Considerando ${lista(extras)}, a variação prevista do caixa é de ${variacao < 0 ? '-' : ''}${mil(variacao)}.`;
-          }
-          parts.push(txt);
-      }
-
-      // Aplicações — UM parágrafo só: quanto temos hoje, o que vamos aplicar e
-      // resgatar (por empresa) e quanto ficará no fim do período.
-      const porCia = (m: Record<string, number>) => {
-          const xs = Object.entries(m).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-          // uma empresa só: "na TVN"; várias: "R$ 1.260 mil na TVC e R$ 250 mil na TVG"
-          return xs.length === 1 ? [`na ${nomeCia(xs[0][0])}`] : xs.map(([c, v]) => `${mil(v)} na ${nomeCia(c)}`);
-      };
-      const resgItens = porCia(resgPor), aplItens = porCia(aplPor);
-      const par = (xs: string[]) => xs.length === 1 ? ` ${xs[0]}` : ` (${lista(xs)})`;
-      if (appAtual > 0 || aplItens.length || resgItens.length) {
-          // "para o mútuo" só quando a empresa que resgata é a que cede o mútuo.
-          const cedentes = new Set(Object.entries(transfPor).filter(([, v]) => Math.round(v) < 0).map(([c]) => c));
-          const resgateFinanciaMutuo = Object.keys(resgPor).some(c => cedentes.has(c));
-          const destino = resgateFinanciaMutuo ? 'para o mútuo e a cobertura dos pagamentos' : 'para a cobertura dos pagamentos';
-          let txt = `Saldo em Aplicações: Temos hoje ${mil(appAtual)} aplicados.`;
-          if (aplItens.length && resgItens.length) {
-              txt += ` Vamos aplicar mais ${mil(totalManualAplicacoes)}${par(aplItens)} e resgatar ${mil(totalManualResgates)}${par(resgItens)} ${destino}. Com isso, o saldo em aplicações será de ${mil(appAjustado)}.`;
-          } else if (aplItens.length) {
-              txt += ` Somando os ${mil(totalManualAplicacoes)} que vamos aplicar${par(aplItens)}, o saldo em aplicações será de ${mil(appAjustado)}.`;
-          } else if (resgItens.length) {
-              txt += ` Com o resgate de ${mil(totalManualResgates)}${par(resgItens)} ${destino}, o saldo em aplicações será de ${mil(appAjustado)}.`;
-          } else {
-              txt += ' Não estão previstas aplicações ou resgates no período, então o saldo se mantém.';
-          }
-          parts.push(txt);
-      }
-
-      // Atenção / Destaque: mútuos e aplicações que ficarão zeradas
-      const destaques: string[] = [];
-      if (temMutuo) {
-          const cede = Object.entries(transfPor).filter(([, v]) => v < 0).map(([c, v]) => `${nomeCia(c)} (${mil(v)})`);
-          const recebe = Object.entries(transfPor).filter(([, v]) => v > 0).map(([c, v]) => `${nomeCia(c)} (${mil(v)})`);
-          const cedeIds = Object.entries(transfPor).filter(([, v]) => v < 0), recIds = Object.entries(transfPor).filter(([, v]) => v > 0);
-          // Data dos pagamentos que o mútuo cobre (dia lançado na coluna Transf)
-          const dias = [...transfDias].sort((a, b) => (a.slice(3) + a.slice(0, 2)).localeCompare(b.slice(3) + b.slice(0, 2)));
-          const quando = dias.length ? `de ${lista(dias)}` : 'do período';
-          // Nome completo da empresa e valor cheio (ex.: "mútuo de R$ 100.000 da S.A. A GAZETA para a TV GAZETA").
-          const nomeCompleto = (id: string) => COMPANIES.find(c => c.id === String(id).replace(/^0+(?=\d)/, ''))?.name || nomeCia(id);
-          const cheio = (v: number) => `R$ ${Math.round(Math.abs(v)).toLocaleString('pt-BR')}`;
-          if (cedeIds.length === 1 && recIds.length === 1) {
-              destaques.push(`Está previsto um mútuo de ${cheio(recIds[0][1])} da ${nomeCompleto(cedeIds[0][0])} para a ${nomeCompleto(recIds[0][0])}, para cobrir os pagamentos ${quando}.`);
-          } else {
-              const ced = cedeIds.map(([c, v]) => `${nomeCompleto(c)} (${cheio(v)})`);
-              const rec = recIds.map(([c, v]) => `${nomeCompleto(c)} (${cheio(v)})`);
-              destaques.push(`Estão previstos mútuos${ced.length ? ` cedidos pela ${lista(ced)}` : ''}${rec.length ? ` para a ${lista(rec)}` : ''}, para cobrir os pagamentos ${quando}.`);
-          }
-      }
-      const zeradas = Object.keys(resgPor).filter(c => (appPor[c] || 0) > 0 && (appPor[c] || 0) - (resgPor[c] || 0) + (aplPor[c] || 0) <= 0.5).map(nomeCia);
-      if (zeradas.length) destaques.push(`Com os resgates previstos, a aplicação da ${lista(zeradas)} ficará ZERADA.`);
-      if (destaques.length) parts.push(`⚠ ATENÇÃO / DESTAQUE: ${destaques.join(' ')}`);
-
-      // Entradas: concentração por dia
-      const rec = plannedTransactions.filter(t => t.type === TransactionType.RECEIVABLE);
-      const totRec = rec.reduce((a, t) => a + (Number(t.value) || 0), 0);
-      if (totRec > 0) {
-          const porDia: Record<string, number> = {};
-          rec.forEach(t => { porDia[t.date] = (porDia[t.date] || 0) + (Number(t.value) || 0); });
-          const [dia, vDia] = Object.entries(porDia).sort((a, b) => b[1] - a[1])[0];
-          const pct = Math.round((vDia / totRec) * 100);
-          const resto = totRec - vDia;
-          parts.push(pct >= 40 && resto > 0
-              ? `Entradas: O dia ${dia.slice(0, 5)} concentra ${pct}% dos recebimentos (${mil(vDia)}). Os demais dias somam ${100 - pct}% (${mil(resto)}).`
-              : `Entradas: Recebimentos previstos de ${mil(totRec)}, distribuídos ao longo do período; o maior dia é ${dia.slice(0, 5)}, com ${pct}% (${mil(vDia)}).`);
-      }
-
-      // Saídas: principais pagamentos (Folha, Distribuição de Lucros e maiores fornecedores)
+      // Pagamentos
       const pag = plannedTransactions.filter(t => t.type === TransactionType.PAYABLE);
-      const grupos: Record<string, number> = {};
+      const capex = pag.filter(t => isCapexTransaction(t)).reduce((a, t) => a + (Number(t.value) || 0), 0);
+      const lucros = pag.filter(t => !isCapexTransaction(t) && isDistribLucrosTransaction(t)).reduce((a, t) => a + (Number(t.value) || 0), 0);
+      const CAT: Record<string, string> = { '201': 'Folha', '202': 'Comerciais', '203': 'Promocionais', '204': 'Programação', '205': 'Operativas', '206': 'Administrativas', '207': 'Materiais', '208': 'Financeiras', '209': 'Impostos', '215': 'Impostos', '210': 'Custos', '211': 'Projetos', '212': 'Insumos', '214': 'Judiciais', '216': 'Outros', '217': 'Distribuição de Lucros', '218': 'Comissão' };
+      const categoria = (t: Transaction) => {
+          // Encargos SOBRE A FOLHA (INSS, FGTS, IRRF da folha) contam como Folha,
+          // não como Impostos. INSS sobre faturamento/desoneração (N2 215) segue em Impostos.
+          const n2f = String(n2FromN3(t.flowTypeCode) || t.flowTypeLevel2 || '').trim();
+          const nomeF = String(t.supplier || t.description || '').toUpperCase();
+          if (n2f === '201') return 'Folha';
+          if (/\bFGTS\b/.test(nomeF)) return 'Folha';
+          if (/\bINSS\b/.test(nomeF) && n2f !== '215' && !/FATURAMENTO/.test(nomeF)) return 'Folha';
+          if (/IRRF|IR\s*FOLHA|IR\.FOLHA/.test(nomeF)) return 'Folha';
+          if (classifyTax(t) !== null) return 'Impostos';
+          if (isCapexTransaction(t)) return 'Investimento';
+          const n2 = String(n2FromN3(t.flowTypeCode) || t.flowTypeLevel2 || '').trim();
+          return CAT[n2] || (n2.startsWith('4') ? 'Investimento' : 'Outros');
+      };
+      const pagPorCategoria: Record<string, number> = {}; const porDiaCat: Record<string, Record<string, number>> = {}; const fornNF: Record<string, number> = {};
       pag.forEach(t => {
-          const nome = String(t.supplier || t.description || 'OUTROS').toUpperCase();
-          const n2 = String(t.flowTypeLevel2 || '').trim();
-          let g: string;
-          if (n2 === '217') g = 'DISTRIB. LUCRO';
-          else if (/13[ºO°]?\s*SAL/.test(nome)) g = '13º SALÁRIO';
-          else if (nome.includes('FOLHA')) g = 'FOLHA';
-          else { const w = nome.replace(/[^A-ZÀ-Ú0-9 ]/g, ' ').split(/\s+/).filter(Boolean); g = (w[0] && w[0].length <= 3 && w[1]) ? `${w[0]} ${w[1]}` : (w[0] || 'OUTROS'); }
-          grupos[g] = (grupos[g] || 0) + (Number(t.value) || 0);
+          const c = categoria(t), v = Number(t.value) || 0; add(pagPorCategoria, c, v);
+          (porDiaCat[c] ||= {}); add(porDiaCat[c], moveToNextBusinessDay(String(t.date)).slice(0, 5), v);   // dia útil do débito
+          // dia da Folha de PAGAMENTO (salários), separado dos encargos
+          if (c === 'Folha' && /FOLHA|13[ºO°]?\s*SAL/.test(String(t.supplier || t.description || '').toUpperCase())) { (porDiaCat['FolhaPagto'] ||= {}); add(porDiaCat['FolhaPagto'], moveToNextBusinessDay(String(t.date)).slice(0, 5), v); }
+          if (!['Folha', 'Impostos', 'Comissão', 'Distribuição de Lucros'].includes(c)) add(fornNF, curto(t.supplier || t.description || ''), v);
       });
-      const top = Object.entries(grupos).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([g, v]) => `${g} (${mil(v)})`);
-      if (top.length) parts.push(`Saídas: Os principais pagamentos previstos são ${lista(top)}.`);
+      const diaMaior = (c: string) => { const e = Object.entries(porDiaCat[c] || {}).sort((a, b) => b[1] - a[1])[0]; return e ? e[0] : undefined; };
+      // 5 maiores rubricas das saídas operacionais (Folha, INSS, FGTS, IR/PIS… agrupados)
+      const grupos: Record<string, number> = {};
+      pag.filter(t => !isCapexTransaction(t) && !isDistribLucrosTransaction(t)).forEach(t => {
+          const nome = String(t.supplier || t.description || 'OUTROS').toUpperCase(); let g: string;
+          if (/13[ºO°]?\s*SAL/.test(nome)) g = '13º Salário'; else if (nome.includes('FOLHA')) g = 'Folha';
+          else if (/\bINSS\b/.test(nome)) g = 'INSS'; else if (/\bFGTS\b/.test(nome)) g = 'FGTS';
+          else if (/^IR\b|IRRF|\bPIS\b|COFIN/.test(nome)) g = 'IR/PIS'; else g = curto(nome);
+          add(grupos, g, Number(t.value) || 0);
+      });
 
-      setAnaliseText(parts.join('\n\n'));
+      // Recebimentos: Particular × Governo e por segmento
+      const rec = plannedTransactions.filter(t => t.type === TransactionType.RECEIVABLE);
+      const recPorDia: Record<string, number> = {}; let recGovF = 0, recGovE = 0, recGovM = 0, recParticular = 0; const cliPart: Record<string, number> = {};
+      const seg = { tv: 0, agDigital: 0, radios: 0 };
+      rec.forEach(t => {
+          const v = Number(t.value) || 0; add(recPorDia, t.date, v);
+          const port = String((t as any).portfolio || '').toUpperCase(); const txt = `${t.customer || ''} ${t.description || ''} ${t.category || ''}`.toUpperCase();
+          if (port.includes('GFE') || /FEDERAL|UNIAO|MINISTERIO/.test(txt)) recGovF += v;
+          else if (port.includes('GES') || /ESTADO|ESTADUAL|GOVERNO DO|SECOM/.test(txt)) recGovE += v;
+          else if (port.includes('GMU') || /PREFEITURA|MUNICIPAL|MUNICIPIO/.test(txt)) recGovM += v;
+          else { recParticular += v; add(cliPart, curto(t.customer || t.description || ''), v); }
+          const c = normId(String(t.companyCode || ''));
+          if (['2', '3', '4', '14'].includes(c)) seg.tv += v; else if (c === '1') seg.agDigital += v; else seg.radios += v;
+      });
+
+      const periodo = getPeriodoFCDiario();
+      const datasOrd = [...pag, ...rec].map(t => String(t.date)).filter(d => /^\d{2}\/\d{2}\/\d{4}$/.test(d)).sort((a, b) => parseDate(a) - parseDate(b));
+      const dados: DadosAnalise = {
+          inicio: periodo?.inicio || datasOrd[0] || '', fim: periodo?.fim || datasOrd[datasOrd.length - 1] || '',
+          saldoInicial: initialBalance, entradas: summary.totalInflow, saidasTotal: summary.totalOutflow,
+          saidasOp: summary.totalOutflow - capex - lucros, capex, lucros,
+          resgPor, aplPor, resgPorDia, aplPorDia, appIni: appTx.reduce((a, t) => a + (Number(t.value) || 0), 0),
+          mutuos, zeradas, recPorDia, recParticular, recGovF, recGovE, recGovM,
+          topClientesParticular: Object.entries(cliPart).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n]) => n),
+          recPorSegmento: seg, pagPorCategoria,
+          rubricas: Object.entries(grupos).sort((a, b) => b[1] - a[1]).slice(0, 5),
+          diaFolha: diaMaior('FolhaPagto') || diaMaior('Folha'), diaImpostos: diaMaior('Impostos'),
+          topFornecedoresNF: Object.entries(fornNF).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([n]) => n),
+          siglas: SIGLA,
+      };
+      const prox = variante ?? (varianteAnalise % 4) + 1;
+      setVarianteAnalise(prox); try { localStorage.setItem('fc_analise_variante', String(prox)); } catch { /* ignora */ }
+      setAnaliseText(gerarAnalise(prox, dados));
   };
 
   useEffect(() => {
@@ -482,7 +488,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
 
   useEffect(() => {
       if (!analiseText) {
-          generateAutoAnalise();
+          generateAutoAnalise(varianteAnalise || 1);
       }
   }, [dateRange, summary, operatingResult, cashFlowImpact, netPeriodResult, totalManualAplicacoes, totalManualResgates]);
 
@@ -874,38 +880,15 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                     );
                 })()}
 
-                {/* Análise do Período (automática + editável) */}
-                <div className="border border-slate-800 bg-slate-950/50 rounded-lg flex flex-col relative group min-h-0" style={{ flex: '1 1 0', padding: '1.1cqw 1.4cqw' }}>
-                    <div className="flex justify-between items-center border-b border-slate-800 shrink-0" style={{ paddingBottom: '0.6cqw', marginBottom: '0.7cqw' }}>
-                        <h3 className="font-semibold text-slate-200" style={{ fontSize: 'clamp(9px, 1.3cqw, 24px)' }}>Análise do Período</h3>
-                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">
-                            {isEditingAnalise ? (
-                                <button onClick={() => { salvarAnaliseEditada(); setIsEditingAnalise(false); }} className="p-1.5 text-emerald-400 hover:bg-slate-800 rounded-md transition-colors" title="Salvar"><Check className="w-4 h-4" /></button>
-                            ) : (
-                                <>
-                                    <button onClick={() => setIsEditingAnalise(true)} className="p-1.5 text-slate-400 hover:bg-slate-800 rounded-md transition-colors" title="Editar"><Edit2 className="w-4 h-4" /></button>
-                                    <button onClick={generateAutoAnalise} className="p-1.5 text-slate-400 hover:bg-slate-800 rounded-md transition-colors" title="Gerar Automático"><RefreshCw className="w-4 h-4" /></button>
-                                    <button onClick={() => setAnaliseText('')} className="p-1.5 text-rose-400 hover:bg-slate-800 rounded-md transition-colors" title="Limpar"><Trash2 className="w-4 h-4" /></button>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                    <div className="flex-1 min-h-0">
-                        {isEditingAnalise ? (
-                            <textarea ref={analiseRef} defaultValue={analiseText} onBlur={salvarAnaliseEditada} style={{ fontSize: 'clamp(8px, 1.08cqw, 20px)' }} className="w-full h-full p-4 font-normal text-slate-300 bg-slate-900 border border-slate-700 rounded-md focus:outline-none focus:border-slate-500 resize-none custom-scrollbar" placeholder="Insira a análise do período aqui..." />
-                        ) : (
-                            <div className="h-full overflow-y-auto pr-4 font-normal text-slate-300 leading-relaxed text-justify whitespace-pre-wrap custom-scrollbar" style={{ fontSize: 'clamp(8px, 1.08cqw, 20px)' }}>
-                                {analiseText ? analiseText.split('\n\n').map((par, pi) => {
-                                    // "Rótulo: texto" → rótulo em negrito; 1º parágrafo sem rótulo = título em negrito
-                                    const m = par.match(/^([^:\n]{2,48}):\s?([\s\S]*)$/);
-                                    if (m) return <p key={pi} style={{ margin: '0 0 0.7em' }}><b className="text-slate-100">{m[1]}:</b> {m[2]}</p>;
-                                    return <p key={pi} style={{ margin: '0 0 0.7em' }}>{pi === 0 ? <b className="text-slate-100">{par}</b> : par}</p>;
-                                }) : null}
-                                {analiseText ? null : <span className="text-slate-500 italic">Nenhuma análise gerada. Utilize os controles para adicionar.</span>}
-                            </div>
-                        )}
-                    </div>
-                </div>
+                {/* Análise do Período (automática + editável) — componente próprio:
+                    clicar no lápis ou digitar NÃO recalcula a página inteira. */}
+                <AnaliseBox
+                    texto={analiseText}
+                    variante={varianteAnalise}
+                    onSalvar={setAnaliseText}
+                    onGerar={generateAutoAnalise}
+                    onLimpar={() => setAnaliseText('')}
+                />
             </div>
         </div>
 
