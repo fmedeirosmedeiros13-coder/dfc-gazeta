@@ -1465,7 +1465,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                         {DFC_COLS.some(c => Math.round(getTotalBy(c.id, TransactionType.APPLICATION, 'Ebricks')) !== 0) &&
                             renderRow('Ebricks', 'DATA', { tType: TransactionType.APPLICATION, filter: 'Ebricks' })}
 
-                        {renderSummaryRow('SALDO ATUAL', 'investment', 'bg-[#1e3a8a]', 'text-white')}
+                        {renderSummaryRow('SALDO ATUAL DE APLICAÇÕES', 'investment', 'bg-[#1e3a8a]', 'text-white')}
                         {/* Automático (Resg Aplic do FC Diário): resgate diminui, aplicação soma */}
                         {renderValRow('(+/-) Previsão de Aplic/Resg (automático)', prevAplicByCol, 'sub', 'text-amber-200')}
                         {prevBtgByCol && DFC_COLS.some(c => Math.round(prevBtgByCol[c.id]) !== 0) && renderValRow('↳ Fundo BTG Pactual', prevBtgByCol, 'item', 'text-amber-200')}
