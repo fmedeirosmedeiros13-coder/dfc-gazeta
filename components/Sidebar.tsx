@@ -24,6 +24,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   logoInputRef,
   alertCounts,
 }) => {
+  const [logoErro, setLogoErro] = useState(false);   // imagem que não carrega → mostra "ENVIAR LOGO"
   const navItems = [
     { mode: ViewMode.DASHBOARD_DAILY_GAZETA, label: 'Resumo Diário', icon: CalendarRange },
     { mode: ViewMode.RESUMO_FINANCEIRO,      label: 'Resumo Financeiro', icon: PieChart },
@@ -106,18 +107,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className="bg-white p-2 rounded-xl cursor-pointer hover:scale-105 transition-transform shadow-sm"
           onClick={() => logoInputRef.current?.click()}
         >
-          <img src={logoUrl} alt="Logo" className="max-h-12 object-contain" />
+          {logoUrl && !logoErro
+            ? <img src={logoUrl} alt="Logo" title="Clique para trocar a logo" className="max-h-12 object-contain" onError={() => setLogoErro(true)} />
+            : <span className="block px-2 py-2 text-[10px] font-bold text-slate-500 text-center leading-tight" title="Clique para enviar a logo">ENVIAR<br />LOGO</span>}
           <input
             type="file"
+            accept="image/*"
             ref={logoInputRef}
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) {
-                const r = new FileReader();
-                r.onload = () => setLogoUrl(r.result as string);
-                r.readAsDataURL(f);
-              }
+              if (!f) return;
+              // Reduz para no máx. 400 px (fica leve para salvar no navegador e no backup).
+              const r = new FileReader();
+              r.onload = () => {
+                const img = new Image();
+                img.onload = () => {
+                  const esc = Math.min(1, 400 / Math.max(img.width, img.height));
+                  const c = document.createElement('canvas');
+                  c.width = Math.round(img.width * esc); c.height = Math.round(img.height * esc);
+                  c.getContext('2d')?.drawImage(img, 0, 0, c.width, c.height);
+                  setLogoErro(false);
+                  setLogoUrl(c.toDataURL('image/png'));
+                };
+                img.onerror = () => { setLogoErro(false); setLogoUrl(r.result as string); };
+                img.src = r.result as string;
+              };
+              r.readAsDataURL(f);
+              e.target.value = '';
             }}
           />
         </div>

@@ -95,9 +95,15 @@ export default function App() {
   const [realizedTransactions,  setRealizedTransactions]  = useState<Transaction[]>([]);
   const [viewMode,              setViewMode]              = useState<ViewMode>(ViewMode.DASHBOARD_DAILY_GAZETA);
   const [selectedCompany,       setSelectedCompany]       = useState<string>('all');
-  const [logoUrl,               setLogoUrl]               = useState(
-    'https://upload.wikimedia.org/wikipedia/commons/2/27/Rede_Gazeta_Logotipo_2020.png'
-  );
+  // Logo: fica SALVA no navegador depois de enviada uma vez (entra no backup,
+  // chave "fc_logo") e só muda quando alguém clica nela e envia outra.
+  const [logoUrl, setLogoUrlState] = useState<string>(() => {
+    try { return localStorage.getItem('fc_logo') || ''; } catch { return ''; }
+  });
+  const setLogoUrl = (url: string) => {
+    setLogoUrlState(url);
+    try { if (url) localStorage.setItem('fc_logo', url); else localStorage.removeItem('fc_logo'); } catch { /* ignora (imagem grande demais) */ }
+  };
   const [manualValues,          setManualValues]          = useState<ManualValues>({});
   const [aiAnalysis,            setAiAnalysis]            = useState<ExecutiveAnalysis | null>(null);
   const [isGeneratingAI,        setIsGeneratingAI]        = useState(false);
@@ -208,9 +214,10 @@ export default function App() {
 
   // ── 8. Handlers ───────────────────────────────────────────────────────────
 
-  const handleManualValueChange = useCallback((key: string, value: number) => {
+  const handleManualValueChange = useCallback((key: string, value: number | undefined) => {
     const prev = manualValues[key];
-    setManualValues(mv => ({ ...mv, [key]: value }));
+    // undefined = apagar (volta ao cálculo automático)
+    setManualValues(mv => { if (value === undefined) { const { [key]: _x, ...rest } = mv; return rest; } return { ...mv, [key]: value }; });
     auditLog.record({
       action:  'MANUAL_VALUE_CHANGE',
       subject: key,

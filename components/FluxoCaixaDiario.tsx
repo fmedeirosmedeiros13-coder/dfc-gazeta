@@ -66,11 +66,15 @@ export function resgCheckText(c: ResgCheck): string {
 export const CurrencyInput: React.FC<{
   value: number | undefined;
   onCommit: (v: number) => void;
+  /** Campo apagado (vazio) → volta ao cálculo automático. */
+  onClear?: () => void;
   className?: string;
   placeholder?: string;
-}> = ({ value, onCommit, className, placeholder }) => {
+  title?: string;
+}> = ({ value, onCommit, onClear, className, placeholder, title }) => {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
+  const textoInicial = useRef('');   // o que estava no campo ao clicar
   const justFocused = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -93,13 +97,16 @@ export const CurrencyInput: React.FC<{
       inputMode="decimal"
       className={className}
       placeholder={placeholder}
+      title={title}
       value={editing ? text : display}
       onFocus={(e) => {
         setEditing(true);
         // Campo zerado começa VAZIO: antes o "0" ficava no campo e o que se
         // digitava ia para depois dele ("0-800" → virava 0, e o negativo de
         // mútuo/aplicação não entrava).
-        setText(hasValue && value !== 0 ? String(value).replace('.', ',') : '');
+        const ini = hasValue && value !== 0 ? String(value).replace('.', ',') : '';
+        setText(ini);
+        textoInicial.current = ini;
         e.target.select();
         justFocused.current = true;
       }}
@@ -109,7 +116,11 @@ export const CurrencyInput: React.FC<{
       onBlur={() => {
         setEditing(false);
         const raw = text.trim();
-        if (raw === '') return; // campo deixado vazio: não altera o valor existente
+        // Só clicou e saiu, sem mudar nada → NÃO grava. Antes gravava o valor
+        // calculado como "digitado" e ele ficava congelado (ex.: SD Inicial que
+        // não acompanhava mais o mútuo/resgate do dia anterior).
+        if (raw === textoInicial.current.trim()) return;
+        if (raw === '') { if (onClear) onClear(); return; }   // apagou → volta ao automático (quando permitido)
         const parsed = parseTypedNumber(raw);
         if (parsed !== null) onCommit(parsed);
       }}
@@ -1072,9 +1083,12 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                              <React.Fragment key={i}>
                                                  <td className="border border-slate-800 p-0 bg-slate-900 border-l-4 border-l-slate-800">
                                                       <CurrencyInput
-                                                         className="w-full h-full bg-transparent text-center px-1 text-slate-500 text-[10px] outline-none"
+                                                         // SD Inicial FIXO (digitado ou de extrato) em âmbar; automático em cinza
+                                                         className={`w-full h-full bg-transparent text-center px-1 text-[10px] outline-none ${dfcManualValues?.[day.keySdInicial] !== undefined ? 'text-amber-400 font-semibold' : 'text-slate-500'}`}
                                                          value={day.sdInicial}
                                                          onCommit={(v) => onManualValueChange && onManualValueChange(day.keySdInicial, v)}
+                                                         onClear={() => onManualValueChange && (onManualValueChange as any)(day.keySdInicial, undefined)}
+                                                         title={dfcManualValues?.[day.keySdInicial] !== undefined ? 'SD Inicial fixo (digitado ou de extrato). Apague o valor para voltar ao saldo automático do dia anterior.' : 'Saldo automático (SD Final do dia anterior). Digite para fixar um valor.'}
                                                          placeholder="-"
                                                      />
                                                  </td>
