@@ -21,6 +21,7 @@ export interface DadosAnalise {
   diaFolha?: string; diaImpostos?: string;
   topFornecedoresNF: string[];
   siglas: Record<string, string>;              // id → sigla (VÍDEO, TVN…)
+  necessidade?: { inicio: string; total: number; falta: number; porEmpresa: [string, number][] } | null;   // resgate ainda não lançado (FC Diário)
 }
 
 const mil = (v: number) => `R$ ${Math.round(Math.abs(v) / 1000).toLocaleString('pt-BR')} mil`;
@@ -66,8 +67,10 @@ export function gerarAnalise(variante: number, x: DadosAnalise): string {
   const variacao = resultadoOp - x.capex - x.lucros;
   const totResg = Object.values(x.resgPor).reduce((a, b) => a + b, 0);
   const totApl = Object.values(x.aplPor).reduce((a, b) => a + b, 0);
-  const appFim = x.appIni + totApl - totResg;
-  const caixaFim = x.saldoInicial + x.entradas - x.saidasTotal + totResg - totApl;
+  const nec = x.necessidade && x.necessidade.total > 0.5 ? x.necessidade : null;
+  const necTot = nec?.total || 0;
+  const appFim = x.appIni + totApl - totResg - necTot;
+  const caixaFim = x.saldoInicial + x.entradas - x.saidasTotal + totResg - totApl + necTot;
   const dispon = caixaFim + appFim;
   const sg = (id: string) => x.siglas[id] || id;
   const det = (m: Record<string, number>) => Object.entries(m).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([c, v]) => `${sg(c)}: ${mil(v)}`).join(' | ');
@@ -89,6 +92,7 @@ export function gerarAnalise(variante: number, x: DadosAnalise): string {
   const fraseMutuo = (estilo: 'gestora' | 'curto') => !x.mutuos ? '' : estilo === 'gestora'
       ? `Previsto repasse de mútuo de ${mil(x.mutuos.valor)} da ${x.mutuos.de} para a ${x.mutuos.para}${x.mutuos.dias.length ? ` em ${lista(x.mutuos.dias)}` : ''}. Efeito neutro no caixa consolidado do grupo, mas reduz a disponibilidade da ${x.mutuos.de} e reforça o caixa da ${x.mutuos.para}.`
       : `Também está previsto mútuo de ${reais(x.mutuos.valor)} da ${x.mutuos.de} para a ${x.mutuos.para}${x.mutuos.dias.length ? ` (${lista(x.mutuos.dias)})` : ''}.`;
+  const fraseNec = !nec ? '' : `Necessidade total de resgate prevista para a semana: ${mil(nec.total)}, a partir de ${dm(nec.inicio)} (${nec.porEmpresa.map(([n, v]) => `${n} ${mil(v)}`).join(' · ')}). ${nec.falta > 0.5 ? `A aplicação não cobre tudo — falta aporte/mútuo de ${mil(nec.falta)}.` : 'Há saldo em aplicação suficiente.'}`;
   const fraseZeradas = x.zeradas.length ? `Com os resgates previstos, a aplicação da ${lista(x.zeradas)} ficará ZERADA.` : '';
   const govDet = () => {
     const p: string[] = [];
@@ -114,7 +118,7 @@ export function gerarAnalise(variante: number, x: DadosAnalise): string {
     out.push('CAIXA OPERACIONAL E TOTAL DE DISPONIBILIDADES');
     out.push(`Resumo Gerencial: ${resultadoOp >= 0 ? 'Superávit' : 'Déficit'} operacional de ${mil(resultadoOp)} (entradas de ${mil(x.entradas)} vs. saídas de ${mil(x.saidasOp)}). ${extrasInv.length ? `Somando ${lista(extrasInv)}, a` : 'A'} variação líquida de caixa é de ${milS(variacao)}, ${variacao < 0 ? `absorvida pelo saldo inicial em conta corrente${totResg > 0 ? ' e resgates' : ''}` : 'reforçando o saldo em conta corrente'}.`);
     if (x.appIni > 0 || totResg || totApl) {
-      const movs = [totResg ? `resgates de ${mil(totResg)} (${det(x.resgPor)})` : '', totApl ? `aplicações de ${mil(totApl)} (${det(x.aplPor)})` : ''].filter(Boolean);
+      const movs = [totResg ? `resgates de ${mil(totResg)} (${det(x.resgPor)})` : '', totApl ? `aplicações de ${mil(totApl)} (${det(x.aplPor)})` : '', necTot ? `o resgate necessário previsto de ${mil(necTot)}` : ''].filter(Boolean);
       out.push(`Saldo em Aplicações: Posição inicial de ${mil(x.appIni)}.${movs.length ? ` Com ${lista(movs)}, o saldo final aplicado encerra em ${mil(appFim)}` : ' Sem aplicações ou resgates previstos, o saldo aplicado se mantém'} — totalizando ${mil(dispon)} em disponibilidades consolidadas.`);
     }
     if (x.entradas > 0 && diaTop) out.push(pctN(vTop, x.entradas) >= 40
@@ -128,15 +132,15 @@ export function gerarAnalise(variante: number, x: DadosAnalise): string {
       if (opI.length) l.push(`• Operacional e Outros (${pct(x.saidasOp - somaEnc, x.saidasOp, 1)}): ${lista(opI)}.`);
       out.push(l.join('\n'));
     }
-    const dest = [fraseMutuo('gestora'), fraseZeradas].filter(Boolean);
+    const dest = [fraseNec, fraseMutuo('gestora'), fraseZeradas].filter(Boolean);
     if (dest.length) out.push(`⚠ ATENÇÃO / DESTAQUE: ${dest.join(' ')}`);
   } else if (v === 2) {
     // ── Modelo "Principais Recebimentos e Pagamentos" ──
     out.push('ANÁLISE GERAL — PRINCIPAIS RECEBIMENTOS E PAGAMENTOS');
     const acoes = [...fraseResgates(true), ...fraseAplic(true)];
     out.push(`Saldo nas Contas-Correntes: O Saldo Inicial é de ${reais(x.saldoInicial)}. A previsão de recebimento é de ${reais(x.entradas)} e a de pagamentos é de ${reais(x.saidasTotal)}, resultando num Saldo Final de ${reais(caixaFim)}.`
-      + (acoes.length ? ` Está previsto para este fluxo ${lista(acoes)} para saldar os pagamentos.` : ' Não há resgates ou aplicações previstos para esta semana.')
-      + (x.mutuos ? ` ${fraseMutuo('curto')}` : '') + (fraseZeradas ? ` ${fraseZeradas}` : ''));
+      + (acoes.length ? ` Está previsto para este fluxo ${lista(acoes)} para saldar os pagamentos.` : (fraseNec ? '' : ' Não há resgates ou aplicações previstos para esta semana.'))
+      + (fraseNec ? ` ⚠ ${fraseNec}` : '') + (x.mutuos ? ` ${fraseMutuo('curto')}` : '') + (fraseZeradas ? ` ${fraseZeradas}` : ''));
     const r = [`Recebimentos:`, `• O total de recebimentos previsto no período de ${dma(x.inicio)} a ${dma(x.fim)} é de ${reais(x.entradas)};`];
     if (totRec) r.push(`• ${pct(x.recParticular, totRec)} estão concentrados na carteira Particular${x.topClientesParticular.length ? ` (os principais clientes são: ${lista(x.topClientesParticular.slice(0, 3))})` : ''}${gov ? ` e Governo: ${pct(gov, totRec)}${govDet().length ? `, sendo ${lista(govDet())}` : ''}` : ''};`);
     r.push(`• ${segmentos()}`);
@@ -150,10 +154,10 @@ export function gerarAnalise(variante: number, x: DadosAnalise): string {
     // ── Gestora, redação alternativa (visão executiva) ──
     out.push('POSIÇÃO DE CAIXA E DISPONIBILIDADES DO PERÍODO');
     out.push(`Visão Geral: O período parte de ${mil(x.saldoInicial)} em conta corrente e deve encerrar em ${mil(caixaFim)}. As entradas previstas (${mil(x.entradas)}) ${resultadoOp >= 0 ? 'superam' : 'não cobrem'} as saídas operacionais (${mil(x.saidasOp)}), gerando ${resultadoOp >= 0 ? 'superávit' : 'déficit'} operacional de ${mil(resultadoOp)}${extrasInv.length ? `; com ${lista(extrasInv)}, o caixa varia ${milS(variacao)}` : ''}.`);
-    if (x.appIni > 0 || totResg || totApl) out.push(`Aplicações: O saldo aplicado passa de ${mil(x.appIni)} para ${mil(appFim)}${totResg ? `, com ${mil(totResg)} resgatados (${det(x.resgPor)})` : ''}${totApl ? `${totResg ? ' e' : ', com'} ${mil(totApl)} aplicados (${det(x.aplPor)})` : ''}${!totResg && !totApl ? ', sem movimentação prevista' : ''}. As disponibilidades consolidadas somam ${mil(dispon)}.`);
+    if (x.appIni > 0 || totResg || totApl || necTot) out.push(`Aplicações: O saldo aplicado passa de ${mil(x.appIni)} para ${mil(appFim)}${necTot ? ` (já considerando o resgate necessário de ${mil(necTot)})` : ''}${totResg ? `, com ${mil(totResg)} resgatados (${det(x.resgPor)})` : ''}${totApl ? `${totResg ? ' e' : ', com'} ${mil(totApl)} aplicados (${det(x.aplPor)})` : ''}${!totResg && !totApl && !necTot ? ', sem movimentação prevista' : ''}. As disponibilidades consolidadas somam ${mil(dispon)}.`);
     if (x.entradas > 0 && diaTop) out.push(`Recebimentos: O pico de entradas ocorre em ${dm(diaTop)}, com ${mil(vTop)} (${pct(vTop, x.entradas)} da semana)${x.topClientesParticular.length ? `; os maiores clientes são ${lista(x.topClientesParticular.slice(0, 3))}` : ''}${gov ? `, e o Governo responde por ${pct(gov, totRec)} do previsto` : ''}.`);
     if (x.rubricas.length) out.push(`Desembolsos: ${enc.length ? `Folha e encargos respondem por ${pct(somaEnc, x.saidasOp)} das saídas operacionais (${lista(enc.map(([g, val]) => `${g} ${mil(val)}`))})` : `As cinco maiores rubricas somam ${pct(somaRub, x.saidasOp)} das saídas`}${op.length ? `; entre os demais, destaca-se ${op[0][0]} (${mil(op[0][1])})` : ''}${debitos.length ? `. Datas-chave: ${lista(debitos)}` : ''}.`);
-    const dest = [fraseMutuo('gestora'), fraseZeradas].filter(Boolean);
+    const dest = [fraseNec, fraseMutuo('gestora'), fraseZeradas].filter(Boolean);
     if (dest.length) out.push(`⚠ PONTO DE ATENÇÃO: ${dest.join(' ')}`);
   } else {
     // ── "Principais Recebimentos e Pagamentos", redação compacta ──
@@ -163,7 +167,8 @@ export function gerarAnalise(variante: number, x: DadosAnalise): string {
     if (totRec) out.push(`Origem das entradas: ${pct(x.recParticular, totRec)} vêm da carteira Particular${x.topClientesParticular.length ? ` (${lista(x.topClientesParticular.slice(0, 3))})` : ''}${gov ? ` e ${pct(gov, totRec)} do Governo` : ''}. Por segmento: TV ${pct(x.recPorSegmento.tv, totRec)}, AG Digital ${pct(x.recPorSegmento.agDigital, totRec)} e Rádios ${pct(x.recPorSegmento.radios, totRec)}.`);
     if (top5cats.length) out.push(`Destino das saídas: ${top5cats.map(([c, val]) => `${c} ${pct(val, x.saidasTotal)}`).join(', ')}${x.saidasTotal - somaTop5 > 0.5 ? `, demais ${pct(x.saidasTotal - somaTop5, x.saidasTotal)}` : ''}.${debitos.length ? ` Atenção às datas de ${lista(debitos)}.` : ''}`);
     if (x.topFornecedoresNF.length) out.push(`Fornecedores em destaque: ${lista(x.topFornecedoresNF)}.`);
-    if (fraseZeradas) out.push(`⚠ ATENÇÃO: ${fraseZeradas}`);
+    const dest4 = [fraseNec, fraseZeradas].filter(Boolean);
+    if (dest4.length) out.push(`⚠ ATENÇÃO: ${dest4.join(' ')}`);
   }
   return out.join('\n\n');
 }

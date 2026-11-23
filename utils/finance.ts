@@ -401,6 +401,16 @@ export function calcSaldoInicialDoDia(companyIds: string[], dateBR: string, manu
   return total;
 }
 
+/** Necessidade de resgate (avisos dia a dia do FC Diário), publicada por ele. */
+export interface NecessidadeResgate { inicio: string; total: number; disponivelTotal: number; falta: number; porEmpresa: [string, number][]; }
+export function getNecessidadesFC(): NecessidadeResgate | null {
+  try {
+    const v = JSON.parse(localStorage.getItem('fc_necessidades') || 'null');
+    const p = getPeriodoFCDiario();
+    return v && p && v.inicio === p.inicio && v.total > 0.5 ? v : null;
+  } catch { return null; }
+}
+
 /** Período exibido no FC Diário (publicado por ele) — usado pelo Demonstrativo. */
 export function getPeriodoFCDiario(): { inicio: string; fim: string } | null {
   try { const v = JSON.parse(localStorage.getItem('fc_periodo_exibido') || 'null'); return v && v.inicio ? v : null; } catch { return null; }

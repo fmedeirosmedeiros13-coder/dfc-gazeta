@@ -590,12 +590,17 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
       // sim_close_ gravadas por qualquer banco/empresa). Dias ANTERIORES a essa
       // data são dado velho de teste/simulação manual — não fazem sentido pra
       // alertar de saldo negativo, já que não vieram de extrato real nenhum.
+      // Último dia com SD Inicial REAL (extrato importado/digitado). Antes usava os
+      // fechamentos "sim_close", que o próprio FC grava para TODOS os dias — a data
+      // virava o último dia do período e só ele era avisado.
       const latestImportedDateISO = useMemo(() => {
           let max: string | null = null;
           Object.keys(dfcManualValues || {}).forEach(key => {
-              if (!key.startsWith('sim_close_')) return;
-              const dateISO = key.split('_').pop() || '';
-              if (/^\d{4}-\d{2}-\d{2}$/.test(dateISO) && (!max || dateISO > max)) max = dateISO;
+              if (!key.startsWith('sim_sd_ini_')) return;
+              const br = key.split('_').pop() || '';
+              const m = br.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if (!m) return;
+              const iso = `${m[3]}-${m[2]}-${m[1]}`;
+              if (!max || iso > max) max = iso;
           });
           return max;
       }, [dfcManualValues]);
@@ -705,34 +710,61 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
           return out;
       }, [transactions, dfcManualValues]);
 
+      // Aviso DIA A DIA: em cada dia em que o saldo da empresa fica negativo, diz
+      // quanto resgatar NAQUELE dia. Um resgate feito num dia também cobre os
+      // dias seguintes, então cada aviso pede só o que falta além do já sugerido.
       const negativeWarnings = useMemo(() => {
-          const warnings: { companyId: string; companyName: string; date: string; deficit: number; aplicacaoDisponivel: number; }[] = [];
+          const warnings: { companyId: string; companyName: string; date: string; deficit: number; aplicacaoDisponivel: number; necessidade: number; acumulado: number; }[] = [];
           const minTime = latestImportedDateISO
               ? (() => { const [y, m, d] = latestImportedDateISO.split('-').map(Number); return new Date(y, m - 1, d).getTime(); })()
               : null;
           structuredData.forEach(s => {
+              // Posição em aplicações MENOS o que já foi resgatado no FC Diário
+              // (e mais o que já foi aplicado) — não sugere resgatar 2x.
+              const dispInicial = (latestApplicationSnapshot?.porEmpresa[s.entity.id] || 0)
+                  - calcResgAplicTotal(s.entity.id, dfcManualValues || {});
+              let coberto = 0;   // déficit já coberto pelos avisos de dias anteriores
               displayDates.forEach((date, i) => {
                   if (!isVisibleIdx(i)) return;
                   if (minTime !== null && parseDate(date) < minTime) return; // dia anterior ao último extrato importado — ignora
                   const sdFinal = s.days[i]?.sdFinal;
-                  if (typeof sdFinal === 'number' && sdFinal < 0) {
-                      // Posição em aplicações MENOS o que já foi resgatado no FC Diário
-                      // (e mais o que já foi aplicado) — não sugere resgatar 2x.
-                      const aplicacaoDisponivel = (latestApplicationSnapshot?.porEmpresa[s.entity.id] || 0)
-                          - calcResgAplicTotal(s.entity.id, dfcManualValues || {});
+                  if (typeof sdFinal === 'number' && sdFinal < -0.5) {
+                      const deficit = Math.abs(sdFinal);
+                      if (deficit <= coberto + 0.5) return;            // já coberto pelo resgate sugerido antes
+                      const necessidade = deficit - coberto;
                       warnings.push({
-                          companyId: s.entity.id,
-                          companyName: s.entity.name,
-                          date,
-                          deficit: Math.abs(sdFinal),
-                          aplicacaoDisponivel,
+                          companyId: s.entity.id, companyName: s.entity.name, date,
+                          deficit, necessidade, acumulado: deficit,
+                          aplicacaoDisponivel: dispInicial - coberto,
                       });
+                      coberto = deficit;
                   }
               });
           });
+          warnings.sort((a, b) => parseDate(a.date) - parseDate(b.date) || a.companyName.localeCompare(b.companyName));
           return warnings;
           // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [structuredData, displayDates, hideBeforeDate, latestApplicationSnapshot, latestImportedDateISO, dfcManualValues]);
+
+      // Publica a NECESSIDADE TOTAL de resgate do período (soma dos avisos), para o
+      // Demonstrativo mostrar no 1º dia da DFC.
+      useEffect(() => {
+          try {
+              const porEmp: Record<string, number> = {}; let falta = 0;
+              const dispPorEmp: Record<string, number> = {};
+              negativeWarnings.forEach(w => {
+                  porEmp[w.companyName] = (porEmp[w.companyName] || 0) + w.necessidade;
+                  if (dispPorEmp[w.companyName] === undefined) dispPorEmp[w.companyName] = Math.max(0, w.aplicacaoDisponivel);
+              });
+              Object.entries(porEmp).forEach(([n, v]) => { falta += Math.max(0, v - (dispPorEmp[n] || 0)); });
+              const total = Object.values(porEmp).reduce((a, b) => a + b, 0);
+              localStorage.setItem('fc_necessidades', JSON.stringify({
+                  inicio: displayDates[0] || '', total: Math.round(total), falta: Math.round(falta),
+                  disponivelTotal: Math.round(Object.values(dispPorEmp).reduce((a, b) => a + b, 0)),
+                  porEmpresa: Object.entries(porEmp).sort((a, b) => b[1] - a[1]).map(([n, v]) => [n, Math.round(v)]),
+              }));
+          } catch { /* ignora */ }
+      }, [negativeWarnings, displayDates.join('|')]);
 
       return (
          <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 overflow-hidden flex flex-col h-full animate-fadeIn">
@@ -904,21 +936,23 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                      </p>
                      <div className="space-y-1.5">
                          {negativeWarnings.map((w, i) => {
-                             const cobre = w.aplicacaoDisponivel >= w.deficit;
+                             const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                             const cobre = w.aplicacaoDisponivel >= w.necessidade;
+                             const mais = w.necessidade < w.deficit - 0.5;   // já houve aviso antes para esta empresa
                              return (
                                  <div key={`${w.companyId}_${w.date}_${i}`} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 bg-slate-900/50 rounded px-2 py-1.5">
                                      <span className="text-slate-300">
                                          <span className="font-medium text-slate-100">{w.companyName}</span> em {w.date}:
-                                         {' '}saldo negativo de <span className="text-red-400 font-medium">{w.deficit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                                         {' '}saldo do dia negativo de <span className="text-red-400 font-medium">{brl(w.deficit)}</span>
                                      </span>
-                                     {w.aplicacaoDisponivel > 0 ? (
+                                     {w.aplicacaoDisponivel > 0.5 ? (
                                          <span className={cobre ? 'text-emerald-400' : 'text-amber-400'}>
                                              {cobre
-                                                 ? `→ Resgate de aplicação cobre o déficit (disponível ${w.aplicacaoDisponivel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 })})`
-                                                 : `→ Resgate de aplicação cobre só parte (disponível ${w.aplicacaoDisponivel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 })}) — falta aporte de ${(w.deficit - w.aplicacaoDisponivel).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                                                 ? `→ Resgatar ${mais ? 'mais ' : ''}${brl(w.necessidade)} neste dia (disponível em aplicação ${brl(w.aplicacaoDisponivel)})`
+                                                 : `→ Resgatar ${brl(w.aplicacaoDisponivel)} neste dia (todo o disponível) — falta aporte/mútuo de ${brl(w.necessidade - w.aplicacaoDisponivel)}`}
                                          </span>
                                      ) : (
-                                         <span className="text-orange-400">→ Sem saldo em aplicações — aporte necessário</span>
+                                         <span className="text-orange-400">→ Sem saldo em aplicações — aporte/mútuo de {brl(w.necessidade)} neste dia</span>
                                      )}
                                  </div>
                              );

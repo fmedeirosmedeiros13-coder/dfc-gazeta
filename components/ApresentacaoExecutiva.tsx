@@ -11,7 +11,7 @@ import html2canvas from "html2canvas";
 import { PPTExportAlternative } from './PPTExportAlternative';
 import { generatePayablesSlide, generateReceivablesSlide } from '../services/pptxNativeSlides';
 import { drawPayablesPage, drawReceivablesPage } from '../services/pdfNativeSlides';
-import { formatCurrency, parseDate, COMPANIES, BANKS_MAPPING, isCapexTransaction, isDistribLucrosTransaction, nome12, getPeriodoFCDiario, classifyTax, moveToNextBusinessDay } from '../utils/finance';
+import { formatCurrency, parseDate, COMPANIES, BANKS_MAPPING, isCapexTransaction, isDistribLucrosTransaction, nome12, getPeriodoFCDiario, classifyTax, moveToNextBusinessDay, getNecessidadesFC } from '../utils/finance';
 
 // ── Gráficos dos quadros de Pontos Críticos ──────────────────────────────────
 const RiskDonut: React.FC<{ pct: number; color: string; caption?: string; small?: boolean; track?: string; pctFontSize?: string }> = ({ pct, color, caption, small, track, pctFontSize }) => {
@@ -474,6 +474,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
           diaFolha: diaMaior('FolhaPagto') || diaMaior('Folha'), diaImpostos: diaMaior('Impostos'),
           topFornecedoresNF: Object.entries(fornNF).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([n]) => n),
           siglas: SIGLA,
+          necessidade: getNecessidadesFC(),
       };
       const prox = variante ?? (varianteAnalise % 4) + 1;
       setVarianteAnalise(prox); try { localStorage.setItem('fc_analise_variante', String(prox)); } catch { /* ignora */ }
@@ -826,19 +827,22 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
                     const lastSnapTotal = applicationSnapshots.length
                         ? [...applicationSnapshots].sort((a, b) => (a.dateISO < b.dateISO ? 1 : -1))[0].totalGeral : 0;
                     const appOpening = appTx.length > 0 ? appTx.reduce((acc, t) => acc + (Number(t.value) || 0), 0) : lastSnapTotal;
-                    const appClosing = appOpening + totalManualAplicacoes - totalManualResgates;
+                    // Necessidade de resgate apontada pelo FC Diário (ainda não lançada),
+                    // considerada no 1º dia da DFC: sai das aplicações e entra no caixa.
+                    const necRes = getNecessidadesFC()?.total || 0;
+                    const appClosing = appOpening + totalManualAplicacoes - totalManualResgates - necRes;
 
                     const caixaRows = [
                         { l: 'SD Inicial',               v: initialBalance,       c: '#283848', b: true },
                         { l: '(+) Entradas',             v: summary.totalInflow,  c: '#2E7D63' },
                         { l: '(−) Saídas (op.)',         v: saidasOperac,         c: '#B0574E' },
                         { l: '(−) Investimentos/Capex',  v: totalCapex,           c: '#B0574E' },
-                        { l: '(−/+) Aplic/Resg',         v: aplicResgNet,         c: '#283848' },
-                        { l: 'SD Final',                 v: netPeriodResult,      c: '#283848', b: true, tot: true },
+                        { l: '(−/+) Aplic/Resg',         v: aplicResgNet + necRes, c: '#283848' },   // inclui o resgate necessário (previsão)
+                        { l: 'SD Final',                 v: netPeriodResult + necRes, c: '#283848', b: true, tot: true },
                     ];
                     const aplicRows = [
                         { l: 'SD Inicial',    v: appOpening,            c: '#283848', b: true },
-                        { l: '(−) Resgates',  v: totalManualResgates,  c: '#283848' },
+                        { l: '(−) Resgates',  v: totalManualResgates + necRes, c: '#283848' },   // lançados + necessários (previsão do FC Diário)
                         { l: '(+) Aplicações',v: totalManualAplicacoes,c: '#283848' },
                         { l: 'SD Final',      v: appClosing,           c: '#283848', b: true, tot: true },
                     ];
