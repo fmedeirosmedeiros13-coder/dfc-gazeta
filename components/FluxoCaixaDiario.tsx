@@ -333,6 +333,20 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                   (b as any).targetBR = alvo;   // para o aviso mostrar a coluna certa de cada extrato
                   onManualValueChange(`sim_close_${b.companyId}_${b.bankId}_${b.dateISO}`, b.saldo);
                   onManualValueChange(`sim_sd_ini_${b.companyId}_${b.bankId}_${alvo}`, b.saldo);
+                  onManualValueChange(`sim_sd_src_${b.companyId}_${b.bankId}_${alvo}`, 1);   // origem: EXTRATO
+                  // O extrato é o saldo real mais recente: SD Iniciais fixos de dias
+                  // POSTERIORES deste banco (digitados ou congelados) saem, e a corrente
+                  // volta a ser automática a partir do extrato.
+                  const alvoTs = parseDate(alvo);
+                  const prefixo = `sim_sd_ini_${b.companyId}_${b.bankId}_`;
+                  Object.keys(dfcManualValues || {}).forEach(k => {
+                      if (!k.startsWith(prefixo)) return;
+                      const dia = k.slice(prefixo.length);
+                      if (/^\d{2}\/\d{2}\/\d{4}$/.test(dia) && parseDate(dia) > alvoTs) {
+                          (onManualValueChange as any)(k, undefined);
+                          (onManualValueChange as any)(`sim_sd_src_${b.companyId}_${b.bankId}_${dia}`, undefined);
+                      }
+                  });
               });
               setExtratoResult(result);
           } catch (err) {
@@ -1086,9 +1100,13 @@ export const FluxoCaixaDiario: React.FC<FluxoCaixaDiarioProps> = ({
                                                          // SD Inicial FIXO (digitado ou de extrato) em âmbar; automático em cinza
                                                          className={`w-full h-full bg-transparent text-center px-1 text-[10px] outline-none ${dfcManualValues?.[day.keySdInicial] !== undefined ? 'text-amber-400 font-semibold' : 'text-slate-500'}`}
                                                          value={day.sdInicial}
-                                                         onCommit={(v) => onManualValueChange && onManualValueChange(day.keySdInicial, v)}
-                                                         onClear={() => onManualValueChange && (onManualValueChange as any)(day.keySdInicial, undefined)}
-                                                         title={dfcManualValues?.[day.keySdInicial] !== undefined ? 'SD Inicial fixo (digitado ou de extrato). Apague o valor para voltar ao saldo automático do dia anterior.' : 'Saldo automático (SD Final do dia anterior). Digite para fixar um valor.'}
+                                                         onCommit={(v) => { if (!onManualValueChange) return; onManualValueChange(day.keySdInicial, v); onManualValueChange(day.keySdInicial.replace('sim_sd_ini_', 'sim_sd_src_'), 2); }}
+                                                         onClear={() => { if (!onManualValueChange) return; (onManualValueChange as any)(day.keySdInicial, undefined); (onManualValueChange as any)(day.keySdInicial.replace('sim_sd_ini_', 'sim_sd_src_'), undefined); }}
+                                                         title={dfcManualValues?.[day.keySdInicial] === undefined
+                                                             ? 'Saldo automático (SD Final do dia anterior). Digite para corrigir.'
+                                                             : dfcManualValues?.[day.keySdInicial.replace('sim_sd_ini_', 'sim_sd_src_')] === 1
+                                                                 ? 'SD Inicial do EXTRATO. Pode corrigir digitando; um novo extrato substitui.'
+                                                                 : 'SD Inicial CORRIGIDO à mão. Um novo extrato substitui; apague o valor para voltar ao automático.'}
                                                          placeholder="-"
                                                      />
                                                  </td>
