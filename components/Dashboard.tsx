@@ -1102,9 +1102,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
       // Slide: tudo em cqw (escala com a página 16:9 do Demonstrativo), para
       // as ~29 linhas caberem sem estourar. Tela: fontes fixas maiores.
       // Valores CENTRALIZADOS e SEM casas decimais.
-      const TF  = isSlide ? { fontSize: 'clamp(6px, 0.91cqw, 18px)', lineHeight: 1.2 } : undefined;   // linha comum
-      const TFb = isSlide ? { fontSize: 'clamp(6px, 0.96cqw, 19px)', lineHeight: 1.2 } : undefined;   // totais/blocos
-      const TP  = isSlide ? { padding: '0.115cqw 0.35cqw' } : undefined;
+      const TF  = isSlide ? { fontSize: 'clamp(6px, 0.84cqw, 17px)', lineHeight: 1.15 } : undefined;   // linha comum
+      const TFb = isSlide ? { fontSize: 'clamp(6px, 0.89cqw, 18px)', lineHeight: 1.15 } : undefined;   // totais/blocos
+      const TP  = isSlide ? { padding: '0.07cqw 0.35cqw' } : undefined;   // mais justo: a tabela inteira (até TOTAL DE DISPONIBILIDADES) cabe na página
       const tfCls  = isSlide ? '' : 'text-[12px]';
       const tfbCls = isSlide ? '' : 'text-[13px]';
       const tpCls  = isSlide ? '' : 'p-1';
@@ -1472,7 +1472,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, realizedTran
                         {prevBanByCol && DFC_COLS.some(c => Math.round(prevBanByCol[c.id]) !== 0) && renderValRow('↳ CDB Banestes', prevBanByCol, 'item', 'text-amber-200')}
                         {renderSummaryRow('SALDO APÓS APLIC/RESG', 'saldoAposAplicResg', 'bg-[#1e3a8a]', 'text-white')}
 
-                        <tr className={`${isSlide ? '' : 'h-4'} bg-slate-900`} style={isSlide ? { height: '0.6cqw' } : undefined}></tr>
+                        <tr className={`${isSlide ? '' : 'h-4'} bg-slate-900`} style={isSlide ? { height: '0.3cqw' } : undefined}></tr>
 
                         {renderSummaryRow('TOTAL DE DISPONIBILIDADES', 'totalDisponibilidades', 'bg-[#0f172a]', 'text-white')}
                     </tbody>
