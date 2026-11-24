@@ -21,12 +21,23 @@ export interface DadosAnalise {
   diaFolha?: string; diaImpostos?: string;
   topFornecedoresNF: string[];
   siglas: Record<string, string>;              // id → sigla (VÍDEO, TVN…)
+  top10Particular?: number;                    // soma dos 10 maiores clientes da carteira Particular
+  diaFornecedores?: string;                    // dia (dd/mm) com mais pagamentos a fornecedores
+  appBTG?: number;                             // parte da posição aplicada em Fundo BTG (resto = CDB Banestes)
+  nomes?: Record<string, string>;              // id → nome completo da empresa
   necessidade?: { inicio: string; total: number; falta: number; porEmpresa: [string, number][] } | null;   // resgate ainda não lançado (FC Diário)
 }
 
 const mil = (v: number) => `R$ ${Math.round(Math.abs(v) / 1000).toLocaleString('pt-BR')} mil`;
 const milS = (v: number) => `${v < 0 ? '-' : ''}${mil(v)}`;
 const reais = (v: number) => `${v < 0 ? '-' : ''}R$ ${Math.round(Math.abs(v)).toLocaleString('pt-BR')}`;
+/** "R$ 2 milhões e 523 mil" / "R$ 274 mil" (modelo Análise). */
+const extensoMil = (v: number) => {
+  const a = Math.round(Math.abs(v) / 1000);          // em mil
+  const mi = Math.floor(a / 1000), k = a % 1000;
+  if (!mi) return `R$ ${k.toLocaleString('pt-BR')} mil`;
+  return `R$ ${mi.toLocaleString('pt-BR')} ${mi === 1 ? 'milhão' : 'milhões'}${k ? ` e ${k} mil` : ''}`;
+};
 const pctN = (v: number, t: number) => (t ? (v / t) * 100 : 0);
 const pct = (v: number, t: number, casas = 0) => `${pctN(v, t).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`;
 const lista = (xs: string[]) => xs.length <= 1 ? (xs[0] || '') : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`;
@@ -111,7 +122,7 @@ export function gerarAnalise(variante: number, x: DadosAnalise): string {
   const debitos = [x.diaFolha ? `Folha de pagamento (dia ${x.diaFolha})` : '', x.diaImpostos ? `Impostos (dia ${x.diaImpostos})` : ''].filter(Boolean);
 
   const out: string[] = [];
-  const v = ((variante - 1) % 4 + 4) % 4 + 1;
+  const v = ((variante - 1) % 5 + 5) % 5 + 1;
 
   if (v === 1) {
     // ── Modelo da gestora (Resumo Gerencial) ──
@@ -159,6 +170,40 @@ export function gerarAnalise(variante: number, x: DadosAnalise): string {
     if (x.rubricas.length) out.push(`Desembolsos: ${enc.length ? `Folha e encargos respondem por ${pct(somaEnc, x.saidasOp)} das saídas operacionais (${lista(enc.map(([g, val]) => `${g} ${mil(val)}`))})` : `As cinco maiores rubricas somam ${pct(somaRub, x.saidasOp)} das saídas`}${op.length ? `; entre os demais, destaca-se ${op[0][0]} (${mil(op[0][1])})` : ''}${debitos.length ? `. Datas-chave: ${lista(debitos)}` : ''}.`);
     const dest = [fraseNec, fraseMutuo('gestora'), fraseZeradas].filter(Boolean);
     if (dest.length) out.push(`⚠ PONTO DE ATENÇÃO: ${dest.join(' ')}`);
+  } else if (v === 5) {
+    // ── Modelo "Análise" (Atividades Operacionais / Financiamento / Geração de Caixa / Aplicações) ──
+    const nome = (id: string) => (x.nomes && x.nomes[id]) || sg(id);
+    out.push('ATIVIDADES OPERACIONAIS');
+    const ent = [`Entradas:`, `• O total de recebimentos previstos no período é de ${extensoMil(x.entradas)};`];
+    if (x.top10Particular && x.entradas) ent.push(`• Do total a receber, ${pct(x.top10Particular, x.entradas)} (${extensoMil(x.top10Particular)}) estão concentrados em 10 clientes da carteira Particular.`);
+    out.push(ent.join('\n'));
+    const c = x.pagPorCategoria, T = x.saidasTotal;
+    const FORN = ['Operativas', 'Administrativas', 'Comerciais', 'Promocionais', 'Programação', 'Materiais', 'Projetos', 'Insumos', 'Custos', 'Outros', 'Investimento'];
+    const forn = FORN.reduce((a, k) => a + (c[k] || 0), 0), pes = c['Folha'] || 0, imp = c['Impostos'] || 0, com = c['Comissão'] || 0;
+    const demais = Math.max(0, T - forn - pes - imp - com);
+    const destaques = FORN.filter(k => (c[k] || 0) > 0).sort((a, b) => (c[b] || 0) - (c[a] || 0)).slice(0, 2).map(k => `Desp. ${k} (${extensoMil(c[k])})`);
+    const sai: [number, string][] = [];
+    if (forn) sai.push([forn, `• ${pct(forn, T)} (${extensoMil(forn)}) dos pagamentos previstos referem-se a fornecedores diversos${x.diaFornecedores ? `, concentrados no dia ${x.diaFornecedores}` : ''}${destaques.length ? `, com destaque para ${lista(destaques)}` : ''};`]);
+    if (pes) sai.push([pes, `• ${pct(pes, T)} (${extensoMil(pes)}) referem-se a despesas com Pessoal (folha e encargos);`]);
+    if (imp) sai.push([imp, `• ${pct(imp, T)} (${extensoMil(imp)}) referem-se a impostos e contribuições;`]);
+    if (com) sai.push([com, `• ${pct(com, T)} (${extensoMil(com)}) referem-se a repasse de comissões para agências de publicidade;`]);
+    const l = [`Saídas:`, `• O total de desembolsos previstos é de ${extensoMil(T)};`, ...sai.sort((a, b) => b[0] - a[0]).map(([, t]) => t)];
+    if (demais > 0.5) l.push(`• ${pct(demais, T)} (${extensoMil(demais)}) restantes, distribuídos nas demais despesas.`);
+    l[l.length - 1] = l[l.length - 1].replace(/;$/, '.');
+    out.push(l.join('\n'));
+    if (x.mutuos) out.push(`Atividades de Financiamento:\n• Está previsto um empréstimo (mútuo) da ${x.mutuos.de} para a ${x.mutuos.para} de ${extensoMil(x.mutuos.valor)}${x.mutuos.dias.length ? ` (${lista(x.mutuos.dias)})` : ''}.`);
+    out.push(`Geração de Caixa Operacional:\n• Saldo inicial de caixa é de ${extensoMil(x.saldoInicial)};\n• A previsão de geração de caixa operacional do período é de ${extensoMil(resultadoOp)}${resultadoOp < 0 ? ' negativos' : ' positivos'}.`);
+    if (x.appIni > 0) {
+      const btg = x.appBTG || 0, cdb = Math.max(0, x.appIni - btg);
+      const a = [`Estoque médio de reserva de caixa (aplicações):`, `• O saldo de aplicações está em ${extensoMil(x.appIni)}${btg && cdb ? `, sendo ${pct(btg, x.appIni)} (${extensoMil(btg)}) em Fundo de investimentos no BTG Pactual e ${pct(cdb, x.appIni)} (${extensoMil(cdb)}) em renda fixa (CDB) no Banestes` : ''};`];
+      const r = Object.entries(x.resgPor).filter(([, v]) => v > 0).map(([id]) => nome(id)), ap = Object.entries(x.aplPor).filter(([, v]) => v > 0).map(([id]) => nome(id));
+      const prev: string[] = [];
+      if (totResg) prev.push(`resgate de ${extensoMil(totResg)} na ${lista(r)}`);
+      if (totApl) prev.push(`aplicações no montante de ${extensoMil(totApl)} na ${lista(ap)}`);
+      if (nec) prev.push(`necessidade de resgate de ${extensoMil(nec.total)} ainda não lançada (${nec.porEmpresa.map(([n]) => n).join(', ')})`);
+      a.push(prev.length ? `• Há previsão de ${lista(prev)}.` : '• Não há previsão de resgates ou aplicações no período.');
+      out.push(a.join('\n'));
+    }
   } else {
     // ── "Principais Recebimentos e Pagamentos", redação compacta ──
     out.push(`RESUMO DA SEMANA (${dm(x.inicio)} A ${dm(x.fim)})`);

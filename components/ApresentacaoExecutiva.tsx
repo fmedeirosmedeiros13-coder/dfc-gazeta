@@ -102,6 +102,26 @@ const AnaliseBox = React.memo(function AnaliseBox({ texto, variante, onSalvar, o
 }) {
     const [editando, setEditando] = useState(false);
     const ref = useRef<HTMLTextAreaElement>(null);
+    // Ajuste automático da letra: o texto (qualquer um dos 5) sempre cabe no
+    // quadro — se passar da altura, a letra diminui até caber (mín. 6px).
+    const viewRef = useRef<HTMLDivElement>(null);
+    const [escala, setEscala] = useState(1);
+    useEffect(() => { setEscala(1); }, [texto, editando]);
+    useEffect(() => {
+        const el = viewRef.current; if (!el || editando) return;
+        const ajustar = () => {
+            if (!viewRef.current) return;
+            const e = viewRef.current;
+            if (e.scrollHeight > e.clientHeight + 1) setEscala(s => (s > 0.55 ? +(s * 0.94).toFixed(3) : s));
+        };
+        const id = requestAnimationFrame(ajustar);
+        return () => cancelAnimationFrame(id);
+    }, [escala, texto, editando]);
+    useEffect(() => {   // tela redimensionada → recomeça o ajuste
+        const ro = new ResizeObserver(() => setEscala(1));
+        if (viewRef.current) ro.observe(viewRef.current.parentElement as Element);
+        return () => ro.disconnect();
+    }, []);
     const salvar = () => { if (ref.current) onSalvar(ref.current.value); setEditando(false); };
     const btn = 'p-1.5 text-slate-400 hover:bg-slate-800 rounded-md transition-colors';
     const negrito = (linha: string, k: number) => {
@@ -118,8 +138,8 @@ const AnaliseBox = React.memo(function AnaliseBox({ texto, variante, onSalvar, o
                     ) : (
                         <>
                             <span className="text-[10px] text-slate-500 mr-1">Texto</span>
-                            {[1, 2, 3, 4].map(v => (
-                                <button key={v} onClick={() => onGerar(v)} title={['', 'Modelo Resumo Gerencial', 'Modelo Principais Recebimentos e Pagamentos', 'Visão executiva', 'Resumo da semana'][v]}
+                            {[1, 2, 3, 4, 5].map(v => (
+                                <button key={v} onClick={() => onGerar(v)} title={['', 'Modelo Resumo Gerencial', 'Modelo Principais Recebimentos e Pagamentos', 'Visão executiva', 'Resumo da semana', 'Modelo Análise (Atividades Operacionais, Financiamento e Aplicações)'][v]}
                                     className={`w-6 h-6 rounded text-[11px] font-bold ${variante === v ? 'bg-sky-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>{v}</button>
                             ))}
                             <button onClick={() => setEditando(true)} className={btn} title="Editar"><Edit2 className="w-4 h-4" /></button>
@@ -133,7 +153,7 @@ const AnaliseBox = React.memo(function AnaliseBox({ texto, variante, onSalvar, o
                 {editando ? (
                     <textarea ref={ref} defaultValue={texto} autoFocus style={{ fontSize: 'clamp(8px, 1.0cqw, 18px)' }} className="w-full h-full p-3 font-normal text-slate-300 bg-slate-900 border border-slate-700 rounded-md focus:outline-none focus:border-slate-500 resize-none custom-scrollbar" />
                 ) : (
-                    <div className="h-full overflow-y-auto pr-4 font-normal text-slate-300 text-justify whitespace-pre-wrap custom-scrollbar" style={{ fontSize: 'clamp(7px, 0.9cqw, 17px)', lineHeight: 1.45 }}>
+                    <div ref={viewRef} className="h-full overflow-y-auto pr-4 font-normal text-slate-300 text-justify whitespace-pre-wrap custom-scrollbar" style={{ fontSize: `calc(clamp(7px, 0.9cqw, 17px) * ${escala})`, lineHeight: 1.4 }}>
                         {texto ? texto.split('\n\n').map((par, pi) => /^[^:\n]{2,48}:/.test(par) || /^(Recebimentos|Pagamentos):/.test(par)
                             ? <p key={pi} style={{ margin: '0 0 0.45em' }}>{par.split('\n').map((l, li) => <React.Fragment key={li}>{li > 0 && <br />}{negrito(l, li)}</React.Fragment>)}</p>
                             : <p key={pi} style={{ margin: '0 0 0.45em' }}>{pi === 0 ? <b className="text-slate-100">{par}</b> : par}</p>
@@ -469,6 +489,15 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
           resgPor, aplPor, resgPorDia, aplPorDia, appIni: appTx.reduce((a, t) => a + (Number(t.value) || 0), 0),
           mutuos, zeradas, recPorDia, recParticular, recGovF, recGovE, recGovM,
           topClientesParticular: Object.entries(cliPart).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n]) => n),
+          top10Particular: Object.values(cliPart).sort((a, b) => b - a).slice(0, 10).reduce((a, b) => a + b, 0),
+          diaFornecedores: (() => {
+              const FORN = ['Operativas', 'Administrativas', 'Comerciais', 'Promocionais', 'Programação', 'Materiais', 'Projetos', 'Insumos', 'Custos', 'Outros', 'Investimento'];
+              const porDia: Record<string, number> = {};
+              FORN.forEach(c => Object.entries(porDiaCat[c] || {}).forEach(([d, v]) => add(porDia, d, v)));
+              const e = Object.entries(porDia).sort((a, b) => b[1] - a[1])[0]; return e ? e[0] : undefined;
+          })(),
+          appBTG: appTx.filter(t => /FUNDO|BTG/i.test(`${t.category || ''} ${t.description || ''}`)).reduce((a, t) => a + (Number(t.value) || 0), 0),
+          nomes: Object.fromEntries(COMPANIES.map(c => [c.id, c.name])),
           recPorSegmento: seg, pagPorCategoria,
           rubricas: Object.entries(grupos).sort((a, b) => b[1] - a[1]).slice(0, 5),
           diaFolha: diaMaior('FolhaPagto') || diaMaior('Folha'), diaImpostos: diaMaior('Impostos'),
@@ -476,7 +505,7 @@ export const ApresentacaoExecutiva: React.FC<ApresentacaoExecutivaProps> = ({
           siglas: SIGLA,
           necessidade: getNecessidadesFC(),
       };
-      const prox = variante ?? (varianteAnalise % 4) + 1;
+      const prox = variante ?? (varianteAnalise % 5) + 1;
       setVarianteAnalise(prox); try { localStorage.setItem('fc_analise_variante', String(prox)); } catch { /* ignora */ }
       setAnaliseText(gerarAnalise(prox, dados));
   };
