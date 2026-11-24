@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { Transaction, TransactionType } from '../types';
-import { Plus, ArrowDownCircle, ArrowUpCircle, Briefcase, Upload, AlertTriangle, X, Check, CalendarDays, GitMerge, FileDown, RefreshCw, Pencil, Filter, Trash2 } from 'lucide-react';
+import { Plus, ArrowDownCircle, ArrowUpCircle, Briefcase, Upload, AlertTriangle, X, Check, CalendarDays, GitMerge, FileDown, RefreshCw, Pencil, Filter, Trash2, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Lancamentos } from './Lancamentos';
 import { MultiSelect } from './MultiSelect';
@@ -1588,6 +1588,53 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
 
   const lancamentosFiltrados = useMemo(() => aplicarFiltros(transactions), [transactions, filtros, activeTab]);
 
+  // ── Exportar Excel: linhas da aba aberta, respeitando os filtros ─────────────
+  const exportarExcel = () => {
+      const lista = lancamentosFiltrados;
+      if (!lista.length) { alert('Não há linhas para exportar com os filtros atuais.'); return; }
+      const num = (v: unknown) => Math.round((Number(v) || 0) * 100) / 100;
+      const origem = (t: Transaction) => t.generatedFromCalendarId ? 'Calendário' : 'TOTVS / manual';
+      let linhas: Record<string, unknown>[];
+      let nomeAba: string;
+      if (activeTab === 'PAGAMENTOS') {
+          nomeAba = 'Contas a Pagar';
+          linhas = lista.map(t => ({
+              'Dt Prev Pagto': t.date, 'Empresa': t.companyCode ?? '', 'Estab': t.establishment ?? '',
+              'Fornecedor': t.supplierCode ?? '', 'Nome Fornecedor': t.supplier ?? t.description ?? '',
+              'Espécie': t.species ?? '', 'Série': t.series ?? '', 'Título': t.documentNumber ?? '', 'Parc': t.installment ?? '',
+              'Tipo de Fluxo': t.flowTypeCode ?? '', 'Nome Tipo de Fluxo': t.category ?? '', 'Fluxo N2': (t as any).flowTypeLevel2 ?? '',
+              'Valor': num(t.value), 'Origem': origem(t),
+          }));
+      } else if (activeTab === 'RECEBIMENTOS') {
+          nomeAba = 'Contas a Receber';
+          linhas = lista.map(t => ({
+              'Dt Previsão Liquidação': t.date, 'Empresa': t.companyCode ?? '', 'Estab': t.establishment ?? '',
+              'Cliente': t.customerCode ?? '', 'Nome Cliente': t.customer ?? t.description ?? '',
+              'Espécie': t.species ?? '', 'Série': t.series ?? '', 'Título': t.documentNumber ?? '', 'Parcela': t.installment ?? '',
+              'Carteira': t.portfolio ?? '', 'UN': t.businessUnitCode ?? '', 'Nome UN': t.businessUnit ?? '',
+              'Tipo de Fluxo': t.flowTypeCode ?? '', 'Nome Tipo de Fluxo': t.category ?? '', 'Valor': num(t.value),
+          }));
+      } else {
+          nomeAba = activeTab === 'APLICACOES' ? 'Aplicações' : activeTab === 'CALENDARIO' ? 'Calendário' : 'Tipo de Fluxo';
+          linhas = lista.map(t => ({
+              'Data': t.date, 'Empresa': t.companyCode ?? '', 'Fornecedor/Produto': t.supplier ?? t.category ?? '',
+              'Descrição': t.description ?? '', 'Título': t.documentNumber ?? '', 'Tipo de Fluxo': t.flowTypeCode ?? '', 'Valor': num(t.value),
+          }));
+      }
+      const ws = XLSX.utils.json_to_sheet(linhas);
+      const cols = Object.keys(linhas[0]);
+      ws['!cols'] = cols.map(c => ({ wch: Math.min(45, Math.max(c.length + 2, ...linhas.slice(0, 200).map(l => String(l[c] ?? '').length + 1))) }));
+      const iValor = cols.indexOf('Valor');
+      if (iValor >= 0) { const r = XLSX.utils.decode_range(ws['!ref'] || 'A1'); for (let i = 1; i <= r.e.r; i++) { const cel = ws[XLSX.utils.encode_cell({ r: i, c: iValor })]; if (cel) cel.z = '#,##0.00'; } }
+      // linha de total
+      const total = linhas.reduce((a, l) => a + (Number(l['Valor']) || 0), 0);
+      XLSX.utils.sheet_add_json(ws, [{ ...Object.fromEntries(cols.map(c => [c, ''])), [cols[0]]: 'TOTAL', Valor: Math.round(total * 100) / 100 }], { header: cols, skipHeader: true, origin: -1 });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, nomeAba.slice(0, 31));
+      const hoje = new Date(); const p2 = (n: number) => String(n).padStart(2, '0');
+      XLSX.writeFile(wb, `${nomeAba.replace(/\s+/g, '_')}_${p2(hoje.getDate())}-${p2(hoje.getMonth() + 1)}-${hoje.getFullYear()}.xlsx`);
+  };
+
   const filteredTransactionsNew = useTransactionFilters(
       transactions,
       filtros,
@@ -2321,6 +2368,10 @@ export const GestaoLancamentos: React.FC<GestaoLancamentosProps> = ({ transactio
               </button>
               <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded text-xs font-bold transition-colors shadow-sm">
                 <Upload className="w-3 h-3" /> Importar CSV/Excel
+              </button>
+              <button onClick={exportarExcel} title="Exporta as linhas da aba (respeitando os filtros) para Excel"
+                className="flex items-center gap-2 px-3 py-1 bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 text-white rounded text-xs font-bold transition-colors shadow-sm">
+                <Download className="w-3 h-3" /> Exportar Excel
               </button>
             </div>
           </div>
